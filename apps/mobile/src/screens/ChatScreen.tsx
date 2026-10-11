@@ -1,168 +1,214 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   SafeAreaView,
-  TextInput,
   TouchableOpacity,
-  Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Header } from '../components/common/Header';
+import { Badge } from '../components/common/Badge';
+import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { StatusNotice } from '../components/common/StatusNotice';
+import { getConversations, getSessionToken } from '../services';
+import { ConversationItem } from '@bandhansetu/shared';
 
-interface ChatScreenProps {
-  route?: { params?: { conversationId?: string; partnerName?: string } };
+interface Props {
   navigation: any;
 }
 
-export const ChatScreen: React.FC<ChatScreenProps> = ({ route, navigation }) => {
-  const partnerName = route?.params?.partnerName || 'Priya S.';
-  const [messages, setMessages] = useState([
-    {
-      id: '1',
-      sender: 'partner',
-      text: 'Namaste Rohan! Thanks for accepting my interest.',
-      time: '10:30 AM',
-    },
-    {
-      id: '2',
-      sender: 'user',
-      text: 'Namaste Priya, great to connect with you.',
-      time: '10:32 AM',
-    },
-    {
-      id: '3',
-      sender: 'partner',
-      text: 'Would you like our families to speak this weekend?',
-      time: '10:35 AM',
-    },
-  ]);
-  const [inputMessage, setInputMessage] = useState('');
+export const ChatScreen: React.FC<Props> = ({ navigation }) => {
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
+  const fetchConversations = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
 
-    const newMsg = {
-      id: String(Date.now()),
-      sender: 'user',
-      text: inputMessage.trim(),
-      time: 'Just now',
-    };
-    setMessages((prev) => [...prev, newMsg]);
-    setInputMessage('');
-  };
+    try {
+      const token = getSessionToken();
+      const res = await getConversations(token);
+      if (res.data) {
+        setConversations(res.data);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Could not load conversations.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const handleRequestContact = () => {
-    Alert.alert(
-      'Contact Share Request',
-      `A formal request has been sent to ${partnerName}. Both parties must explicitly consent before numbers are revealed.`
-    );
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchConversations();
+    });
+    fetchConversations();
+    return unsubscribe;
+  }, [navigation, fetchConversations]);
+
+  const formatTime = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      if (isToday) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header
-        title={partnerName}
-        subtitle="✓ ID Verified • Active Today"
-        onBack={() => navigation.goBack()}
+        title="Messages"
+        subtitle={loading ? 'Updating chats...' : `${conversations.length} Active Conversations`}
         showStatusBadge={true}
-        rightAction={
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('ReportBlock', {
-                profileId: 'BS-1043',
-                name: partnerName,
-              })
-            }
-            style={styles.menuBtn}
-          >
-            <Text style={styles.menuText}>⋮</Text>
-          </TouchableOpacity>
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchConversations(true)}
+            tintColor={colors.royalMaroon}
+            colors={[colors.royalMaroon]}
+          />
         }
-      />
+      >
+        <StatusNotice
+          milestoneText="Milestone 6 Secure Real-Time Chat Active"
+          subtext="Messaging permitted only between verified mutual matches. Contact numbers remain locked until mutual consent."
+        />
 
-      <StatusNotice
-        milestoneText="Real-time Chat & WebSockets: Milestone 6"
-        subtext="Socket.IO authorization, anti-harassment keyword screening, and contact-exchange persistence will link in Milestone 6."
-      />
+        {/* Loading State */}
+        {loading && !refreshing && (
+          <View style={styles.centerBox}>
+            <ActivityIndicator size="large" color={colors.royalMaroon} />
+            <Text style={styles.loadingText}>Fetching conversations...</Text>
+          </View>
+        )}
 
-      {/* Blueprint Safety Warning Banner (Blueprint S-14) */}
-      <View style={styles.safetyBanner}>
-        <Text style={styles.safetyIcon}>🛡️</Text>
-        <Text style={styles.safetyText}>
-          Safety First: Never send money, OTPs, or bank details. Report any suspicious conduct
-          immediately.
-        </Text>
-      </View>
+        {/* Error State */}
+        {error && (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Error Loading Chats</Text>
+            <Text style={styles.errorSub}>{error}</Text>
+            <Button
+              title="Try Again"
+              onPress={() => fetchConversations()}
+              variant="secondary"
+              style={{ marginTop: spacing.md }}
+            />
+          </Card>
+        )}
 
-      <ScrollView contentContainerStyle={styles.messagesContainer}>
-        {messages.map((msg) => {
-          const isUser = msg.sender === 'user';
-          return (
-            <View
-              key={msg.id}
-              style={[
-                styles.messageBubbleWrapper,
-                isUser ? styles.userWrapper : styles.partnerWrapper,
-              ]}
-            >
-              <View
-                style={[
-                  styles.messageBubble,
-                  isUser ? styles.userBubble : styles.partnerBubble,
-                ]}
-              >
-                <Text style={[styles.messageText, isUser ? styles.userText : styles.partnerText]}>
-                  {msg.text}
-                </Text>
-                <Text style={[styles.timeText, isUser ? styles.userTime : styles.partnerTime]}>
-                  {msg.time}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-
-        {/* Blueprint Contact Share Consent Card (Blueprint S-14) */}
-        <View style={styles.contactShareCard}>
-          <Text style={styles.contactShareIcon}>📱</Text>
-          <View style={styles.contactShareBody}>
-            <Text style={styles.contactShareTitle}>Share Verified Contact Numbers?</Text>
-            <Text style={styles.contactShareDesc}>
-              Both you and {partnerName} must give mutual consent. You can revoke access at any time
-              later.
+        {/* Empty State */}
+        {!loading && !error && conversations.length === 0 && (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyEmoji}>💬</Text>
+            <Text style={styles.emptyTitle}>No active conversations yet</Text>
+            <Text style={styles.emptySub}>
+              Messaging unlocks as soon as an interest is mutually accepted! Explore matches or review pending interests.
             </Text>
             <Button
-              title="Request Mutual Contact Share"
-              onPress={handleRequestContact}
-              variant="upgrade"
-              style={styles.contactShareBtn}
+              title="View Matches & Interests"
+              onPress={() => navigation.navigate('Interests')}
+              variant="primary"
+              style={{ marginTop: spacing.md }}
             />
-          </View>
-        </View>
-      </ScrollView>
+          </Card>
+        )}
 
-      {/* Message Input Footer */}
-      <View style={styles.inputBar}>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Type a respectful message..."
-          placeholderTextColor={colors.textMuted}
-          value={inputMessage}
-          onChangeText={setInputMessage}
-        />
-        <TouchableOpacity
-          style={styles.sendButton}
-          onPress={handleSendMessage}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+        {/* Conversation List */}
+        {!loading &&
+          conversations.map((conv) => {
+            const hasUnread = conv.unreadCount > 0;
+            const contactShared = conv.contactExchange?.status === 'accepted';
+
+            return (
+              <Card key={conv.id} style={styles.convCard}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.convItem}
+                  onPress={() =>
+                    navigation.navigate('ChatDetail', {
+                      conversationId: conv.id,
+                      partnerName: conv.participant.displayName,
+                    })
+                  }
+                >
+                  <View style={styles.avatarBox}>
+                    <Text style={styles.avatarIcon}>👤</Text>
+                    {conv.participant.isVerified && (
+                      <View style={styles.verifiedDot}>
+                        <Text style={styles.verifiedCheck}>✓</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.convInfo}>
+                    <View style={styles.topRow}>
+                      <Text style={styles.partnerName} numberOfLines={1}>
+                        {conv.participant.displayName}, {conv.participant.age}
+                      </Text>
+                      <Text style={styles.timeText}>
+                        {formatTime(conv.lastMessage?.createdAt || conv.updatedAt)}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.metaSnippet} numberOfLines={1}>
+                      {conv.participant.city} • {conv.participant.occupation}
+                    </Text>
+
+                    <View style={styles.bottomRow}>
+                      <Text
+                        style={[styles.lastMsgText, hasUnread && styles.lastMsgUnread]}
+                        numberOfLines={1}
+                      >
+                        {conv.lastMessage
+                          ? conv.lastMessage.text
+                          : 'Mutual match established. Start your conversation!'}
+                      </Text>
+
+                      {hasUnread && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadText}>{conv.unreadCount}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Contact status badge */}
+                    <View style={styles.badgeRow}>
+                      {contactShared ? (
+                        <Badge label="📱 Contact Disclosed" variant="verified" />
+                      ) : (
+                        <Badge label="🔒 Contact Masked" variant="neutral" />
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </Card>
+            );
+          })}
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -172,148 +218,156 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  menuBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  scrollContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing['3xl'],
   },
-  menuText: {
-    fontSize: 22,
-    color: colors.royalMaroon,
-    fontWeight: 'bold',
-  },
-  safetyBanner: {
-    flexDirection: 'row',
+  centerBox: {
+    padding: spacing['2xl'],
     alignItems: 'center',
-    backgroundColor: '#FFF8E1',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: '#FFE082',
   },
-  safetyIcon: {
-    fontSize: 16,
-    marginRight: spacing.xs,
-  },
-  safetyText: {
-    flex: 1,
-    fontSize: typography.fontSizes.xs - 1,
-    color: '#8D6E63',
-    lineHeight: 16,
-  },
-  messagesContainer: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  messageBubbleWrapper: {
-    marginBottom: spacing.md,
-    maxWidth: '82%',
-  },
-  userWrapper: {
-    alignSelf: 'flex-end',
-  },
-  partnerWrapper: {
-    alignSelf: 'flex-start',
-  },
-  messageBubble: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-  },
-  userBubble: {
-    backgroundColor: colors.royalMaroon,
-    borderBottomRightRadius: 2,
-  },
-  partnerBubble: {
-    backgroundColor: colors.surface,
-    borderBottomLeftRadius: 2,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  messageText: {
-    fontSize: typography.fontSizes.sm,
-    lineHeight: 20,
-  },
-  userText: {
-    color: '#FFFFFF',
-  },
-  partnerText: {
-    color: colors.charcoal,
-  },
-  timeText: {
-    fontSize: 10,
-    marginTop: 3,
-    alignSelf: 'flex-end',
-  },
-  userTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  partnerTime: {
-    color: colors.textMuted,
-  },
-  contactShareCard: {
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: colors.softGold,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginVertical: spacing.md,
-    flexDirection: 'row',
-  },
-  contactShareIcon: {
-    fontSize: 26,
-    marginRight: spacing.sm,
-  },
-  contactShareBody: {
-    flex: 1,
-  },
-  contactShareTitle: {
+  loadingText: {
+    marginTop: spacing.md,
     fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+  },
+  errorCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.errorBg,
+    borderColor: colors.errorBorder,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  errorTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: '700',
+    color: colors.alertRed,
+  },
+  errorSub: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.charcoal,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    marginTop: spacing.md,
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.base,
     fontWeight: '700',
     color: colors.charcoal,
   },
-  contactShareDesc: {
-    fontSize: typography.fontSizes.xs - 2,
+  emptySub: {
+    fontSize: typography.fontSizes.xs,
     color: colors.textSecondary,
-    marginVertical: 4,
-    lineHeight: 16,
-  },
-  contactShareBtn: {
-    minHeight: 36,
-    paddingVertical: spacing.xs,
+    textAlign: 'center',
+    lineHeight: 18,
     marginTop: spacing.xs,
   },
-  inputBar: {
-    flexDirection: 'row',
+  convCard: {
+    marginBottom: spacing.sm,
     padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  },
+  convItem: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  textInput: {
-    flex: 1,
-    minHeight: 42,
+  avatarBox: {
+    width: 56,
+    height: 64,
+    borderRadius: borderRadius.md,
     backgroundColor: colors.surfaceCard,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    fontSize: typography.fontSizes.sm,
     borderWidth: 1,
     borderColor: colors.borderDefault,
-    color: colors.charcoal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
-  sendButton: {
-    marginLeft: spacing.sm,
+  avatarIcon: {
+    fontSize: 28,
+  },
+  verifiedDot: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    backgroundColor: colors.verifiedGreen,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  verifiedCheck: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  convInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  partnerName: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: '700',
+    color: colors.charcoal,
+    flex: 1,
+  },
+  timeText: {
+    fontSize: typography.fontSizes.xs - 2,
+    color: colors.textMuted,
+    marginLeft: spacing.xs,
+  },
+  metaSnippet: {
+    fontSize: typography.fontSizes.xs - 1,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  bottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  lastMsgText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  lastMsgUnread: {
+    color: colors.charcoal,
+    fontWeight: '700',
+  },
+  unreadBadge: {
     backgroundColor: colors.royalMaroon,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: borderRadius.full,
-    minHeight: 42,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendButtonText: {
+  unreadText: {
     color: '#FFFFFF',
+    fontSize: 10,
     fontWeight: '700',
-    fontSize: typography.fontSizes.sm,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    marginTop: 4,
   },
 });

@@ -9,6 +9,7 @@ import { ProfileCreationScreen } from '../screens/ProfileCreationScreen';
 import { MainTabNavigator } from './MainTabNavigator';
 import { ProfileDetailScreen } from '../screens/ProfileDetailScreen';
 import { ChatScreen } from '../screens/ChatScreen';
+import { ChatDetailScreen } from '../screens/ChatDetailScreen';
 import { MembershipScreen } from '../screens/MembershipScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { PrivacySettingsScreen } from '../screens/PrivacySettingsScreen';
@@ -32,7 +33,7 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="ProfileCreation" component={ProfileCreationScreen} />
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
       <Stack.Screen name="ProfileDetail" component={ProfileDetailScreen} />
-      <Stack.Screen name="ChatDetail" component={ChatScreen} />
+      <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
       <Stack.Screen name="Membership" component={MembershipScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />

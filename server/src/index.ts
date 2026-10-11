@@ -1,17 +1,24 @@
+import http from 'http';
 import { createApp } from './app';
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
+import { SocketService } from './socket/socket.service';
 
 const startServer = async (): Promise<void> => {
   const app = createApp();
+  const httpServer = http.createServer(app);
+
+  // Initialize Socket.IO with WebSocket and JWT handshake
+  SocketService.init(httpServer);
 
   // Attempt database connection (non-blocking for health check)
   await connectDatabase();
 
-  const server = app.listen(config.port, () => {
+  const server = httpServer.listen(config.port, () => {
     console.log(`===============================================`);
     console.log(`  BandhanSetu Server running on port ${config.port}`);
     console.log(`  Environment: ${config.nodeEnv}`);
+    console.log(`  Real-Time WebSockets: Active via Socket.IO`);
     console.log(`  Health Check: http://localhost:${config.port}/api/v1/health`);
     console.log(`===============================================`);
   });

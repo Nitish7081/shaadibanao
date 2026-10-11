@@ -207,3 +207,34 @@ export interface InterestItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export type MessageStatus = 'sent' | 'delivered' | 'read';
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  text: string;
+  status: MessageStatus;
+  createdAt: string;
+}
+
+export type ContactExchangeStatus = 'none' | 'requested' | 'accepted' | 'declined';
+
+export interface ContactExchangeDetails {
+  status: ContactExchangeStatus;
+  requestedBy?: string;
+  phone?: string; // Revealed ONLY after mutual consent
+  email?: string; // Revealed ONLY after mutual consent
+}
+
+export interface ConversationItem {
+  id: string;
+  matchId: string;
+  participant: PublicProfile;
+  lastMessage?: ChatMessage;
+  unreadCount: number;
+  contactExchange: ContactExchangeDetails;
+  createdAt: string;
+  updatedAt: string;
+}

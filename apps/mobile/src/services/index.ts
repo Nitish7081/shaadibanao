@@ -7,3 +7,4 @@ export * from './searchService';
 export * from './shortlistService';
 export * from './interestService';
 export * from './authSession';
+export * from './chatService';

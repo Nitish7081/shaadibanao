@@ -6,6 +6,7 @@ import { preferenceRouter } from './preference.routes';
 import { searchRouter } from './search.routes';
 import { shortlistRouter } from './shortlist.routes';
 import { interestRouter } from './interest.routes';
+import { chatRouter } from './chat.routes';
 
 export const apiV1Router = Router();
 
@@ -16,3 +17,4 @@ apiV1Router.use('/preferences', preferenceRouter);
 apiV1Router.use('/search', searchRouter);
 apiV1Router.use('/shortlists', shortlistRouter);
 apiV1Router.use('/interests', interestRouter);
+apiV1Router.use('/conversations', chatRouter);
