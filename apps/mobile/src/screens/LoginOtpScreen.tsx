@@ -16,6 +16,7 @@ import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
 import { StatusNotice } from '../components/common/StatusNotice';
+import { requestOtp, verifyOtp, registerUser } from '../services/authService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LoginOtp'>;
 
@@ -28,10 +29,11 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(30);
 
-  const handleSendOtp = () => {
-    const clean = mobileNumber.replace(/\D/g, '');
-    if (clean.length !== 10) {
-      Alert.alert('Invalid Number', 'Please enter a valid 10-digit Indian mobile number.');
+  const cleanMobile = mobileNumber.replace(/\D/g, '');
+
+  const handleSendOtp = async () => {
+    if (cleanMobile.length !== 10) {
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).');
       return;
     }
     if (!consentAgreed) {
@@ -43,25 +45,66 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const response = await requestOtp(cleanMobile);
       setLoading(false);
       setOtpSent(true);
       setResendTimer(30);
-    }, 600);
+
+      const notice = response.data?.devTestOtpHint
+        ? `${response.message}\n\n${response.data.devTestOtpHint}`
+        : response.message || 'OTP sent successfully.';
+
+      Alert.alert('OTP Dispatched', notice);
+    } catch (err: any) {
+      setLoading(false);
+      Alert.alert('Request Failed', err.message || 'Unable to request OTP. Check backend server connection.');
+    }
   };
 
-  const handleVerifyOtp = () => {
+  const handleVerifyOtp = async () => {
     if (otp.length !== 6) {
-      Alert.alert('Invalid OTP', 'Please enter the 6-digit OTP code.');
+      Alert.alert('Invalid OTP', 'Please enter the 6-digit verification code.');
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const verifyRes = await verifyOtp(cleanMobile, otp);
+
+      if (verifyRes.data?.auth) {
+        // Returning user - already has an account
+        setLoading(false);
+        Alert.alert('Welcome Back', 'Authentication successful!', [
+          {
+            text: 'Go to App',
+            onPress: () => navigation.navigate('MainTabs'),
+          },
+        ]);
+        return;
+      }
+
+      if (verifyRes.data?.verificationToken) {
+        // New user - complete account registration
+        const regRes = await registerUser({
+          mobile: cleanMobile,
+          verificationToken: verifyRes.data.verificationToken,
+          profileFor,
+          consentToTerms: true,
+        });
+
+        setLoading(false);
+        Alert.alert('Account Created', 'Your account has been registered. Let\'s build your profile!', [
+          {
+            text: 'Create Profile',
+            onPress: () => navigation.navigate('ProfileCreation'),
+          },
+        ]);
+      }
+    } catch (err: any) {
       setLoading(false);
-      // Navigate to Profile Creation Wizard (S-05)
-      navigation.navigate('ProfileCreation');
-    }, 600);
+      Alert.alert('Verification Failed', err.message || 'Invalid or expired OTP. Please try again.');
+    }
   };
 
   return (
@@ -75,8 +118,8 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <StatusNotice
-          milestoneText="Authentication Milestone: Milestone 4"
-          subtext="UI navigation & flow ready. Milestone 4 will connect server-side OTP dispatch and short-lived JWT generation."
+          milestoneText="Milestone 3 Authentication Active"
+          subtext="Connected to live /api/v1/auth endpoints. In development mock mode, use test code 123456."
         />
 
         <View style={styles.card}>
@@ -112,7 +155,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                 maxLength={10}
                 value={mobileNumber}
                 onChangeText={setMobileNumber}
-                helperText="We will send a 6-digit one-time password"
+                helperText="Enter 10-digit mobile number (e.g. 9876543210)"
               />
 
               <TouchableOpacity
@@ -150,7 +193,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
           ) : (
             <>
               <Text style={styles.subtext}>
-                We sent a 6-digit verification code to +91 {mobileNumber}
+                We sent a 6-digit verification code to +91 {cleanMobile}
               </Text>
 
               <Input
@@ -160,7 +203,9 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                 maxLength={6}
                 value={otp}
                 onChangeText={setOtp}
-                helperText={`Resend code in 00:${resendTimer < 10 ? `0${resendTimer}` : resendTimer}`}
+                helperText={`In dev mode, enter 123456 • Resend code in 00:${
+                  resendTimer < 10 ? `0${resendTimer}` : resendTimer
+                }`}
               />
 
               <Button

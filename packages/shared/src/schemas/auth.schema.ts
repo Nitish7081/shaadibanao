@@ -7,12 +7,8 @@ export const mobileNumberSchema = z
   .trim()
   .regex(/^[6-9]\d{9}$/, 'Please enter a valid 10-digit Indian mobile number');
 
-export const sendOtpSchema = z.object({
+export const requestOtpSchema = z.object({
   mobile: mobileNumberSchema,
-  profileFor: z.enum(PROFILE_CREATED_FOR).default('myself'),
-  consentToTerms: z.boolean().refine((val) => val === true, {
-    message: 'You must agree to the Terms & Privacy Policy to proceed',
-  }),
 });
 
 export const verifyOtpSchema = z.object({
@@ -24,10 +20,20 @@ export const verifyOtpSchema = z.object({
     .regex(/^\d{6}$/, 'OTP must contain numbers only'),
 });
 
+export const registerSchema = z.object({
+  mobile: mobileNumberSchema,
+  verificationToken: z.string().min(1, 'Verification token from verified OTP is required'),
+  profileFor: z.enum(PROFILE_CREATED_FOR).default('myself'),
+  consentToTerms: z.boolean().refine((val) => val === true, {
+    message: 'You must agree to the Terms & Privacy Policy to create an account',
+  }),
+});
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
-export type SendOtpInput = z.infer<typeof sendOtpSchema>;
+export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
+export type RegisterInput = z.infer<typeof registerSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
