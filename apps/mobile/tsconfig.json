@@ -1,11 +1,6 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
-    "ignoreDeprecations": "6.0",
-    "paths": {
-      "@bandhansetu/shared": ["../../packages/shared/src"],
-      "@bandhansetu/shared/*": ["../../packages/shared/src/*"]
-    }
+    "strict": true
   }
 }
