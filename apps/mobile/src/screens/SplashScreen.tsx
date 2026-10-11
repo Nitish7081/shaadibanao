@@ -1,19 +1,19 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing } from '../constants/theme';
 
-interface SplashScreenProps {
-  onFinish: () => void;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
-export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
+export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     // 2-second timeout per blueprint S-00 rule (max 2 seconds then auto-moves ahead)
     const timer = setTimeout(() => {
-      onFinish();
+      navigation.replace('LanguageSelection');
     }, 2000);
     return () => clearTimeout(timer);
-  }, [onFinish]);
+  }, [navigation]);
 
   return (
     <View style={styles.container}>

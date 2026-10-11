@@ -7,90 +7,53 @@ import {
   ScrollView,
   SafeAreaView,
 } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
-import { APP_LANGUAGES, AppLanguageCode } from '@bandhansetu/shared';
 import { Button } from '../components/common/Button';
-import { BackendStatusBadge } from '../components/common/BackendStatusBadge';
+import { Header } from '../components/common/Header';
 
-interface WelcomeScreenProps {
-  onGetStarted: () => void;
-  onSkip: () => void;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onSkip }) => {
-  const [selectedLanguage, setSelectedLanguage] = useState<AppLanguageCode>('en');
+export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
     {
       title: 'Verified profiles you can trust',
-      description: 'Photo checks, ID badges, and a dedicated team that reviews reports.',
+      description: 'Photo checks, ID badges, and a dedicated moderation team that reviews reports.',
       icon: '🛡️',
+      tag: 'TRUST & SAFETY',
     },
     {
       title: 'Privacy control in your hands',
-      description: 'You control who sees your photos, contact details, and family background.',
+      description: 'You control who sees your photos, contact details, and horoscope background.',
       icon: '🔒',
+      tag: 'PRIVACY BY DEFAULT',
     },
     {
       title: 'Kundli & Astrology guidance',
       description: 'Authentic Guna Milan calculations and verified astrologers for traditional guidance.',
       icon: '✨',
+      tag: 'VEDIC GUIDANCE',
     },
   ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.topBar}>
-        <BackendStatusBadge />
-        <TouchableOpacity onPress={onSkip} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
+      <Header
+        title="BandhanSetu"
+        subtitle="Where trust meets togetherness"
+        onBack={() => navigation.navigate('LanguageSelection')}
+        showStatusBadge={true}
+      />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Language Selection Section */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Choose your language</Text>
-          <Text style={styles.sectionSubtitle}>You can change this anytime later in settings</Text>
-        </View>
-
-        <View style={styles.languageGrid}>
-          {APP_LANGUAGES.map((lang) => {
-            const isSelected = selectedLanguage === lang.code;
-            return (
-              <TouchableOpacity
-                key={lang.code}
-                activeOpacity={0.7}
-                onPress={() => setSelectedLanguage(lang.code)}
-                style={[
-                  styles.languageChip,
-                  isSelected && styles.languageChipSelected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.languageChipText,
-                    isSelected && styles.languageChipTextSelected,
-                  ]}
-                >
-                  {lang.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.languageNativeText,
-                    isSelected && styles.languageNativeTextSelected,
-                  ]}
-                >
-                  {lang.native}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {/* Feature Highlights Card Carousel */}
+        {/* Carousel Card */}
         <View style={styles.slideCard}>
+          <View style={styles.tagBadge}>
+            <Text style={styles.tagText}>{slides[activeSlide].tag}</Text>
+          </View>
           <View style={styles.iconCircle}>
             <Text style={styles.iconText}>{slides[activeSlide].icon}</Text>
           </View>
@@ -112,25 +75,42 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted, onSk
           </View>
         </View>
 
-        {/* Trust Strip */}
+        {/* Trust Badges Bar */}
         <View style={styles.trustStrip}>
           <View style={styles.trustItem}>
-            <Text style={styles.trustDot}>✓</Text>
-            <Text style={styles.trustLabel}>Verified</Text>
+            <Text style={styles.trustCheck}>✓</Text>
+            <Text style={styles.trustLabel}>100% Verified Profiles</Text>
           </View>
           <View style={styles.trustItem}>
-            <Text style={styles.trustDot}>✓</Text>
-            <Text style={styles.trustLabel}>Private</Text>
+            <Text style={styles.trustCheck}>✓</Text>
+            <Text style={styles.trustLabel}>Zero Spam Tolerance</Text>
           </View>
           <View style={styles.trustItem}>
-            <Text style={styles.trustDot}>✓</Text>
-            <Text style={styles.trustLabel}>Reviewed</Text>
+            <Text style={styles.trustCheck}>✓</Text>
+            <Text style={styles.trustLabel}>Strict Privacy</Text>
           </View>
         </View>
 
-        {/* Action Button */}
+        {/* Action Buttons */}
         <View style={styles.actionContainer}>
-          <Button title="Get Started" onPress={onGetStarted} variant="primary" />
+          <Button
+            title="Create Free Account"
+            onPress={() => navigation.navigate('LoginOtp')}
+            variant="primary"
+            style={styles.mainCta}
+          />
+          <Button
+            title="I already have an account"
+            onPress={() => navigation.navigate('LoginOtp')}
+            variant="secondary"
+            style={styles.secondaryCta}
+          />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('MainTabs')}
+            style={styles.browseButton}
+          >
+            <Text style={styles.browseText}>Browse profiles without login</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -142,73 +122,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  skipText: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: '600',
-    color: colors.royalMaroon,
-  },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing['2xl'],
-  },
-  sectionHeader: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: '700',
-    color: colors.charcoal,
-    marginBottom: spacing.xxs,
-  },
-  sectionSubtitle: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-  },
-  languageGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xl,
-  },
-  languageChip: {
-    width: '48%',
-    backgroundColor: colors.surface,
-    borderWidth: 1.2,
-    borderColor: colors.borderLight,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    alignItems: 'center',
-  },
-  languageChipSelected: {
-    backgroundColor: colors.royalMaroon,
-    borderColor: colors.royalMaroon,
-  },
-  languageChipText: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: '600',
-    color: colors.charcoal,
-  },
-  languageChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  languageNativeText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  languageNativeTextSelected: {
-    color: colors.warmGrey,
+    padding: spacing.lg,
+    paddingBottom: spacing['3xl'],
   },
   slideCard: {
     backgroundColor: colors.surface,
@@ -220,14 +136,30 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 2,
+    marginTop: spacing.md,
     marginBottom: spacing.lg,
   },
+  tagBadge: {
+    backgroundColor: colors.warningBg,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.warningBorder,
+    marginBottom: spacing.md,
+  },
+  tagText: {
+    fontSize: typography.fontSizes.xs - 2,
+    fontWeight: '800',
+    color: '#8D6E63',
+    letterSpacing: 0.8,
+  },
   iconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.surfaceCard,
     alignItems: 'center',
     justifyContent: 'center',
@@ -236,7 +168,7 @@ const styles = StyleSheet.create({
     borderColor: colors.warmGrey,
   },
   iconText: {
-    fontSize: 28,
+    fontSize: 30,
   },
   slideTitle: {
     fontSize: typography.fontSizes.lg,
@@ -257,23 +189,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sliderDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: colors.warmGrey,
     marginHorizontal: spacing.xxs,
   },
   sliderDotActive: {
     backgroundColor: colors.royalMaroon,
-    width: 18,
-    borderRadius: 4,
+    width: 20,
   },
   trustStrip: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: spacing.md,
     backgroundColor: colors.surfaceCard,
     borderRadius: borderRadius.md,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     marginBottom: spacing.xl,
@@ -281,19 +210,35 @@ const styles = StyleSheet.create({
   trustItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 3,
   },
-  trustDot: {
+  trustCheck: {
     color: colors.verifiedGreen,
-    fontWeight: '700',
-    marginRight: spacing.xs,
+    fontWeight: '800',
+    marginRight: spacing.sm,
     fontSize: typography.fontSizes.sm,
   },
   trustLabel: {
     fontSize: typography.fontSizes.xs,
-    fontWeight: '600',
     color: colors.charcoal,
+    fontWeight: '600',
   },
   actionContainer: {
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  mainCta: {
+    marginBottom: spacing.sm,
+  },
+  secondaryCta: {
+    marginBottom: spacing.md,
+  },
+  browseButton: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  browseText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.royalMaroon,
+    fontWeight: '600',
   },
 });
