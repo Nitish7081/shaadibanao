@@ -238,3 +238,51 @@ export interface ConversationItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export type PlanTier = 'free' | 'plus' | 'premium';
+
+export interface PlanEntitlements {
+  canInitiateChat: boolean;
+  contactDisclosuresLimit: number;
+  isSpotlightProfile: boolean;
+  prioritySearchRanking: boolean;
+  relationshipAdvisorConsult: boolean;
+}
+
+export interface MembershipPlan {
+  id: PlanTier;
+  name: string;
+  tier: PlanTier;
+  priceInr: number;
+  billingCycle: string; // e.g. 'Free Forever', '3 Months', '6 Months'
+  tagline: string;
+  features: string[];
+  entitlements: PlanEntitlements;
+  badgeText?: string;
+  isPopular?: boolean;
+}
+
+export interface UserMembershipEntitlements extends PlanEntitlements {
+  contactDisclosuresUsed: number;
+  contactDisclosuresRemaining: number;
+}
+
+export interface UserMembership {
+  userId: string;
+  planId: PlanTier;
+  planName: string;
+  status: 'active' | 'expired' | 'cancelled';
+  entitlements: UserMembershipEntitlements;
+  startDate: string;
+  expiresAt?: string;
+}
+
+export interface CheckoutResponse {
+  checkoutAvailable: boolean;
+  notice: string;
+  planId: string;
+  planName: string;
+  amountInr: number;
+  currency: 'INR';
+  paymentGatewayStatus: 'unconfigured' | 'test_mode' | 'live';
+}

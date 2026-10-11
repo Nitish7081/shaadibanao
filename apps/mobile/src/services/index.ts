@@ -8,3 +8,4 @@ export * from './shortlistService';
 export * from './interestService';
 export * from './authSession';
 export * from './chatService';
+export * from './membershipService';
