@@ -161,3 +161,49 @@ export interface PartnerPreferences {
   cities: string[];
   manglikPreference: string;
 }
+
+/**
+ * Match explanation: factual criteria evaluated against user partner preferences
+ */
+export interface MatchAlignment {
+  scoreText: string; // e.g. "6 of 7 preferences match"
+  matchedCount: number;
+  totalEvaluated: number;
+  matchedCriteria: string[]; // e.g. ["Age in range (24-29)", "Lives in Delhi NCR", ...]
+}
+
+export interface SearchResultProfile extends PublicProfile {
+  matchAlignment: MatchAlignment;
+  isShortlisted?: boolean;
+  interestStatus?: 'none' | 'pending' | 'accepted' | 'declined' | 'withdrawn';
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: PaginationMeta;
+}
+
+export interface ShortlistItem {
+  id: string;
+  userId: string;
+  profileId: string;
+  profile: PublicProfile;
+  createdAt: string;
+}
+
+export interface InterestItem {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  profile: PublicProfile; // Opposite party's public profile
+  status: 'pending' | 'accepted' | 'declined' | 'withdrawn' | 'expired';
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -18,6 +20,13 @@ import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { StatusNotice } from '../components/common/StatusNotice';
+import {
+  searchProfiles,
+  addShortlist,
+  sendInterest,
+  getSessionToken,
+} from '../services';
+import { SearchResultProfile, SearchFilterInput } from '@bandhansetu/shared';
 
 type SearchNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Search'>,
@@ -30,6 +39,14 @@ interface Props {
 
 export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [results, setResults] = useState<SearchResultProfile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const filterChips = [
     { id: 'all', label: 'All Matches' },
@@ -39,64 +56,139 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     { id: 'engineer', label: 'Tech & Engineers' },
   ];
 
-  const searchResults = [
-    {
-      id: 'BS-2001',
-      name: 'Priya S.',
-      age: 27,
-      height: "5'4\"",
-      city: 'Delhi NCR',
-      education: 'MBA',
-      job: 'Product Manager',
-      matched: '6 of 7',
-      isVerified: true,
-      photoChecked: true,
-    },
-    {
-      id: 'BS-2002',
-      name: 'Ananya K.',
-      age: 26,
-      height: "5'5\"",
-      city: 'Gurgaon',
-      education: 'B.Des',
-      job: 'UX Designer',
-      matched: '6 of 7',
-      isVerified: true,
-      photoChecked: true,
-    },
-    {
-      id: 'BS-2003',
-      name: 'Sneha M.',
-      age: 28,
-      height: "5'3\"",
-      city: 'Noida',
-      education: 'MS Analytics',
-      job: 'Data Scientist',
-      matched: '5 of 7',
-      isVerified: false,
-      photoChecked: true,
-    },
-  ];
+  const buildFilterParams = useCallback((chipId: string, pageNum: number): Partial<SearchFilterInput> => {
+    const params: Partial<SearchFilterInput> = {
+      page: pageNum,
+      limit: 10,
+    };
 
-  const handleSendInterest = (name: string) => {
-    Alert.alert(
-      'Interest Sent',
-      `Your interest has been conveyed to ${name}. You will be notified when they accept. (Milestone 5 will persist real backend state).`
-    );
+    if (chipId === 'verified') {
+      params.verifiedOnly = true;
+    } else if (chipId === 'delhi') {
+      params.city = 'Delhi';
+    } else if (chipId === 'age24_28') {
+      params.minAge = 24;
+      params.maxAge = 28;
+    } else if (chipId === 'engineer') {
+      params.occupation = 'Engineer';
+    }
+
+    return params;
+  }, []);
+
+  const fetchProfiles = useCallback(
+    async (chipId: string, pageNum = 1, isRefresh = false) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      try {
+        const token = getSessionToken();
+        const filters = buildFilterParams(chipId, pageNum);
+        const res = await searchProfiles(token, filters);
+
+        if (res.data) {
+          const items = res.data.items;
+          if (pageNum === 1) {
+            setResults(items);
+          } else {
+            setResults((prev) => [...prev, ...items]);
+          }
+          setTotalPages(res.data.pagination.totalPages);
+          setTotalItems(res.data.pagination.totalCount);
+          setPage(pageNum);
+        }
+      } catch (err: any) {
+        setError(err.message || 'Unable to fetch profiles. Please try again.');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [buildFilterParams]
+  );
+
+  useEffect(() => {
+    fetchProfiles(selectedFilter, 1);
+  }, [selectedFilter, fetchProfiles]);
+
+  const handleFilterSelect = (chipId: string) => {
+    setSelectedFilter(chipId);
   };
 
-  const handleShortlist = (name: string) => {
-    Alert.alert('Shortlisted', `${name} has been added to your shortlist.`);
+  const handleRefresh = () => {
+    fetchProfiles(selectedFilter, 1, true);
+  };
+
+  const handleLoadMore = () => {
+    if (page < totalPages && !loading) {
+      fetchProfiles(selectedFilter, page + 1);
+    }
+  };
+
+  const handleSendInterest = async (item: SearchResultProfile) => {
+    setActionLoadingId(item.id);
+    try {
+      const token = getSessionToken();
+      const res = await sendInterest(token, item.id);
+      Alert.alert(
+        'Interest Sent',
+        res.message || `Interest expressed to ${item.displayName}. You will be notified when accepted.`
+      );
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Could not send interest. Please try again.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleShortlist = async (item: SearchResultProfile) => {
+    setActionLoadingId(item.id);
+    try {
+      const token = getSessionToken();
+      const res = await addShortlist(token, item.id);
+      Alert.alert('Shortlisted', res.message || `${item.displayName} added to your shortlist.`);
+    } catch (err: any) {
+      Alert.alert('Shortlist Failed', err.message || 'Could not shortlist profile.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const formatHeight = (cm?: number) => {
+    if (!cm) return '';
+    const totalInches = Math.round(cm / 2.54);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    return `${feet}'${inches}"`;
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header title="Search & Discover" subtitle="128 Profiles Found" showStatusBadge={true} />
+      <Header
+        title="Search & Discover"
+        subtitle={loading ? 'Searching profiles...' : `${totalItems} Profiles Found`}
+        showStatusBadge={true}
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.royalMaroon}
+            colors={[colors.royalMaroon]}
+          />
+        }
+      >
         <StatusNotice
-          milestoneText="Search Filters & Ranking: Milestone 5"
-          subtext="Server-side compound queries, geocoding filters, and preference scoring will be wired in Milestone 5."
+          milestoneText="Milestone 5 Search & Matching Active"
+          subtext="Factual preference-alignment rules evaluated against Partner Preferences. Zero arbitrary percentages."
         />
 
         {/* Filter Chips Horizontal Scroll */}
@@ -110,7 +202,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
             return (
               <TouchableOpacity
                 key={chip.id}
-                onPress={() => setSelectedFilter(chip.id)}
+                onPress={() => handleFilterSelect(chip.id)}
                 style={[styles.filterChip, isSelected && styles.filterChipSelected]}
               >
                 <Text
@@ -125,71 +217,132 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Sort & Count Header */}
         <View style={styles.resultsMeta}>
-          <Text style={styles.countText}>Showing 3 of 128 verified profiles</Text>
+          <Text style={styles.countText}>
+            Showing {results.length} of {totalItems} profiles
+          </Text>
           <Text style={styles.sortText}>Sort: Best Match ▾</Text>
         </View>
 
-        {/* Results List */}
-        {searchResults.map((item) => (
-          <Card key={item.id} style={styles.resultCard}>
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate('ProfileDetail', {
-                  profileId: item.id,
-                  name: item.name,
-                })
-              }
-              activeOpacity={0.85}
-              style={styles.cardHeader}
-            >
-              <View style={styles.photoContainer}>
-                <Text style={styles.photoPlaceholder}>👤</Text>
-                {item.isVerified && (
-                  <View style={styles.verifiedDot}>
-                    <Text style={styles.verifiedCheck}>✓</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.profileTextInfo}>
-                <Text style={styles.profileName}>
-                  {item.name}, {item.age}
-                </Text>
-                <Text style={styles.profileMeta}>
-                  {item.height} • {item.city}
-                </Text>
-                <Text style={styles.profileEducation}>
-                  {item.education} • {item.job}
-                </Text>
-
-                <View style={styles.badgeRow}>
-                  {item.isVerified && <Badge label="ID Verified" variant="verified" />}
-                  {item.photoChecked && <Badge label="Photo Checked" variant="photoChecked" />}
-                </View>
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.matchReasonContainer}>
-              <Badge label={`${item.matched} preferences match`} variant="match" icon="🎯" />
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.actionsRow}>
-              <Button
-                title="Send Interest"
-                onPress={() => handleSendInterest(item.name)}
-                variant="primary"
-                style={styles.actionBtn}
-              />
-              <Button
-                title="Shortlist"
-                onPress={() => handleShortlist(item.name)}
-                variant="secondary"
-                style={styles.actionBtn}
-              />
-            </View>
+        {/* Error State */}
+        {error && (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Unable to load matches</Text>
+            <Text style={styles.errorSub}>{error}</Text>
+            <Button
+              title="Try Again"
+              onPress={() => fetchProfiles(selectedFilter, 1)}
+              variant="secondary"
+              style={{ marginTop: spacing.md }}
+            />
           </Card>
-        ))}
+        )}
+
+        {/* Loading Indicator */}
+        {loading && results.length === 0 && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.royalMaroon} />
+            <Text style={styles.loadingText}>Finding compatible matches...</Text>
+          </View>
+        )}
+
+        {/* Empty State */}
+        {!loading && !error && results.length === 0 && (
+          <Card style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>🔍</Text>
+            <Text style={styles.emptyTitle}>No matching profiles found</Text>
+            <Text style={styles.emptySub}>
+              Try broadening your filter criteria or checking back soon as new members register daily.
+            </Text>
+            <Button
+              title="Reset Filters"
+              onPress={() => setSelectedFilter('all')}
+              variant="secondary"
+              style={{ marginTop: spacing.md }}
+            />
+          </Card>
+        )}
+
+        {/* Results List */}
+        {results.map((item) => {
+          const isActing = actionLoadingId === item.id;
+          const matchLabel = item.matchAlignment
+            ? item.matchAlignment.scoreText
+            : 'Evaluating preferences...';
+
+          return (
+            <Card key={item.id} style={styles.resultCard}>
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('ProfileDetail', {
+                    profileId: item.id,
+                    name: item.displayName,
+                  })
+                }
+                activeOpacity={0.85}
+                style={styles.cardHeader}
+              >
+                <View style={styles.photoContainer}>
+                  <Text style={styles.photoPlaceholder}>👤</Text>
+                  {item.isVerified && (
+                    <View style={styles.verifiedDot}>
+                      <Text style={styles.verifiedCheck}>✓</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.profileTextInfo}>
+                  <Text style={styles.profileName}>
+                    {item.displayName}, {item.age}
+                  </Text>
+                  <Text style={styles.profileMeta}>
+                    {formatHeight(item.heightCm)} • {item.city}
+                  </Text>
+                  <Text style={styles.profileEducation}>
+                    {item.education} • {item.occupation}
+                  </Text>
+
+                  <View style={styles.badgeRow}>
+                    {item.isVerified && <Badge label="ID Verified" variant="verified" />}
+                    {item.photoChecked && <Badge label="Photo Checked" variant="photoChecked" />}
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              {/* Factual Match Explanation */}
+              <View style={styles.matchReasonContainer}>
+                <Badge label={matchLabel} variant="match" icon="🎯" />
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionsRow}>
+                <Button
+                  title={isActing ? 'Processing...' : 'Send Interest'}
+                  onPress={() => handleSendInterest(item)}
+                  variant="primary"
+                  loading={isActing}
+                  style={styles.actionBtn}
+                />
+                <Button
+                  title="Shortlist"
+                  onPress={() => handleShortlist(item)}
+                  variant="secondary"
+                  disabled={isActing}
+                  style={styles.actionBtn}
+                />
+              </View>
+            </Card>
+          );
+        })}
+
+        {/* Pagination: Load More */}
+        {!loading && page < totalPages && (
+          <Button
+            title="Load More Matches"
+            onPress={handleLoadMore}
+            variant="secondary"
+            style={styles.loadMoreBtn}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -322,5 +475,57 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     paddingVertical: spacing.sm,
+  },
+  loadingContainer: {
+    padding: spacing['2xl'],
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    marginTop: spacing.md,
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: '700',
+    color: colors.charcoal,
+  },
+  emptySub: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
+  errorCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.errorBg,
+    borderColor: colors.errorBorder,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  errorTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: '700',
+    color: colors.alertRed,
+  },
+  errorSub: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.charcoal,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
+  loadMoreBtn: {
+    marginVertical: spacing.md,
   },
 });

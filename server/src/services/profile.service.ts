@@ -10,7 +10,7 @@ import {
 } from '@bandhansetu/shared';
 
 // In-memory fallback for testing / dev mode without active MongoDB
-const inMemoryProfileStore = new Map<string, any>();
+export const inMemoryProfileStore = new Map<string, any>();
 
 export class ProfileService {
   /**

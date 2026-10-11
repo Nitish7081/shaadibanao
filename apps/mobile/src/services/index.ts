@@ -3,3 +3,7 @@ export * from './healthService';
 export * from './authService';
 export * from './profileService';
 export * from './preferenceService';
+export * from './searchService';
+export * from './shortlistService';
+export * from './interestService';
+export * from './authSession';

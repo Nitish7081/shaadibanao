@@ -1,0 +1,156 @@
+import mongoose from 'mongoose';
+import { ProfileModel } from '../models/profile.model';
+import { PreferenceService } from './preference.service';
+import { ProfileService, inMemoryProfileStore } from './profile.service';
+import { MatchExplanationService } from './match.service';
+import {
+  SearchFilterInput,
+  SearchResultProfile,
+  PaginatedResponse,
+} from '@bandhansetu/shared';
+
+// In-memory profiles repository for dev / test mode
+export const inMemoryProfileRegistry: any[] = [];
+
+export class SearchService {
+  /**
+   * Searches public profiles with compound filters, pagination, and preference scoring
+   */
+  public static async searchProfiles(
+    requestingUserId: string,
+    filters: SearchFilterInput
+  ): Promise<PaginatedResponse<SearchResultProfile>> {
+    const {
+      minAge,
+      maxAge,
+      minHeightCm,
+      maxHeightCm,
+      gender,
+      maritalStatus,
+      religion,
+      motherTongue,
+      city,
+      education,
+      occupation,
+      manglik,
+      verifiedOnly,
+      page = 1,
+      limit = 10,
+      sortBy = 'best_match',
+    } = filters;
+
+    // Fetch user's partner preferences for factual alignment scoring
+    const myPreferences = await PreferenceService.getMyPreferences(requestingUserId);
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    let candidateProfiles: any[] = [];
+    let totalCount = 0;
+
+    if (isDbConnected) {
+      // Build MongoDB query
+      const query: any = {
+        userId: { $ne: new mongoose.Types.ObjectId(requestingUserId) },
+      };
+
+      if (gender) query.gender = gender;
+      if (maritalStatus) query.maritalStatus = maritalStatus;
+      if (religion) query.religion = new RegExp(`^${religion}$`, 'i');
+      if (motherTongue) query.motherTongue = new RegExp(`^${motherTongue}$`, 'i');
+      if (city) query.city = new RegExp(city, 'i');
+      if (education) query.education = new RegExp(education, 'i');
+      if (occupation) query.occupation = new RegExp(occupation, 'i');
+      if (manglik) query.manglik = manglik;
+      if (verifiedOnly) query.isVerified = true;
+
+      // Age to Date of Birth conversion
+      if (minAge || maxAge) {
+        const today = new Date();
+        query.dateOfBirth = {};
+        if (maxAge) {
+          const minDob = new Date(today.getFullYear() - maxAge - 1, today.getMonth(), today.getDate());
+          query.dateOfBirth.$gte = minDob;
+        }
+        if (minAge) {
+          const maxDob = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
+          query.dateOfBirth.$lte = maxDob;
+        }
+      }
+
+      // Height filter
+      if (minHeightCm || maxHeightCm) {
+        query.heightCm = {};
+        if (minHeightCm) query.heightCm.$gte = minHeightCm;
+        if (maxHeightCm) query.heightCm.$lte = maxHeightCm;
+      }
+
+      // Sorting
+      let sort: any = { createdAt: -1 };
+      if (sortBy === 'newest') sort = { createdAt: -1 };
+      if (sortBy === 'age_asc') sort = { dateOfBirth: -1 }; // youngest first
+      if (sortBy === 'age_desc') sort = { dateOfBirth: 1 }; // oldest first
+
+      totalCount = await ProfileModel.countDocuments(query);
+      candidateProfiles = await ProfileModel.find(query)
+        .sort(sort)
+        .skip((page - 1) * limit)
+        .limit(limit);
+    } else {
+      // In-memory filter for dev/testing
+      const pool = [
+        ...Array.from(inMemoryProfileStore.values()),
+        ...inMemoryProfileRegistry.filter((p) => !inMemoryProfileStore.has(p.userId)),
+      ];
+
+      candidateProfiles = pool.filter((p) => {
+        if (p.userId === requestingUserId) return false;
+        if (gender && p.gender !== gender) return false;
+        if (maritalStatus && p.maritalStatus !== maritalStatus) return false;
+        if (religion && p.religion?.toLowerCase() !== religion.toLowerCase()) return false;
+        if (motherTongue && p.motherTongue?.toLowerCase() !== motherTongue.toLowerCase()) return false;
+        if (city && !p.city?.toLowerCase().includes(city.toLowerCase())) return false;
+        if (education && !p.education?.toLowerCase().includes(education.toLowerCase())) return false;
+        if (occupation && !p.occupation?.toLowerCase().includes(occupation.toLowerCase())) return false;
+        if (manglik && p.manglik !== manglik) return false;
+        if (verifiedOnly && !p.isVerified) return false;
+
+        const age = ProfileService.calculateAge(p.dateOfBirth);
+        if (minAge && age < minAge) return false;
+        if (maxAge && age > maxAge) return false;
+        if (minHeightCm && p.heightCm < minHeightCm) return false;
+        if (maxHeightCm && p.heightCm > maxHeightCm) return false;
+
+        return true;
+      });
+
+      totalCount = candidateProfiles.length;
+      candidateProfiles = candidateProfiles.slice((page - 1) * limit, page * limit);
+    }
+
+    // Transform candidate profiles to redacted public profiles with factual match alignment
+    const items: SearchResultProfile[] = candidateProfiles.map((p) => {
+      const publicProfile = ProfileService.formatPublicProfile(p);
+      const matchAlignment = MatchExplanationService.calculateAlignment(p, myPreferences);
+
+      return {
+        ...publicProfile,
+        matchAlignment,
+      };
+    });
+
+    // If sorting by best_match, rank by matchedCount descending
+    if (sortBy === 'best_match') {
+      items.sort((a, b) => b.matchAlignment.matchedCount - a.matchAlignment.matchedCount);
+    }
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+}

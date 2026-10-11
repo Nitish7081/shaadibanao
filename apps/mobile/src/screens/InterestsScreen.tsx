@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -18,6 +20,14 @@ import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { StatusNotice } from '../components/common/StatusNotice';
+import {
+  getReceivedInterests,
+  getSentInterests,
+  updateInterestStatus,
+  withdrawInterest,
+  getSessionToken,
+} from '../services';
+import { InterestItem } from '@bandhansetu/shared';
 
 type InterestsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Interests'>,
@@ -30,62 +40,141 @@ interface Props {
 
 export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'received' | 'sent' | 'accepted'>('received');
+  const [receivedList, setReceivedList] = useState<InterestItem[]>([]);
+  const [sentList, setSentList] = useState<InterestItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-  const receivedInterests = [
-    {
-      id: 'INT-01',
-      name: 'Aarav M.',
-      age: 29,
-      height: "5'10\"",
-      city: 'Gurgaon',
-      job: 'Software Architect',
-      receivedTime: '1 day ago',
-      isVerified: true,
-    },
-    {
-      id: 'INT-02',
-      name: 'Kabir T.',
-      age: 31,
-      height: "5'11\"",
-      city: 'Noida',
-      job: 'Financial Analyst',
-      receivedTime: '3 days ago',
-      isVerified: true,
-    },
-  ];
+  const fetchInterests = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
 
-  const acceptedInterests = [
-    {
-      id: 'INT-03',
-      name: 'Meera R.',
-      age: 26,
-      height: "5'4\"",
-      city: 'Delhi NCR',
-      job: 'Civil Architect',
-      acceptedTime: '2 hours ago',
-      isVerified: true,
-    },
-  ];
+    try {
+      const token = getSessionToken();
+      const [recRes, sentRes] = await Promise.all([
+        getReceivedInterests(token),
+        getSentInterests(token),
+      ]);
 
-  const handleAccept = (name: string) => {
-    Alert.alert(
-      'Interest Accepted',
-      `You accepted ${name}'s interest! A mutual match has been established. You can now chat and exchange contacts.`
-    );
+      if (recRes.data) {
+        setReceivedList(recRes.data);
+      }
+      if (sentRes.data) {
+        setSentList(sentRes.data);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Unable to load interests. Please try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInterests();
+  }, [fetchInterests]);
+
+  const handleAccept = async (interest: InterestItem) => {
+    setActionLoadingId(interest.id);
+    try {
+      const token = getSessionToken();
+      await updateInterestStatus(token, interest.id, 'accepted');
+      Alert.alert(
+        'Interest Accepted 🎉',
+        `You accepted ${interest.profile.displayName}'s interest! A mutual match has been established.`
+      );
+      await fetchInterests();
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Could not accept interest.');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
-  const handleDecline = (name: string) => {
-    Alert.alert('Declined', `Interest from ${name} has been respectfully declined.`);
+  const handleDecline = async (interest: InterestItem) => {
+    setActionLoadingId(interest.id);
+    try {
+      const token = getSessionToken();
+      await updateInterestStatus(token, interest.id, 'declined');
+      Alert.alert('Declined', `Interest from ${interest.profile.displayName} has been declined.`);
+      await fetchInterests();
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Could not decline interest.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleWithdraw = async (interest: InterestItem) => {
+    setActionLoadingId(interest.id);
+    try {
+      const token = getSessionToken();
+      await withdrawInterest(token, interest.id);
+      Alert.alert('Withdrawn', 'Interest has been withdrawn.');
+      await fetchInterests();
+    } catch (err: any) {
+      Alert.alert('Action Failed', err.message || 'Could not withdraw interest.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const pendingReceived = receivedList.filter((i) => i.status === 'pending');
+  const acceptedList = [
+    ...receivedList.filter((i) => i.status === 'accepted'),
+    ...sentList.filter((i) => i.status === 'accepted'),
+  ];
+  const activeSent = sentList.filter((i) => i.status === 'pending');
+
+  const formatHeight = (cm?: number) => {
+    if (!cm) return '';
+    const totalInches = Math.round(cm / 2.54);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    return `${feet}'${inches}"`;
+  };
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Recently';
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header title="Interests & Matches" subtitle="Manage your connections" showStatusBadge={true} />
+      <Header
+        title="Interests & Matches"
+        subtitle="Manage your matrimonial connections"
+        showStatusBadge={true}
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchInterests(true)}
+            tintColor={colors.royalMaroon}
+            colors={[colors.royalMaroon]}
+          />
+        }
+      >
         <StatusNotice
-          milestoneText="Interest Transactions: Milestone 5"
-          subtext="MongoDB unique compound index (sender, receiver) and state machine (pending/accepted/declined) will be wired in Milestone 5."
+          milestoneText="Milestone 5 Interest Workflow Active"
+          subtext="Recipient-only acceptance and withdrawal rules strictly enforced by the backend."
         />
 
         {/* Tab Switcher */}
@@ -95,7 +184,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => setActiveTab('received')}
           >
             <Text style={[styles.tabText, activeTab === 'received' && styles.tabTextActive]}>
-              Received (5)
+              Received ({pendingReceived.length})
             </Text>
           </TouchableOpacity>
 
@@ -104,7 +193,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => setActiveTab('sent')}
           >
             <Text style={[styles.tabText, activeTab === 'sent' && styles.tabTextActive]}>
-              Sent (8)
+              Sent ({activeSent.length})
             </Text>
           </TouchableOpacity>
 
@@ -113,114 +202,245 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => setActiveTab('accepted')}
           >
             <Text style={[styles.tabText, activeTab === 'accepted' && styles.tabTextActive]}>
-              Accepted (2)
+              Accepted ({acceptedList.length})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Mutual Match Banner (Blueprint S-12) */}
-        {activeTab === 'accepted' && (
-          <View style={styles.mutualMatchBanner}>
-            <Text style={styles.bannerEmoji}>🎉</Text>
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>Mutual Match with Meera R.</Text>
-              <Text style={styles.bannerSub}>
-                Both families are interested! You can now start chatting and request contact details.
-              </Text>
-            </View>
-            <Button
-              title="Start Chat"
-              onPress={() =>
-                navigation.navigate('ChatDetail', {
-                  conversationId: 'conv-101',
-                  partnerName: 'Meera R.',
-                })
-              }
-              variant="primary"
-              style={styles.chatNowBtn}
-            />
+        {/* Loading Indicator */}
+        {loading && !refreshing && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.royalMaroon} />
+            <Text style={styles.loadingText}>Fetching connection updates...</Text>
           </View>
         )}
 
-        {/* Received List */}
-        {activeTab === 'received' &&
-          receivedInterests.map((item) => (
-            <Card key={item.id} style={styles.itemCard}>
-              <View style={styles.cardTop}>
-                <View style={styles.avatarBox}>
-                  <Text style={styles.avatarIcon}>👤</Text>
-                </View>
-
-                <View style={styles.infoBox}>
-                  <Text style={styles.personName}>{item.name}, {item.age}</Text>
-                  <Text style={styles.metaLine}>{item.height} • {item.city}</Text>
-                  <Text style={styles.jobLine}>{item.job}</Text>
-                  <Text style={styles.timeLine}>Received {item.receivedTime}</Text>
-                </View>
-                <Badge label="Verified" variant="verified" />
-              </View>
-
-              <View style={styles.buttonGroup}>
-                <Button
-                  title="Accept"
-                  onPress={() => handleAccept(item.name)}
-                  variant="primary"
-                  style={styles.halfBtn}
-                />
-                <Button
-                  title="Decline"
-                  onPress={() => handleDecline(item.name)}
-                  variant="secondary"
-                  style={styles.halfBtn}
-                />
-              </View>
-            </Card>
-          ))}
-
-        {/* Sent Tab Placeholder */}
-        {activeTab === 'sent' && (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>8 Active Interests Sent</Text>
-            <Text style={styles.emptySub}>
-              Members usually reply within 48 hours. You can withdraw an interest anytime before
-              they accept.
-            </Text>
+        {/* Error State */}
+        {error && (
+          <Card style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Error Loading Interests</Text>
+            <Text style={styles.errorSub}>{error}</Text>
             <Button
-              title="Find More Matches"
-              onPress={() => navigation.navigate('Search')}
+              title="Try Again"
+              onPress={() => fetchInterests()}
               variant="secondary"
               style={{ marginTop: spacing.md }}
             />
           </Card>
         )}
 
-        {/* Accepted Tab */}
-        {activeTab === 'accepted' &&
-          acceptedInterests.map((item) => (
-            <Card key={item.id} style={styles.itemCard}>
-              <View style={styles.cardTop}>
-                <View style={styles.avatarBox}>
-                  <Text style={styles.avatarIcon}>👤</Text>
-                </View>
-                <View style={styles.infoBox}>
-                  <Text style={styles.personName}>{item.name}, {item.age}</Text>
-                  <Text style={styles.metaLine}>{item.height} • {item.city} • {item.job}</Text>
-                  <Text style={styles.timeLine}>Accepted {item.acceptedTime}</Text>
-                </View>
-              </View>
-              <Button
-                title="Open Conversation"
-                onPress={() =>
-                  navigation.navigate('ChatDetail', {
-                    conversationId: 'conv-101',
-                    partnerName: item.name,
-                  })
-                }
-                variant="primary"
-                style={{ marginTop: spacing.sm }}
-              />
-            </Card>
-          ))}
+        {/* Tab: Received */}
+        {!loading && activeTab === 'received' && (
+          <>
+            {pendingReceived.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>📬</Text>
+                <Text style={styles.emptyTitle}>No pending interests</Text>
+                <Text style={styles.emptySub}>
+                  When members express interest in your profile, their requests will appear here for your review.
+                </Text>
+                <Button
+                  title="Discover Profiles"
+                  onPress={() => navigation.navigate('Search')}
+                  variant="secondary"
+                  style={{ marginTop: spacing.md }}
+                />
+              </Card>
+            ) : (
+              pendingReceived.map((item) => {
+                const isActing = actionLoadingId === item.id;
+                return (
+                  <Card key={item.id} style={styles.itemCard}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigation.navigate('ProfileDetail', {
+                          profileId: item.profile.id,
+                          name: item.profile.displayName,
+                        })
+                      }
+                      style={styles.cardTop}
+                    >
+                      <View style={styles.avatarBox}>
+                        <Text style={styles.avatarIcon}>👤</Text>
+                      </View>
+
+                      <View style={styles.infoBox}>
+                        <Text style={styles.personName}>
+                          {item.profile.displayName}, {item.profile.age}
+                        </Text>
+                        <Text style={styles.metaLine}>
+                          {formatHeight(item.profile.heightCm)} • {item.profile.city}
+                        </Text>
+                        <Text style={styles.jobLine}>
+                          {item.profile.education} • {item.profile.occupation}
+                        </Text>
+                        <Text style={styles.timeLine}>Received {formatDate(item.createdAt)}</Text>
+                      </View>
+                      {item.profile.isVerified && <Badge label="Verified" variant="verified" />}
+                    </TouchableOpacity>
+
+                    <View style={styles.buttonGroup}>
+                      <Button
+                        title="Accept"
+                        onPress={() => handleAccept(item)}
+                        variant="primary"
+                        loading={isActing}
+                        disabled={isActing}
+                        style={styles.halfBtn}
+                      />
+                      <Button
+                        title="Decline"
+                        onPress={() => handleDecline(item)}
+                        variant="secondary"
+                        disabled={isActing}
+                        style={styles.halfBtn}
+                      />
+                    </View>
+                  </Card>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* Tab: Sent */}
+        {!loading && activeTab === 'sent' && (
+          <>
+            {activeSent.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>💌</Text>
+                <Text style={styles.emptyTitle}>No pending sent interests</Text>
+                <Text style={styles.emptySub}>
+                  You have no outgoing interests awaiting response. Explore profiles and connect!
+                </Text>
+                <Button
+                  title="Search Matches"
+                  onPress={() => navigation.navigate('Search')}
+                  variant="primary"
+                  style={{ marginTop: spacing.md }}
+                />
+              </Card>
+            ) : (
+              activeSent.map((item) => {
+                const isActing = actionLoadingId === item.id;
+                return (
+                  <Card key={item.id} style={styles.itemCard}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        navigation.navigate('ProfileDetail', {
+                          profileId: item.profile.id,
+                          name: item.profile.displayName,
+                        })
+                      }
+                      style={styles.cardTop}
+                    >
+                      <View style={styles.avatarBox}>
+                        <Text style={styles.avatarIcon}>👤</Text>
+                      </View>
+
+                      <View style={styles.infoBox}>
+                        <Text style={styles.personName}>
+                          {item.profile.displayName}, {item.profile.age}
+                        </Text>
+                        <Text style={styles.metaLine}>
+                          {formatHeight(item.profile.heightCm)} • {item.profile.city}
+                        </Text>
+                        <Text style={styles.jobLine}>
+                          {item.profile.education} • {item.profile.occupation}
+                        </Text>
+                        <Text style={styles.timeLine}>Sent {formatDate(item.createdAt)}</Text>
+                      </View>
+                      <Badge label="Pending" variant="match" />
+                    </TouchableOpacity>
+
+                    <View style={styles.buttonGroup}>
+                      <Button
+                        title="Withdraw Request"
+                        onPress={() => handleWithdraw(item)}
+                        variant="secondary"
+                        loading={isActing}
+                        disabled={isActing}
+                        style={styles.fullBtn}
+                      />
+                    </View>
+                  </Card>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* Tab: Accepted (Mutual Matches) */}
+        {!loading && activeTab === 'accepted' && (
+          <>
+            {acceptedList.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>🤝</Text>
+                <Text style={styles.emptyTitle}>No mutual matches yet</Text>
+                <Text style={styles.emptySub}>
+                  When an interest is mutually accepted, your connection will appear here to start communicating.
+                </Text>
+                <Button
+                  title="Search Matches"
+                  onPress={() => navigation.navigate('Search')}
+                  variant="secondary"
+                  style={{ marginTop: spacing.md }}
+                />
+              </Card>
+            ) : (
+              acceptedList.map((item) => (
+                <Card key={item.id} style={styles.itemCard}>
+                  <View style={styles.mutualMatchBanner}>
+                    <Text style={styles.bannerEmoji}>🎉</Text>
+                    <View style={styles.bannerTextContainer}>
+                      <Text style={styles.bannerTitle}>
+                        Mutual Match with {item.profile.displayName}
+                      </Text>
+                      <Text style={styles.bannerSub}>
+                        Both sides have accepted interest! You can now start communicating.
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      navigation.navigate('ProfileDetail', {
+                        profileId: item.profile.id,
+                        name: item.profile.displayName,
+                      })
+                    }
+                    style={styles.cardTop}
+                  >
+                    <View style={styles.avatarBox}>
+                      <Text style={styles.avatarIcon}>👤</Text>
+                    </View>
+                    <View style={styles.infoBox}>
+                      <Text style={styles.personName}>
+                        {item.profile.displayName}, {item.profile.age}
+                      </Text>
+                      <Text style={styles.metaLine}>
+                        {formatHeight(item.profile.heightCm)} • {item.profile.city} • {item.profile.occupation}
+                      </Text>
+                      <Text style={styles.timeLine}>Connected {formatDate(item.updatedAt)}</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <Button
+                    title="Open Conversation"
+                    onPress={() =>
+                      navigation.navigate('ChatDetail', {
+                        conversationId: `conv-${item.id}`,
+                        partnerName: item.profile.displayName,
+                      })
+                    }
+                    variant="primary"
+                    style={{ marginTop: spacing.md }}
+                  />
+                </Card>
+              ))
+            )}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -264,32 +484,29 @@ const styles = StyleSheet.create({
   mutualMatchBanner: {
     backgroundColor: '#E8F5E9',
     borderColor: colors.verifiedGreen,
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.base,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   bannerEmoji: {
-    fontSize: 24,
-    marginBottom: 4,
+    fontSize: 20,
+    marginRight: spacing.sm,
   },
   bannerTextContainer: {
-    marginBottom: spacing.sm,
+    flex: 1,
   },
   bannerTitle: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs,
     fontWeight: '700',
     color: '#1B5E20',
   },
   bannerSub: {
-    fontSize: typography.fontSizes.xs,
+    fontSize: typography.fontSizes.xs - 2,
     color: colors.charcoal,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  chatNowBtn: {
-    minHeight: 40,
-    backgroundColor: colors.verifiedGreen,
+    marginTop: 1,
   },
   itemCard: {
     padding: spacing.md,
@@ -349,9 +566,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
   },
+  fullBtn: {
+    width: '100%',
+    minHeight: 40,
+  },
   emptyCard: {
     alignItems: 'center',
     padding: spacing.xl,
+    marginTop: spacing.md,
+  },
+  emptyIcon: {
+    fontSize: 36,
+    marginBottom: spacing.sm,
   },
   emptyTitle: {
     fontSize: typography.fontSizes.base,
@@ -363,6 +589,34 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+    marginTop: spacing.xs,
+  },
+  loadingContainer: {
+    padding: spacing['2xl'],
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
+  },
+  errorCard: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.errorBg,
+    borderColor: colors.errorBorder,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  errorTitle: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: '700',
+    color: colors.alertRed,
+  },
+  errorSub: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.charcoal,
+    textAlign: 'center',
     marginTop: spacing.xs,
   },
 });

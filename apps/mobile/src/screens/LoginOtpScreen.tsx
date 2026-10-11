@@ -17,6 +17,7 @@ import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
 import { StatusNotice } from '../components/common/StatusNotice';
 import { requestOtp, verifyOtp, registerUser } from '../services/authService';
+import { setSessionAuth } from '../services/authSession';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LoginOtp'>;
 
@@ -74,6 +75,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
 
       if (verifyRes.data?.auth) {
         // Returning user - already has an account
+        setSessionAuth(verifyRes.data.auth.tokens.accessToken, verifyRes.data.auth.user.id);
         setLoading(false);
         Alert.alert('Welcome Back', 'Authentication successful!', [
           {
@@ -92,6 +94,10 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
           profileFor,
           consentToTerms: true,
         });
+
+        if (regRes.data) {
+          setSessionAuth(regRes.data.tokens.accessToken, regRes.data.user.id);
+        }
 
         setLoading(false);
         Alert.alert('Account Created', 'Your account has been registered. Let\'s build your profile!', [
