@@ -63,3 +63,101 @@ export interface VerifyOtpResponse {
   verificationToken?: string;
   auth?: AuthResponse;
 }
+
+export interface PhotoData {
+  id?: string;
+  url: string;
+  isMain: boolean;
+  privacy: 'everyone' | 'after_interest_accepted' | 'blurred';
+  approved: boolean;
+}
+
+/**
+ * Full User Profile (Owner View)
+ */
+export interface UserProfile {
+  id: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  gender: 'male' | 'female';
+  dateOfBirth: string;
+  age: number;
+  maritalStatus: string;
+  heightCm: number;
+  motherTongue: string;
+  religion: string;
+  caste?: string;
+  gotra?: string;
+  manglik: string;
+  country: string;
+  state: string;
+  city: string;
+  familyValues: string;
+  familyType: string;
+  fatherOccupation?: string;
+  motherOccupation?: string;
+  education: string;
+  employedIn: string;
+  occupation: string;
+  annualIncomeBand: string;
+  showIncomeBand: boolean;
+  photos: PhotoData[];
+  photoPrivacy: 'everyone' | 'after_interest_accepted' | 'blurred';
+  aboutMe: string;
+  completenessPercent: number;
+  isVerified: boolean;
+  photoChecked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Redacted Public Profile (Member View)
+ * Enforces blueprint display rules:
+ * - First Name + Last Initial (Priya S.)
+ * - No contact details (phone, email)
+ * - Photos filtered according to privacy
+ * - Income displayed only if showIncomeBand is true
+ */
+export interface PublicProfile {
+  id: string;
+  displayName: string; // e.g. "Priya S."
+  gender: 'male' | 'female';
+  age: number;
+  heightCm: number;
+  maritalStatus: string;
+  motherTongue: string;
+  religion: string;
+  caste?: string;
+  city: string;
+  state: string;
+  education: string;
+  occupation: string;
+  annualIncomeBand?: string;
+  photos: Array<{
+    url: string;
+    isMain: boolean;
+    isBlurred: boolean;
+  }>;
+  aboutMe: string;
+  isVerified: boolean;
+  photoChecked: boolean;
+  isContactLocked: boolean; // Always true by default until mutual consent
+}
+
+export interface PartnerPreferences {
+  id?: string;
+  userId: string;
+  minAge: number;
+  maxAge: number;
+  minHeightCm: number;
+  maxHeightCm: number;
+  maritalStatuses: string[];
+  religions: string[];
+  motherTongues: string[];
+  educations: string[];
+  occupations: string[];
+  cities: string[];
+  manglikPreference: string;
+}
