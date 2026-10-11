@@ -1,6 +1,6 @@
+import { config } from './config/env';
 import http from 'http';
 import { createApp } from './app';
-import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { SocketService } from './socket/socket.service';
 
