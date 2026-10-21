@@ -1,4 +1,4 @@
-# BandhanSetu (बंधनसेतु) — Monorepo
+#shaadibanao  — Monorepo
 
 > **A Premium Matrimonial Platform**  
 > *Where trust meets togetherness. Serious about marriage. Safe by design.*
