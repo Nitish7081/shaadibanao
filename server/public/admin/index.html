@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShaadiBanao Admin Portal | Trust, Safety & Approvals Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- 1. Authentication View (Login Form) -->
+  <div id="login-view" class="login-container">
+    <div class="login-card">
+      <div class="brand-badge">⚡ Admin Operations</div>
+      <h1 class="login-title">ShaadiBanao</h1>
+      <p class="login-sub">Sign in with authorized administrator credentials</p>
+
+      <form id="admin-login-form">
+        <div class="form-group">
+          <label class="form-label" for="admin-identifier">Email or 10-Digit Mobile</label>
+          <input
+            type="text"
+            id="admin-identifier"
+            class="form-input"
+            placeholder="admin@shaadibanao.com or 9876543210"
+            required
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="admin-password">Administrator Password</label>
+          <input
+            type="password"
+            id="admin-password"
+            class="form-input"
+            placeholder="••••••••••••"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="btn-primary">
+          <span>Authenticate & Access Portal</span>
+        </button>
+      </form>
+
+      <div class="login-info-box">
+        <strong>First Time Setup?</strong><br>
+        Create or promote your administrator account on the server using:<br>
+        <code>npm run server:create-admin -- --email admin@shaadibanao.com --password YourPassword</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Authenticated Dashboard & Management Portal -->
+  <div id="app-view" class="app-layout" style="display: none;">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-icon">SB</div>
+        <div class="brand-text-wrap">
+          <div class="brand-name">ShaadiBanao</div>
+          <div class="brand-tag">Admin Operations</div>
+        </div>
+        <button id="btn-close-sidebar" class="mobile-close-btn" title="Close Menu">✕</button>
+      </div>
+
+      <ul class="sidebar-menu">
+        <li class="menu-item">
+          <a class="menu-link active" data-tab="dashboard">
+            <span class="menu-icon">📊</span>
+            <span>Dashboard Overview</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="approvals">
+            <span class="menu-icon">⏳</span>
+            <span>Pending Approvals</span>
+            <span id="badge-pending-count" class="menu-badge pulse">0</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="pandits">
+            <span class="menu-icon">🕉️</span>
+            <span>Pandit Services</span>
+            <span id="badge-pandits-count" class="menu-badge" style="display:none;">0</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="verifications">
+            <span class="menu-icon">🪪</span>
+            <span>Identity & Aadhaar</span>
+            <span id="badge-verif-count" class="menu-badge" style="display:none;">0</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="bookings">
+            <span class="menu-icon">🪔</span>
+            <span>Ceremony Bookings</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="community">
+            <span class="menu-icon">📸</span>
+            <span>Community Feed</span>
+            <span id="badge-posts-count" class="menu-badge" style="display:none;">0</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="users">
+            <span class="menu-icon">👥</span>
+            <span>User Accounts</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="profiles">
+            <span class="menu-icon">🛡️</span>
+            <span>Profile Moderation</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="memberships">
+            <span class="menu-icon">💎</span>
+            <span>Memberships & Plans</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="reports">
+            <span class="menu-icon">⚠️</span>
+            <span>Trust & Safety</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="banners">
+            <span class="menu-icon">🖼️</span>
+            <span>Public Banners</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="audit">
+            <span class="menu-icon">📜</span>
+            <span>Admin Audit Logs</span>
+          </a>
+        </li>
+        <li class="menu-item">
+          <a class="menu-link" data-tab="system">
+            <span class="menu-icon">⚙️</span>
+            <span>System Config</span>
+          </a>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="admin-profile-pill">
+          <div id="sidebar-admin-avatar" class="admin-avatar">AD</div>
+          <div class="admin-details">
+            <div id="sidebar-admin-name" class="admin-name">Admin</div>
+            <div class="admin-role">Super Administrator</div>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn-logout" title="Sign Out">✕</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Navigation Header -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="btn-toggle-sidebar" class="menu-hamburger" title="Toggle Navigation">☰</button>
+          <div class="page-title-area">
+            <h2 id="current-page-title" class="current-page-title">Dashboard Overview</h2>
+            <p id="current-page-desc" class="current-page-desc">Real-time statistics & verification status</p>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="live-clock" id="live-clock">--:--:--</div>
+          <button id="btn-refresh-data" class="btn-refresh" title="Refresh Live Data">
+            <span>⟳ Refresh</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="content-body">
+        <!-- ============================================== -->
+        <!-- TAB 1: DASHBOARD OVERVIEW -->
+        <!-- ============================================== -->
+        <section id="tab-dashboard" class="dashboard-section active">
+          <!-- 8 Metric Stats Cards Grid -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Total Registered Users</span>
+                <span class="stat-icon">👥</span>
+              </div>
+              <div class="stat-value" id="stat-total-users">-</div>
+              <div class="stat-sub">Across MongoDB cluster</div>
+            </div>
+
+            <div class="stat-card stat-card-highlight">
+              <div class="stat-header">
+                <span class="stat-label">Pending Approvals</span>
+                <span class="stat-icon">⏳</span>
+              </div>
+              <div class="stat-value text-amber" id="stat-pending-approvals">-</div>
+              <div class="stat-sub">Awaiting admin review</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Approved Members</span>
+                <span class="stat-icon">✅</span>
+              </div>
+              <div class="stat-value text-green" id="stat-approved-users">-</div>
+              <div class="stat-sub">Full matrimonial access</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Rejected / Changes</span>
+                <span class="stat-icon">❌</span>
+              </div>
+              <div class="stat-value text-red" id="stat-rejected-users">-</div>
+              <div class="stat-sub">Blocked from search/chat</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Suspended Accounts</span>
+                <span class="stat-icon">🚫</span>
+              </div>
+              <div class="stat-value text-muted" id="stat-suspended-users">-</div>
+              <div class="stat-sub">Blocked by trust & safety</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Paid Memberships</span>
+                <span class="stat-icon">💎</span>
+              </div>
+              <div class="stat-value" id="stat-active-memberships">-</div>
+              <div class="stat-sub">Silver, Gold, Platinum</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Pending Photo Verification</span>
+                <span class="stat-icon">🛡️</span>
+              </div>
+              <div class="stat-value" id="stat-pending-verifications">-</div>
+              <div class="stat-sub">Submitted identity proofs</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Open Safety Reports</span>
+                <span class="stat-icon">⚠️</span>
+              </div>
+              <div class="stat-value text-amber" id="stat-open-reports">-</div>
+              <div class="stat-sub">Flagged member disputes</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Total Pandits</span>
+                <span class="stat-icon">🕉️</span>
+              </div>
+              <div class="stat-value" id="stat-total-pandits">-</div>
+              <div class="stat-sub">Registered service providers</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Pending Pandits</span>
+                <span class="stat-icon">⏳</span>
+              </div>
+              <div class="stat-value text-amber" id="stat-pending-pandits">-</div>
+              <div class="stat-sub">Awaiting verification</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Ceremony Bookings</span>
+                <span class="stat-icon">🪔</span>
+              </div>
+              <div class="stat-value" id="stat-total-bookings">-</div>
+              <div class="stat-sub">Weddings, pujas, consultations</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-header">
+                <span class="stat-label">Pending Community Posts</span>
+                <span class="stat-icon">📸</span>
+              </div>
+              <div class="stat-value text-amber" id="stat-pending-posts">-</div>
+              <div class="stat-sub">User stories awaiting review</div>
+            </div>
+          </div>
+
+          <!-- Quick Action Notice -->
+          <div class="approval-banner" id="approval-action-banner" style="display: none;">
+            <div class="banner-text">
+              <strong>Action Required:</strong> <span id="banner-count">0</span> new applicant registrations are waiting for your approval.
+            </div>
+            <button class="btn-primary btn-sm" onclick="navigateToTab('approvals')">Review Pending Approvals →</button>
+          </div>
+
+          <!-- Recent Activity Two-Column Grid -->
+          <div class="two-col-grid">
+            <!-- Recent Registrations -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <h3 class="panel-title">Recent Registrations</h3>
+                <button class="btn-link" onclick="navigateToTab('users')">View All →</button>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Identifier</th>
+                      <th>Status</th>
+                      <th>Approval</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-recent-users">
+                    <tr><td colspan="5" class="table-empty">Loading registrations...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Recent Safety Reports & Audits -->
+            <div class="panel-card">
+              <div class="panel-header">
+                <h3 class="panel-title">Recent Administrative Audit Logs</h3>
+                <button class="btn-link" onclick="navigateToTab('audit')">View All →</button>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Admin</th>
+                      <th>Target</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-recent-audits">
+                    <tr><td colspan="4" class="table-empty">Loading audit trail...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 2: PENDING APPROVALS WORKFLOW -->
+        <!-- ============================================== -->
+        <section id="tab-approvals" class="dashboard-section" style="display: none;">
+          <div class="section-toolbar">
+            <div class="toolbar-left">
+              <!-- Filter status pills -->
+              <div class="filter-pills">
+                <button class="pill-btn active" data-filter-approval="pending">Pending Review</button>
+                <button class="pill-btn" data-filter-approval="changes_requested">Changes Requested</button>
+                <button class="pill-btn" data-filter-approval="rejected">Rejected</button>
+                <button class="pill-btn" data-filter-approval="approved">Approved</button>
+                <button class="pill-btn" data-filter-approval="all">All Records</button>
+              </div>
+            </div>
+
+            <div class="toolbar-right">
+              <input
+                type="text"
+                id="search-approvals"
+                class="search-input"
+                placeholder="Search by name, email, or mobile..."
+              />
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Applicant / Profile</th>
+                    <th>Contact Details</th>
+                    <th>Registration Date</th>
+                    <th>Profile Completion</th>
+                    <th>Approval Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-approvals">
+                  <tr><td colspan="6" class="table-empty">Loading applicants...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="pagination-footer">
+              <div class="pagination-info" id="approvals-pagination-info">Showing 0 of 0</div>
+              <div class="pagination-controls">
+                <button id="btn-approvals-prev" class="btn-page" disabled>Previous</button>
+                <span id="approvals-current-page" class="current-page-text">Page 1</span>
+                <button id="btn-approvals-next" class="btn-page" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 3: USER MANAGEMENT -->
+        <!-- ============================================== -->
+        <section id="tab-users" class="dashboard-section" style="display: none;">
+          <div class="section-toolbar">
+            <div class="toolbar-left">
+              <input
+                type="text"
+                id="search-users"
+                class="search-input"
+                placeholder="Search by name, phone, or email..."
+              />
+              <select id="filter-user-status" class="filter-select">
+                <option value="">All Account Statuses</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
+              <select id="filter-user-approval" class="filter-select">
+                <option value="all">All Approvals</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="changes_requested">Changes Requested</option>
+              </select>
+            </div>
+
+            <div class="toolbar-right">
+              <button id="btn-refresh-users" class="btn-secondary">⟳ Refresh List</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Approval</th>
+                    <th>Membership</th>
+                    <th>Joined</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-users">
+                  <tr><td colspan="7" class="table-empty">Loading users...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pagination-footer">
+              <div class="pagination-info" id="users-pagination-info">Showing 0 of 0</div>
+              <div class="pagination-controls">
+                <button id="btn-users-prev" class="btn-page" disabled>Previous</button>
+                <span id="users-current-page" class="current-page-text">Page 1</span>
+                <button id="btn-users-next" class="btn-page" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 4: PROFILE MODERATION -->
+        <!-- ============================================== -->
+        <section id="tab-profiles" class="dashboard-section" style="display: none;">
+          <div class="section-toolbar">
+            <div class="toolbar-left">
+              <select id="filter-profile-verified" class="filter-select">
+                <option value="">All Verification States</option>
+                <option value="false">Pending Verification</option>
+                <option value="true">Verified Profiles</option>
+              </select>
+              <input
+                type="text"
+                id="search-profiles"
+                class="search-input"
+                placeholder="Search profiles by city, name, occupation..."
+              />
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Profile Name</th>
+                    <th>Gender & Age</th>
+                    <th>Location</th>
+                    <th>Completeness</th>
+                    <th>Verification</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-profiles">
+                  <tr><td colspan="6" class="table-empty">Loading profiles...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pagination-footer">
+              <div class="pagination-info" id="profiles-pagination-info">Showing 0 of 0</div>
+              <div class="pagination-controls">
+                <button id="btn-profiles-prev" class="btn-page" disabled>Previous</button>
+                <span id="profiles-current-page" class="current-page-text">Page 1</span>
+                <button id="btn-profiles-next" class="btn-page" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 5: MEMBERSHIPS & PLANS -->
+        <!-- ============================================== -->
+        <section id="tab-memberships" class="dashboard-section" style="display: none;">
+          <div class="membership-tiers-grid">
+            <div class="tier-card free">
+              <div class="tier-badge">BASIC</div>
+              <h3 class="tier-title">Free Member</h3>
+              <div class="tier-price">₹0</div>
+              <ul class="tier-features">
+                <li>Create matrimonial profile</li>
+                <li>Send unlimited interests</li>
+                <li>Chat with mutual matches</li>
+                <li>0 Direct contact disclosures</li>
+              </ul>
+            </div>
+
+            <div class="tier-card silver">
+              <div class="tier-badge">SILVER</div>
+              <h3 class="tier-title">Silver Tier</h3>
+              <div class="tier-price">₹1,499 / 30d</div>
+              <ul class="tier-features">
+                <li>Everything in Free</li>
+                <li>25 Direct contact disclosures</li>
+                <li>Profile spotlight boost</li>
+                <li>Priority customer support</li>
+              </ul>
+            </div>
+
+            <div class="tier-card gold">
+              <div class="tier-badge">GOLD POPULAR</div>
+              <h3 class="tier-title">Gold Tier</h3>
+              <div class="tier-price">₹2,999 / 90d</div>
+              <ul class="tier-features">
+                <li>Everything in Silver</li>
+                <li>60 Direct contact disclosures</li>
+                <li>Verified trust badge priority</li>
+                <li>Personal relationship advisor</li>
+              </ul>
+            </div>
+
+            <div class="tier-card platinum">
+              <div class="tier-badge">VIP PLATINUM</div>
+              <h3 class="tier-title">Platinum Tier</h3>
+              <div class="tier-price">₹5,499 / 180d</div>
+              <ul class="tier-features">
+                <li>Unlimited contact disclosures</li>
+                <li>Featured on homepage recommendations</li>
+                <li>Kundali matchmaking consultation</li>
+                <li>Dedicated matrimonial concierge</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="panel-card" style="margin-top: 24px;">
+            <div class="panel-header">
+              <h3 class="panel-title">Manual User Plan Upgrade Tool</h3>
+            </div>
+            <div class="form-grid-inline">
+              <div class="form-group">
+                <label class="form-label" for="manual-upgrade-user-id">User ID</label>
+                <input
+                  type="text"
+                  id="manual-upgrade-user-id"
+                  class="form-input"
+                  placeholder="Paste User MongoDB ID"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="manual-upgrade-plan">Assign Plan</label>
+                <select id="manual-upgrade-plan" class="filter-select">
+                  <option value="free">Free</option>
+                  <option value="silver">Silver Tier</option>
+                  <option value="gold">Gold Tier</option>
+                  <option value="platinum">Platinum VIP</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="manual-upgrade-duration">Duration (Days)</label>
+                <input
+                  type="number"
+                  id="manual-upgrade-duration"
+                  class="form-input"
+                  value="30"
+                  min="1"
+                  max="365"
+                />
+              </div>
+              <div class="form-group" style="align-self: flex-end;">
+                <button id="btn-manual-upgrade" class="btn-primary">Apply Membership Upgrade</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 6: TRUST & SAFETY REPORTS -->
+        <!-- ============================================== -->
+        <section id="tab-reports" class="dashboard-section" style="display: none;">
+          <div class="section-toolbar">
+            <div class="toolbar-left">
+              <select id="filter-report-status" class="filter-select">
+                <option value="all">All Report Statuses</option>
+                <option value="pending" selected>Pending Review</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="actioned">Actioned</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Reported Member</th>
+                    <th>Reported By</th>
+                    <th>Category</th>
+                    <th>Details</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-reports">
+                  <tr><td colspan="6" class="table-empty">Loading reports...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pagination-footer">
+              <div class="pagination-info" id="reports-pagination-info">Showing 0 of 0</div>
+              <div class="pagination-controls">
+                <button id="btn-reports-prev" class="btn-page" disabled>Previous</button>
+                <span id="reports-current-page" class="current-page-text">Page 1</span>
+                <button id="btn-reports-next" class="btn-page" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 7: ADMIN AUDIT LOGS -->
+        <!-- ============================================== -->
+        <section id="tab-audit" class="dashboard-section" style="display: none;">
+          <div class="section-toolbar">
+            <div class="toolbar-left">
+              <select id="filter-audit-action" class="filter-select">
+                <option value="all">All Audit Actions</option>
+                <option value="user_approved">User Approved</option>
+                <option value="user_rejected">User Rejected</option>
+                <option value="changes_requested">Changes Requested</option>
+                <option value="user_suspended">User Suspended</option>
+                <option value="user_activated">User Activated</option>
+                <option value="role_updated">Role Changed</option>
+                <option value="profile_verified">Profile Verified</option>
+                <option value="membership_updated">Membership Updated</option>
+              </select>
+              <input
+                type="text"
+                id="search-audit"
+                class="search-input"
+                placeholder="Search audit trail by admin, user, or email..."
+              />
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Admin</th>
+                    <th>Target User</th>
+                    <th>Audit Details</th>
+                    <th>IP Address</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-audit-logs">
+                  <tr><td colspan="6" class="table-empty">Loading audit logs...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="pagination-footer">
+              <div class="pagination-info" id="audit-pagination-info">Showing 0 of 0</div>
+              <div class="pagination-controls">
+                <button id="btn-audit-prev" class="btn-page" disabled>Previous</button>
+                <span id="audit-current-page" class="current-page-text">Page 1</span>
+                <button id="btn-audit-next" class="btn-page" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 8: SYSTEM CONFIG -->
+        <!-- ============================================== -->
+        <section id="tab-system" class="dashboard-section" style="display: none;">
+          <div class="system-grid">
+            <div class="system-card">
+              <div class="system-card-header">
+                <h3>Backend Server Health</h3>
+                <span id="sys-server-badge" class="badge badge-success">ACTIVE</span>
+              </div>
+              <div class="system-specs">
+                <div class="spec-row">
+                  <span class="spec-label">Environment</span>
+                  <span class="spec-val" id="sys-env">development</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Platform Version</span>
+                  <span class="spec-val" id="sys-version">v1.0.0</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">API Base URL</span>
+                  <span class="spec-val">/api/v1</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Host Binding</span>
+                  <span class="spec-val">0.0.0.0:5000 (LAN)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="system-card">
+              <div class="system-card-header">
+                <h3>MongoDB Database Connection</h3>
+                <span id="sys-db-badge" class="badge badge-success">CONNECTED</span>
+              </div>
+              <div class="system-specs">
+                <div class="spec-row">
+                  <span class="spec-label">Cluster Status</span>
+                  <span class="spec-val text-green" id="sys-db-status">Online (Live)</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Shard Host</span>
+                  <span class="spec-val" id="sys-db-host">Connecting...</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Persistence</span>
+                  <span class="spec-val">Atlas Multi-Region</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="system-card">
+              <div class="system-card-header">
+                <h3>Authentication & Approvals Engine</h3>
+                <span class="badge badge-info">ENFORCED</span>
+              </div>
+              <div class="system-specs">
+                <div class="spec-row">
+                  <span class="spec-label">Registration Policy</span>
+                  <span class="spec-val text-amber">Mandatory Admin Approval</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">OTP Delivery</span>
+                  <span class="spec-val">Development Mock / SMS</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Firebase Auth</span>
+                  <span class="spec-val">Verified UID / Google Sign-In</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Access Token Expiry</span>
+                  <span class="spec-val">15 Minutes (Rotating Refresh)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 9: PANDIT MANAGEMENT & VERIFICATION -->
+        <!-- ============================================== -->
+        <section id="tab-pandits" class="dashboard-section">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Pandit Service Providers</h3>
+                <p class="panel-subtitle">Review applications, verify traditions, and manage service listings</p>
+              </div>
+              <div class="table-actions">
+                <select id="filter-pandits-status" class="filter-select">
+                  <option value="all">All Statuses</option>
+                  <option value="pending" selected>Pending Verification</option>
+                  <option value="verified">Verified Only</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+                <button class="btn-primary btn-sm" onclick="loadPandits()">⟳ Refresh Pandits</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Pandit Name</th>
+                    <th>Contact Details</th>
+                    <th>Tradition & Experience</th>
+                    <th>Locations</th>
+                    <th>Services</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-pandits">
+                  <tr><td colspan="8" class="text-center py-6">Loading pandit catalog...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 10: IDENTITY & AADHAAR VERIFICATION -->
+        <!-- ============================================== -->
+        <section id="tab-verifications" class="dashboard-section">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Identity & Aadhaar Verification Queue</h3>
+                <p class="panel-subtitle">Consent-backed verification records. Aadhaar numbers are masked for data minimization.</p>
+              </div>
+              <div class="table-actions">
+                <select id="filter-verif-status" class="filter-select">
+                  <option value="pending" selected>Pending Review</option>
+                  <option value="verified">Verified</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="all">All Records</option>
+                </select>
+                <button class="btn-primary btn-sm" onclick="loadVerifications()">⟳ Refresh Queue</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>User ID / Name</th>
+                    <th>Contact</th>
+                    <th>Document Type</th>
+                    <th>Masked Reference</th>
+                    <th>Consent Given</th>
+                    <th>Submitted On</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-verifications">
+                  <tr><td colspan="8" class="text-center py-6">Loading verification queue...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 11: CEREMONY & CONSULTATION BOOKINGS -->
+        <!-- ============================================== -->
+        <section id="tab-bookings" class="dashboard-section">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Ceremony & Consultation Bookings</h3>
+                <p class="panel-subtitle">Weddings, Griha Pravesh, Satyanarayan Puja, and online Kundli appointments</p>
+              </div>
+              <div class="table-actions">
+                <select id="filter-bookings-status" class="filter-select">
+                  <option value="all" selected>All Bookings</option>
+                  <option value="requested">Requested</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <button class="btn-primary btn-sm" onclick="loadBookings()">⟳ Refresh Bookings</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Booking Ref</th>
+                    <th>Devotee / User</th>
+                    <th>Assigned Pandit</th>
+                    <th>Ceremony Service</th>
+                    <th>Date & Time Slot</th>
+                    <th>Mode</th>
+                    <th>Fee (INR)</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-bookings">
+                  <tr><td colspan="8" class="text-center py-6">Loading ceremony bookings...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 12: COMMUNITY FEED MODERATION -->
+        <!-- ============================================== -->
+        <section id="tab-community" class="dashboard-section">
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Community Feed Moderation</h3>
+                <p class="panel-subtitle">Review member photo stories, wedding memories, and cultural posts before publication</p>
+              </div>
+              <div class="table-actions">
+                <select id="filter-posts-status" class="filter-select">
+                  <option value="pending" selected>Pending Review</option>
+                  <option value="approved">Approved & Live</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="all">All Posts</option>
+                </select>
+                <button class="btn-primary btn-sm" onclick="loadCommunityPosts()">⟳ Refresh Feed</button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Author</th>
+                    <th>Media Preview</th>
+                    <th>Caption & Story</th>
+                    <th>Category</th>
+                    <th>User Reports</th>
+                    <th>Submitted</th>
+                    <th>Status</th>
+                    <th>Moderation Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-community">
+                  <tr><td colspan="8" class="text-center py-6">Loading community posts...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================== -->
+        <!-- TAB 13: PUBLIC MATRIMONIAL BANNERS (CLOUDINARY) -->
+        <!-- ============================================== -->
+        <section id="tab-banners" class="dashboard-section" style="display: none;">
+          <div class="panel-card" style="margin-bottom: 20px;">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Upload Public Promotional Banner (Cloudinary)</h3>
+                <p class="panel-subtitle">Upload matrimonial banners and public celebration images directly to Cloudinary with secure verification.</p>
+              </div>
+              <span class="badge badge-success">☁️ Cloudinary Verified Gateway</span>
+            </div>
+
+            <div style="padding: 16px;">
+              <form id="form-upload-banner" onsubmit="event.preventDefault(); submitBannerUpload();">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px;">
+                  <div class="form-group">
+                    <label class="form-label" for="banner-title">Banner Title *</label>
+                    <input type="text" id="banner-title" class="form-input" placeholder="e.g. Navratri Vivah Utsav 2026" required />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="banner-link">Target Link / Action URL (Optional)</label>
+                    <input type="text" id="banner-link" class="form-input" placeholder="e.g. /membership or https://shaadibanao.com/festive" />
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="banner-priority">Display Priority</label>
+                    <input type="number" id="banner-priority" class="form-input" value="10" />
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 16px;">
+                  <label class="form-label">Banner Image (JPEG, PNG, WebP up to 5MB) *</label>
+                  <input type="file" id="banner-file-input" accept="image/jpeg,image/png,image/webp" style="display: none;" onchange="handleBannerFileSelected(event)" />
+                  <div id="banner-dropzone" onclick="document.getElementById('banner-file-input').click();" style="border: 2px dashed #C9A24B; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; background: #FAF7F2;">
+                    <div style="font-size: 28px; margin-bottom: 6px;">🖼️</div>
+                    <div style="font-weight: 700; color: #7A1F3D;">Click to select banner image or drag file here</div>
+                    <div style="font-size: 12px; color: #666; margin-top: 4px;">Max size 5 MB • Automatically optimized with Cloudinary auto-quality</div>
+                  </div>
+                  <div id="banner-preview-box" style="display: none; margin-top: 12px;">
+                    <img id="banner-preview-img" style="max-height: 180px; border-radius: 8px; border: 1px solid #ddd;" />
+                    <div id="banner-file-name" style="font-size: 12px; color: #444; margin-top: 4px;"></div>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; align-items: center;">
+                  <button type="submit" id="btn-submit-banner" class="btn-primary">
+                    <span>☁️ Upload to Cloudinary & Publish</span>
+                  </button>
+                  <span id="banner-upload-msg" style="font-size: 13px; font-weight: 600;"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-header">
+              <div>
+                <h3 class="panel-title">Active Public Banners</h3>
+                <p class="panel-subtitle">Currently active public matrimonial banners served from Cloudinary</p>
+              </div>
+              <button class="btn-primary btn-sm" onclick="loadBanners()">⟳ Refresh Banners</button>
+            </div>
+            <div style="padding: 16px;" id="banners-grid">
+              <div class="table-empty">Loading banners...</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODALS -->
+  <!-- ============================================== -->
+
+  <!-- 1. Applicant Full Biodata Details Modal -->
+  <div id="applicant-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-container modal-lg">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 id="modal-applicant-name" class="modal-title">Applicant Matrimonial Biodata</h3>
+          <span id="modal-applicant-badge" class="badge badge-warning">Pending Review</span>
+        </div>
+        <button class="modal-close-btn" onclick="closeApplicantModal()">✕</button>
+      </div>
+
+      <div class="modal-body" id="modal-applicant-content">
+        <!-- Dynamically injected biodata -->
+      </div>
+
+      <div class="modal-footer" id="modal-applicant-actions">
+        <!-- Action buttons (Approve, Reject, Request Changes) -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Rejection Modal with Mandatory Reason -->
+  <div id="reject-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title text-red">Reject Registration</h3>
+        <button class="modal-close-btn" onclick="closeRejectModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-text">
+          Select the reason for rejecting <strong id="reject-target-name">this user</strong>.
+          The reason will be communicated to the user on their screen.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="reject-reason-select">Mandatory Rejection Reason *</label>
+          <select id="reject-reason-select" class="form-input" required>
+            <option value="">-- Select a Reason --</option>
+            <option value="Inappropriate or unclear profile photo">Inappropriate or unclear profile photo</option>
+            <option value="Suspicious or fake profile details">Suspicious or fake profile details</option>
+            <option value="Incomplete or substandard matrimonial biodata">Incomplete or substandard matrimonial biodata</option>
+            <option value="Commercial advertising or non-matrimonial intent">Commercial advertising or non-matrimonial intent</option>
+            <option value="Community guideline and trust violation">Community guideline and trust violation</option>
+            <option value="Under legal age or invalid demographic information">Under legal age or invalid demographic information</option>
+            <option value="Other">Other (specify in remarks below)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="reject-remarks">Additional Remarks / Guidance for User</label>
+          <textarea
+            id="reject-remarks"
+            class="form-textarea"
+            rows="3"
+            placeholder="Provide specific instructions so the user can correct their profile..."
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeRejectModal()">Cancel</button>
+        <button id="btn-confirm-reject" class="btn-danger">Confirm Rejection</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Request Changes Modal -->
+  <div id="request-changes-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title text-amber">Request Profile Changes</h3>
+        <button class="modal-close-btn" onclick="closeRequestChangesModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-text">
+          Instruct <strong id="changes-target-name">this user</strong> on what information or photos they need to update before approval.
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="changes-remarks">Moderation Instructions *</label>
+          <textarea
+            id="changes-remarks"
+            class="form-textarea"
+            rows="4"
+            required
+            placeholder="e.g. Please upload a clear frontal portrait photo and fill in your education & occupation details."
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeRequestChangesModal()">Cancel</button>
+        <button id="btn-confirm-changes" class="btn-warning">Send Change Request</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Generic Confirmation Dialog -->
+  <div id="confirm-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-container modal-sm">
+      <div class="modal-header">
+        <h3 id="confirm-modal-title" class="modal-title">Confirm Action</h3>
+        <button class="modal-close-btn" onclick="closeConfirmModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-modal-message" class="modal-text">Are you sure you want to proceed?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+        <button id="btn-confirm-generic" class="btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Community Post Details & Moderation Modal -->
+  <div id="community-post-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 id="community-modal-title" class="modal-title">📸 Community Post Review</h3>
+        <button class="modal-close-btn" onclick="closeCommunityPreviewModal()">✕</button>
+      </div>
+      <div class="modal-body" id="community-modal-content">
+        <!-- Injected dynamically -->
+      </div>
+      <div class="modal-footer" id="community-modal-actions">
+        <!-- Action buttons injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>

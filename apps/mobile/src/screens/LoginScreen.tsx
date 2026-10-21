@@ -5,10 +5,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
 import { PROFILE_CREATED_FOR, ProfileCreatedFor } from '@bandhansetu/shared';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
@@ -69,7 +72,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <View style={styles.topBar}>
         <TouchableOpacity
           onPress={onBackToWelcome}
@@ -80,10 +83,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
         <BackendStatusBadge />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.brandTitle}>BandhanSetu</Text>
+          <Text style={styles.brandTitle}>ShaadiBanao</Text>
           <Text style={styles.tagline}>Serious about marriage. Safe by design.</Text>
         </View>
 
@@ -105,7 +116,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
                       key={item}
                       onPress={() => setProfileFor(item)}
                       style={[styles.chip, isSelected && styles.chipSelected]}
+                      activeOpacity={0.75}
                     >
+                      {isSelected && (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={14}
+                          color={colors.royalMaroon}
+                          style={{ marginRight: 5 }}
+                        />
+                      )}
                       <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
                         {item.charAt(0).toUpperCase() + item.slice(1)}
                       </Text>
@@ -132,7 +152,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
                 style={styles.checkboxContainer}
               >
                 <View style={[styles.checkbox, consentAgreed && styles.checkboxChecked]}>
-                  {consentAgreed && <Text style={styles.checkboxCheckmark}>✓</Text>}
+                  {consentAgreed && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
                 </View>
                 <Text style={styles.consentText}>
                   I agree to{' '}
@@ -224,7 +244,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
           <Text style={styles.guestButtonText}>Browse profiles without login</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 };
 
@@ -247,8 +268,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    paddingHorizontal: spacing.base,
+    paddingBottom: 60,
   },
   header: {
     alignItems: 'center',
@@ -256,12 +277,14 @@ const styles = StyleSheet.create({
   },
   brandTitle: {
     fontSize: typography.fontSizes['2xl'],
+    fontFamily: fonts.headingBold,
     fontWeight: '700',
     color: colors.royalMaroon,
     marginBottom: spacing.xxs,
   },
   tagline: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
   },
   card: {
@@ -279,17 +302,20 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     fontSize: typography.fontSizes.lg,
+    fontFamily: fonts.headingBold,
     fontWeight: '700',
     color: colors.charcoal,
     marginBottom: spacing.lg,
   },
   subtext: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
   fieldLabel: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.headingSemiBold,
     fontWeight: '600',
     color: colors.charcoal,
     marginBottom: spacing.sm,
@@ -301,25 +327,30 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   chip: {
-    paddingVertical: spacing.xs + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xs + 3,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.full,
-    borderWidth: 1,
+    borderWidth: 1.2,
     borderColor: colors.borderDefault,
     backgroundColor: colors.surfaceCard,
   },
   chipSelected: {
-    backgroundColor: colors.royalMaroon,
+    backgroundColor: '#FFF0F4',
     borderColor: colors.royalMaroon,
+    borderWidth: 1.5,
   },
   chipText: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     fontWeight: '500',
     color: colors.charcoal,
   },
   chipTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: colors.royalMaroon,
+    fontFamily: fonts.bodySemiBold,
+    fontWeight: '700',
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -350,11 +381,13 @@ const styles = StyleSheet.create({
   consentText: {
     flex: 1,
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
     lineHeight: 18,
   },
   linkText: {
     color: colors.royalMaroon,
+    fontFamily: fonts.bodySemiBold,
     textDecorationLine: 'underline',
   },
   safetyNoteCard: {
@@ -373,11 +406,13 @@ const styles = StyleSheet.create({
   safetyNoteText: {
     flex: 1,
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.charcoal,
     lineHeight: 18,
   },
   submitButton: {
     width: '100%',
+    minHeight: 50,
   },
   panditCard: {
     backgroundColor: colors.surfaceCard,
@@ -390,24 +425,30 @@ const styles = StyleSheet.create({
   },
   panditTitle: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
     color: colors.charcoal,
     marginBottom: spacing.xxs,
   },
   panditDesc: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
   panditButton: {
     width: '100%',
+    minHeight: 48,
   },
   guestButton: {
     alignItems: 'center',
     paddingVertical: spacing.md,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   guestButtonText: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodySemiBold,
     color: colors.royalMaroon,
     fontWeight: '600',
   },

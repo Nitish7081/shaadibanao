@@ -4,12 +4,12 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
@@ -71,7 +71,7 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleSelectPlan = async (plan: MembershipPlan) => {
     if (plan.id === 'free') {
-      Alert.alert('Bandhan Free', 'You are already enjoying the essential features of Bandhan Free.');
+      Alert.alert('ShaadiBanao Free', 'You are already enjoying the essential features of ShaadiBanao Free.');
       return;
     }
 
@@ -95,12 +95,13 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
   const currentTier = myMembership?.planId || 'free';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title="Membership Plans"
         subtitle="Transparent Pricing. No Auto-Deduction Surprises."
         onBack={() => navigation.goBack()}
         showStatusBadge={true}
+        variant="royal"
       />
 
       <ScrollView
@@ -265,8 +266,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['4xl'],
+    padding: spacing.base,
+    paddingBottom: 60,
   },
   centerBox: {
     padding: spacing['2xl'],

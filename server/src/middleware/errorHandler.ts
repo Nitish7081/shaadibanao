@@ -73,6 +73,28 @@ export const errorHandler = (
     return;
   }
 
+  // Handle MongoDB Transient Network / Selection Errors
+  if (
+    err.name === 'MongoServerSelectionError' ||
+    err.name === 'MongoNetworkError' ||
+    err.name === 'MongoTimeoutError' ||
+    err.message?.includes('socket disconnected') ||
+    err.message?.includes('ETIMEDOUT')
+  ) {
+    console.warn('[Database Temporary Network Error]', err.message);
+    res.status(503).json({
+      success: false,
+      message: 'Database connection is temporarily reconnecting. Please retry in a moment.',
+      error: {
+        code: 'DATABASE_TEMPORARY_UNAVAILABLE',
+      },
+      meta: {
+        timestamp: new Date().toISOString(),
+      },
+    });
+    return;
+  }
+
   // Unexpected internal server errors
   console.error('[Unhandled Server Error]', err);
   res.status(500).json({

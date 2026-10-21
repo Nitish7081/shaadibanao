@@ -1,57 +1,62 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, typography, spacing, borderRadius } from '../../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, typography, spacing, borderRadius, fonts } from '../../constants/theme';
 
 interface StatusNoticeProps {
   milestoneText: string;
   subtext?: string;
 }
 
-export const StatusNotice: React.FC<StatusNoticeProps> = ({
-  milestoneText,
-  subtext = 'UI blueprint preview rendered. Backend API integration scheduled for subsequent milestone.',
-}) => {
+/**
+ * Refined royal info note (ivory card with gold accent) used for contextual
+ * guidance banners across screens.
+ */
+export const StatusNotice: React.FC<StatusNoticeProps> = ({ milestoneText, subtext }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.badge}>UI PREVIEW</Text>
-      <Text style={styles.milestoneText}>{milestoneText}</Text>
-      <Text style={styles.subtext}>{subtext}</Text>
+      <View style={styles.iconWrap}>
+        <Ionicons name="information-circle" size={18} color={colors.goldMuted} />
+      </View>
+      <View style={styles.textWrap}>
+        <Text style={styles.milestoneText}>{milestoneText}</Text>
+        {subtext ? <Text style={styles.subtext}>{subtext}</Text> : null}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#F7F4EE',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FBF6EA',
     borderWidth: 1,
-    borderColor: colors.borderDefault,
+    borderColor: colors.goldBorder,
     borderLeftWidth: 4,
-    borderLeftColor: colors.deepTeal,
+    borderLeftColor: colors.royalGold,
     padding: spacing.md,
     borderRadius: borderRadius.md,
     marginBottom: spacing.base,
+    gap: spacing.sm,
   },
-  badge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.deepTeal,
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '800',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    marginBottom: spacing.xs,
-    letterSpacing: 0.5,
+  iconWrap: {
+    marginTop: 1,
+  },
+  textWrap: {
+    flex: 1,
   },
   milestoneText: {
+    fontFamily: fonts.headingSemiBold,
     fontSize: typography.fontSizes.xs,
-    fontWeight: '700',
-    color: colors.charcoal,
+    fontWeight: '600',
+    color: colors.deepMaroon,
     marginBottom: 2,
   },
   subtext: {
-    fontSize: typography.fontSizes.xs - 1,
-    color: colors.textSecondary,
+    fontFamily: fonts.bodyRegular,
+    fontSize: typography.fontSizes.xs,
+    color: colors.bodyText,
     lineHeight: 16,
   },
 });

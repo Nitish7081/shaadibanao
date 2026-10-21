@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   Switch,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
@@ -50,7 +50,7 @@ export const ReportBlockScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title="Report Profile"
         subtitle={`Concerning: ${name} (${profileId})`}
@@ -143,8 +143,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['4xl'],
+    padding: spacing.base,
+    paddingBottom: 60,
   },
   card: {
     padding: spacing.xl,

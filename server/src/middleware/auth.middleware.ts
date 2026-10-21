@@ -26,6 +26,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = TokenService.verifyAccessToken(token);
+    payload.id = payload.userId;
     req.user = payload;
     next();
   } catch (error: any) {

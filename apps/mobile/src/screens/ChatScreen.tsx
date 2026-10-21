@@ -4,11 +4,12 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
@@ -74,9 +75,10 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <Header
         title="Messages"
+        onBack={() => navigation.goBack()}
         subtitle={loading ? 'Updating chats...' : `${conversations.length} Active Conversations`}
         showStatusBadge={true}
       />
@@ -123,14 +125,14 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
         {/* Empty State */}
         {!loading && !error && conversations.length === 0 && (
           <Card style={styles.emptyCard}>
-            <Text style={styles.emptyEmoji}>💬</Text>
+            <Ionicons name="chatbubbles-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
             <Text style={styles.emptyTitle}>No active conversations yet</Text>
             <Text style={styles.emptySub}>
               Messaging unlocks as soon as an interest is mutually accepted! Explore matches or review pending interests.
             </Text>
             <Button
               title="View Matches & Interests"
-              onPress={() => navigation.navigate('Interests')}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Matches' })}
               variant="primary"
               style={{ marginTop: spacing.md }}
             />
@@ -156,10 +158,10 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
                   }
                 >
                   <View style={styles.avatarBox}>
-                    <Text style={styles.avatarIcon}>👤</Text>
+                    <Ionicons name="person" size={22} color={colors.royalMaroon} />
                     {conv.participant.isVerified && (
                       <View style={styles.verifiedDot}>
-                        <Text style={styles.verifiedCheck}>✓</Text>
+                        <Ionicons name="checkmark" size={11} color="#FFFFFF" />
                       </View>
                     )}
                   </View>
@@ -219,8 +221,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    padding: spacing.base,
+    paddingBottom: 110,
   },
   centerBox: {
     padding: spacing['2xl'],
@@ -255,7 +257,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     marginTop: spacing.md,
   },
-  emptyEmoji: {
+  emptyIcon: {
     fontSize: 40,
     marginBottom: spacing.sm,
   },

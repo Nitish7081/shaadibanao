@@ -7,7 +7,7 @@ import {
   TextInputProps,
   ViewStyle,
 } from 'react-native';
-import { colors, spacing, borderRadius, minTouchTarget, typography } from '../../constants/theme';
+import { colors, spacing, borderRadius, minTouchTarget, typography, fonts } from '../../constants/theme';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -70,6 +70,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   label: {
+    fontFamily: fonts.bodySemiBold,
     fontSize: typography.fontSizes.sm,
     fontWeight: '600',
     color: colors.charcoal,
@@ -78,7 +79,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: minTouchTarget,
+    minHeight: 48,
     borderWidth: 1.2,
     borderColor: colors.borderDefault,
     borderRadius: borderRadius.md,
@@ -94,6 +95,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.errorBg,
   },
   prefixText: {
+    fontFamily: fonts.bodySemiBold,
     fontSize: typography.fontSizes.base,
     fontWeight: '600',
     color: colors.charcoal,
@@ -101,18 +103,24 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    fontFamily: fonts.bodyRegular,
     fontSize: typography.fontSizes.base,
     color: colors.charcoal,
     paddingVertical: spacing.sm,
+    minHeight: 44,
   },
   errorText: {
+    fontFamily: fonts.bodyMedium,
     fontSize: typography.fontSizes.xs,
     color: colors.alertRed,
-    marginTop: spacing.xxs,
+    marginTop: 4,
+    fontWeight: '500',
   },
   helperText: {
+    fontFamily: fonts.bodyRegular,
     fontSize: typography.fontSizes.xs,
     color: colors.textSecondary,
-    marginTop: spacing.xxs,
+    marginTop: 4,
+    lineHeight: 16,
   },
 });

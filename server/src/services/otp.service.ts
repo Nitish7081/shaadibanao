@@ -52,8 +52,19 @@ export class OtpService {
   public static async requestOtp(mobile: string): Promise<RequestOtpResponse> {
     this.checkRateLimit(mobile);
 
-    const isDevMock = config.otp.deliveryMode === 'development_mock';
-    const otpCode = isDevMock ? config.otp.devTestCode : Math.floor(100000 + Math.random() * 900000).toString();
+    // Production Guard: Mock OTP '123456' is strictly prohibited in production mode
+    if (config.isProduction && config.otp.deliveryMode === 'development_mock') {
+      throw new AppError(
+        'SMS gateway is unconfigured in production mode. Real SMS delivery is required and mock OTP is disabled.',
+        503,
+        'SMS_GATEWAY_UNCONFIGURED'
+      );
+    }
+
+    const isDevMock = !config.isProduction && config.otp.deliveryMode === 'development_mock';
+    const otpCode = isDevMock
+      ? config.otp.devTestCode
+      : Math.floor(100000 + Math.random() * 900000).toString();
 
     // Securely hash OTP before database storage - plaintext is NEVER stored
     const otpHash = await bcrypt.hash(otpCode, 10);
@@ -85,7 +96,7 @@ export class OtpService {
     return {
       mobile,
       expiresInSeconds: config.otp.expiryMinutes * 60,
-      deliveryMode: config.otp.deliveryMode,
+      deliveryMode: isDevMock ? 'development_mock' : 'production_sms',
       devTestOtpHint: isDevMock
         ? 'DEVELOPMENT MODE: Use test OTP 123456. No real SMS was dispatched.'
         : undefined,

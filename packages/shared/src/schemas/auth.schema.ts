@@ -33,7 +33,14 @@ export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
 
+export const firebaseLoginSchema = z.object({
+  idToken: z.string().min(1, 'Firebase ID token is required'),
+  profileFor: z.enum(PROFILE_CREATED_FOR).optional(),
+});
+
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
+export type FirebaseLoginSchemaInput = z.infer<typeof firebaseLoginSchema>;
+

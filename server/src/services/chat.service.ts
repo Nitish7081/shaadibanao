@@ -120,7 +120,7 @@ export class ChatService {
     // Default fallback profile representation
     return {
       id: userId,
-      displayName: 'BandhanSetu Member',
+      displayName: 'ShaadiBanao Member',
       gender: 'female' as const,
       age: 26,
       heightCm: 162,
@@ -225,7 +225,7 @@ export class ChatService {
           }
         } else {
           contactExchange.phone = '+91 9811100002';
-          contactExchange.email = 'partner@bandhansetu.in';
+          contactExchange.email = 'partner@shaadibanao.in';
         }
       }
 
@@ -651,7 +651,7 @@ export class ChatService {
         }
       } else {
         result.phone = '+91 9811100002';
-        result.email = 'partner@bandhansetu.in';
+        result.email = 'partner@shaadibanao.in';
       }
     }
 

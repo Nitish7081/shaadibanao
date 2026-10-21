@@ -3,6 +3,7 @@ import { GENDER, MARITAL_STATUS, PHOTO_PRIVACY, PhotoPrivacy } from '@bandhanset
 
 export interface IProfilePhoto {
   url: string;
+  publicId?: string;
   isMain: boolean;
   privacy: PhotoPrivacy;
   approved: boolean;
@@ -46,13 +47,14 @@ export interface IProfile extends Document {
 const ProfilePhotoSchema = new Schema<IProfilePhoto>(
   {
     url: { type: String, required: true },
+    publicId: { type: String, trim: true },
     isMain: { type: Boolean, default: false },
     privacy: {
       type: String,
       enum: PHOTO_PRIVACY,
       default: 'everyone',
     },
-    approved: { type: Boolean, default: true },
+    approved: { type: Boolean, default: false },
   },
   { _id: true }
 );

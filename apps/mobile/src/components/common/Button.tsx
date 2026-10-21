@@ -8,7 +8,7 @@ import {
   TextStyle,
   StyleProp,
 } from 'react-native';
-import { colors, spacing, borderRadius, minTouchTarget, typography } from '../../constants/theme';
+import { colors, spacing, borderRadius, minTouchTarget, typography, fonts } from '../../constants/theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'upgrade' | 'text';
 
@@ -85,10 +85,10 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   baseContainer: {
-    minHeight: minTouchTarget, // Minimum 44px per blueprint requirement
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.base,
+    minHeight: 48, // 48dp standard touch target
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -108,14 +108,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
+    minHeight: 44,
   },
   disabledContainer: {
     opacity: 0.5,
   },
   baseText: {
+    fontFamily: fonts.headingSemiBold,
     fontSize: typography.fontSizes.base,
     fontWeight: '600',
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   primaryText: {
     color: '#FFFFFF',
@@ -124,7 +127,8 @@ const styles = StyleSheet.create({
     color: colors.royalMaroon,
   },
   upgradeText: {
-    color: '#FFFFFF',
+    color: colors.royalMaroon,
+    fontWeight: '700',
   },
   textOnlyText: {
     color: colors.royalMaroon,

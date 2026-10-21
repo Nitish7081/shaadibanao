@@ -25,4 +25,18 @@ export const config = {
     // Test code used specifically in development mock mode
     devTestCode: '123456',
   },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID || 'saadibaano',
+    serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || '',
+  },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    apiKey: process.env.CLOUDINARY_API_KEY || '',
+    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+    isConfigured: Boolean(
+      process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
+    ),
+  },
 };

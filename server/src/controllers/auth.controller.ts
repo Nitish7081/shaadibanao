@@ -67,6 +67,30 @@ export class AuthController {
   }
 
   /**
+   * POST /api/v1/auth/firebase-login
+   */
+  public static async firebaseLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { idToken, profileFor } = req.body;
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const result = await AuthService.loginWithFirebase(idToken, profileFor, ipAddress);
+
+      const response: ApiResponse = {
+        success: true,
+        message: result.isNewUser
+          ? 'Account registered successfully with Firebase'
+          : 'Authentication successful',
+        data: result,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+
+  /**
    * GET /api/v1/auth/me
    */
   public static async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -100,6 +124,26 @@ export class AuthController {
       const response: ApiResponse = {
         success: true,
         message: 'Logged out successfully',
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/auth/refresh
+   */
+  public static async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { refreshToken } = req.body;
+      const result = await AuthService.refreshSession(refreshToken);
+
+      const response: ApiResponse = {
+        success: true,
+        message: 'Session refreshed successfully',
+        data: result,
       };
 
       res.status(200).json(response);

@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -79,6 +80,13 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     fetchInterests();
   }, [fetchInterests]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchInterests();
+    });
+    return unsubscribe;
+  }, [navigation, fetchInterests]);
 
   const handleAccept = async (interest: InterestItem) => {
     setActionLoadingId(interest.id);
@@ -153,11 +161,12 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <Header
         title="Interests & Matches"
-        subtitle="Manage your matrimonial connections"
+        subtitle="Manage your sacred connections"
         showStatusBadge={true}
+        variant="royal"
       />
 
       <ScrollView
@@ -234,7 +243,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
           <>
             {pendingReceived.length === 0 ? (
               <Card style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>📬</Text>
+                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
                 <Text style={styles.emptyTitle}>No pending interests</Text>
                 <Text style={styles.emptySub}>
                   When members express interest in your profile, their requests will appear here for your review.
@@ -261,7 +270,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
                       style={styles.cardTop}
                     >
                       <View style={styles.avatarBox}>
-                        <Text style={styles.avatarIcon}>👤</Text>
+                        <Ionicons name="person" size={22} color={colors.royalMaroon} />
                       </View>
 
                       <View style={styles.infoBox}>
@@ -308,7 +317,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
           <>
             {activeSent.length === 0 ? (
               <Card style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>💌</Text>
+                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
                 <Text style={styles.emptyTitle}>No pending sent interests</Text>
                 <Text style={styles.emptySub}>
                   You have no outgoing interests awaiting response. Explore profiles and connect!
@@ -335,7 +344,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
                       style={styles.cardTop}
                     >
                       <View style={styles.avatarBox}>
-                        <Text style={styles.avatarIcon}>👤</Text>
+                        <Ionicons name="person" size={22} color={colors.royalMaroon} />
                       </View>
 
                       <View style={styles.infoBox}>
@@ -375,7 +384,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
           <>
             {acceptedList.length === 0 ? (
               <Card style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🤝</Text>
+                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
                 <Text style={styles.emptyTitle}>No mutual matches yet</Text>
                 <Text style={styles.emptySub}>
                   When an interest is mutually accepted, your connection will appear here to start communicating.
@@ -391,7 +400,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
               acceptedList.map((item) => (
                 <Card key={item.id} style={styles.itemCard}>
                   <View style={styles.mutualMatchBanner}>
-                    <Text style={styles.bannerEmoji}>🎉</Text>
+                    <Ionicons name="sparkles" size={22} color={colors.royalGold} />
                     <View style={styles.bannerTextContainer}>
                       <Text style={styles.bannerTitle}>
                         Mutual Match with {item.profile.displayName}
@@ -412,7 +421,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
                     style={styles.cardTop}
                   >
                     <View style={styles.avatarBox}>
-                      <Text style={styles.avatarIcon}>👤</Text>
+                      <Ionicons name="person" size={22} color={colors.royalMaroon} />
                     </View>
                     <View style={styles.infoBox}>
                       <Text style={styles.personName}>
@@ -452,8 +461,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    padding: spacing.base,
+    paddingBottom: 110,
   },
   tabsRow: {
     flexDirection: 'row',

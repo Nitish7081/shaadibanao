@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -167,9 +168,10 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top']} style={styles.safeArea}>
       <Header
         title="Search & Discover"
+        onBack={() => navigation.goBack()}
         subtitle={loading ? 'Searching profiles...' : `${totalItems} Profiles Found`}
         showStatusBadge={true}
       />
@@ -248,7 +250,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         {/* Empty State */}
         {!loading && !error && results.length === 0 && (
           <Card style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>🔍</Text>
+            <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
             <Text style={styles.emptyTitle}>No matching profiles found</Text>
             <Text style={styles.emptySub}>
               Try broadening your filter criteria or checking back soon as new members register daily.
@@ -282,10 +284,10 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
                 style={styles.cardHeader}
               >
                 <View style={styles.photoContainer}>
-                  <Text style={styles.photoPlaceholder}>👤</Text>
+                  <Ionicons name="person" size={30} color={colors.royalMaroon} />
                   {item.isVerified && (
                     <View style={styles.verifiedDot}>
-                      <Text style={styles.verifiedCheck}>✓</Text>
+                      <Ionicons name="checkmark" size={11} color="#FFFFFF" />
                     </View>
                   )}
                 </View>
@@ -354,8 +356,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    padding: spacing.base,
+    paddingBottom: 110,
   },
   chipsScroll: {
     paddingBottom: spacing.sm,

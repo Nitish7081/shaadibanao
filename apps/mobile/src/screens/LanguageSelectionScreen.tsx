@@ -5,11 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
 import { APP_LANGUAGES, AppLanguageCode } from '@bandhansetu/shared';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
@@ -24,14 +25,18 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
-        title="BandhanSetu"
+        title="ShaadiBanao"
         subtitle="Where trust meets togetherness"
         showStatusBadge={true}
+        variant="royal"
       />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Choose your language</Text>
           <Text style={styles.subtitle}>
@@ -45,7 +50,7 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
             return (
               <TouchableOpacity
                 key={lang.code}
-                activeOpacity={0.8}
+                activeOpacity={0.75}
                 onPress={() => setSelectedLanguage(lang.code)}
                 style={[styles.langCard, isSelected && styles.langCardSelected]}
               >
@@ -57,7 +62,7 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
                 </Text>
                 {isSelected && (
                   <View style={styles.checkCircle}>
-                    <Text style={styles.checkIcon}>✓</Text>
+                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
                   </View>
                 )}
               </TouchableOpacity>
@@ -75,8 +80,10 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
           <TouchableOpacity
             onPress={() => navigation.navigate('Welcome')}
             style={styles.skipButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
           >
-            <Text style={styles.skipText}>Skip for now (English)</Text>
+            <Text style={styles.skipText}>Skip for now (English) →</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -90,20 +97,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
+    padding: spacing.base,
     paddingBottom: spacing['3xl'],
   },
   header: {
     marginVertical: spacing.md,
   },
   title: {
-    fontSize: typography.fontSizes['2xl'],
+    fontSize: typography.fontSizes.xl,
+    fontFamily: fonts.headingBold,
     fontWeight: '700',
     color: colors.royalMaroon,
     marginBottom: spacing.xs,
+    lineHeight: 28,
   },
   subtitle: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
     lineHeight: 20,
   },
@@ -111,73 +121,79 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginVertical: spacing.lg,
+    marginVertical: spacing.md,
   },
   langCard: {
     width: '48%',
+    minHeight: 88,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
-    padding: spacing.lg,
+    padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1.2,
     borderColor: colors.borderLight,
     alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 1,
+    ...shadows.subtle,
   },
   langCardSelected: {
     borderColor: colors.royalMaroon,
+    borderWidth: 1.8,
     backgroundColor: '#FAF2F4',
   },
   nativeText: {
-    fontSize: typography.fontSizes.lg,
+    fontSize: 18,
+    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
     color: colors.charcoal,
-    marginBottom: spacing.xxs,
+    marginBottom: 2,
+    lineHeight: 26,
+    textAlign: 'center',
   },
   nativeTextSelected: {
     color: colors.royalMaroon,
   },
   labelText: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   labelTextSelected: {
     color: colors.royalMaroon,
+    fontFamily: fonts.bodySemiBold,
     fontWeight: '600',
   },
   checkCircle: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    top: 7,
+    right: 7,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: colors.royalMaroon,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkIcon: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
   footer: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
   continueButton: {
     width: '100%',
+    minHeight: 50,
   },
   skipButton: {
     alignItems: 'center',
     paddingVertical: spacing.md,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   skipText: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodySemiBold,
     color: colors.royalMaroon,
     fontWeight: '600',
   },

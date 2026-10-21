@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ChatController } from '../controllers/chat.controller';
 import { requireAuth } from '../middleware/auth.middleware';
+import { requireApproved } from '../middleware/approval.middleware';
 import { validateRequest } from '../middleware/requestValidator';
 import {
   createConversationSchema,
@@ -9,6 +10,9 @@ import {
 } from '@bandhansetu/shared';
 
 export const chatRouter = Router();
+
+// Enforce authentication AND administrator approval for chat & direct messaging
+chatRouter.use(requireAuth, requireApproved);
 
 // GET /api/v1/conversations
 chatRouter.get('/', requireAuth, ChatController.getConversations);

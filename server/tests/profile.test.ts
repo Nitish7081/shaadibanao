@@ -1,5 +1,7 @@
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { createApp } from '../src/app';
+import { config } from '../src/config/env';
 import { TokenService } from '../src/services/token.service';
 import { UpsertProfileInput, PartnerPreferencesInput } from '@bandhansetu/shared';
 
@@ -82,6 +84,45 @@ describe('Profile & Partner Preferences Suite (/api/v1/profiles & /preferences)'
       const res = await request(app).get('/api/v1/preferences/me');
       expect(res.status).toBe(401);
       expect(res.body.error).toHaveProperty('code', 'UNAUTHORIZED');
+    });
+
+    it('should reject PUT /api/v1/profiles/me with 401 INVALID_TOKEN when mock placeholder token is used', async () => {
+      const res = await request(app)
+        .put('/api/v1/profiles/me')
+        .set('Authorization', 'Bearer mock_dev_session_token')
+        .send(validProfile);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toHaveProperty('code', 'INVALID_TOKEN');
+      expect(res.body.message).toContain('Invalid authentication token');
+    });
+
+    it('should reject PUT /api/v1/preferences/me with 401 INVALID_TOKEN when mock placeholder token is used', async () => {
+      const res = await request(app)
+        .put('/api/v1/preferences/me')
+        .set('Authorization', 'Bearer mock_dev_session_token')
+        .send(validPreferences);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toHaveProperty('code', 'INVALID_TOKEN');
+      expect(res.body.message).toContain('Invalid authentication token');
+    });
+
+    it('should reject PUT /api/v1/preferences/me with 401 TOKEN_EXPIRED when access token has expired', async () => {
+      const expiredToken = jwt.sign(
+        { userId: testUserId, mobile: testMobile, role: 'member' },
+        config.jwt.accessSecret,
+        { expiresIn: '0s' }
+      );
+
+      const res = await request(app)
+        .put('/api/v1/preferences/me')
+        .set('Authorization', `Bearer ${expiredToken}`)
+        .send(validPreferences);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toHaveProperty('code', 'TOKEN_EXPIRED');
+      expect(res.body.message).toContain('Access token has expired');
     });
   });
 

@@ -5,9 +5,12 @@ import { AuthTokens } from '@bandhansetu/shared';
 
 export interface TokenPayload {
   userId: string;
-  mobile: string;
+  id?: string;
+  mobile?: string;
+  email?: string;
   role: string;
 }
+
 
 export class TokenService {
   /**

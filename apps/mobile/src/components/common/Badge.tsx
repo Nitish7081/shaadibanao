@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
 import { colors, typography, spacing, borderRadius } from '../../constants/theme';
 
-export type BadgeVariant = 'verified' | 'photoChecked' | 'match' | 'gold' | 'alert' | 'neutral';
+export type BadgeVariant = 'verified' | 'photoChecked' | 'match' | 'gold' | 'warning' | 'alert' | 'neutral';
 
 interface BadgeProps {
   label: string;
@@ -29,6 +29,8 @@ export const Badge: React.FC<BadgeProps> = ({
         return styles.matchContainer;
       case 'gold':
         return styles.goldContainer;
+      case 'warning':
+        return styles.warningContainer;
       case 'alert':
         return styles.alertContainer;
       case 'neutral':
@@ -47,6 +49,8 @@ export const Badge: React.FC<BadgeProps> = ({
         return styles.matchText;
       case 'gold':
         return styles.goldText;
+      case 'warning':
+        return styles.warningText;
       case 'alert':
         return styles.alertText;
       case 'neutral':
@@ -68,17 +72,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs + 1,
+    paddingVertical: 3,
     borderRadius: borderRadius.full,
     alignSelf: 'flex-start',
   },
   baseText: {
     fontSize: typography.fontSizes.xs,
-    fontWeight: '600',
+    fontWeight: '700',
+    lineHeight: 15,
   },
   icon: {
     fontSize: typography.fontSizes.xs,
     marginRight: 2,
+    lineHeight: 15,
   },
   verifiedContainer: {
     backgroundColor: colors.successBg,
@@ -112,6 +118,15 @@ const styles = StyleSheet.create({
   },
   goldText: {
     color: '#8A6D3B',
+    fontWeight: '700',
+  },
+  warningContainer: {
+    backgroundColor: '#FFF8E1',
+    borderColor: '#FFE082',
+    borderWidth: 1,
+  },
+  warningText: {
+    color: '#F57F17',
     fontWeight: '700',
   },
   alertContainer: {

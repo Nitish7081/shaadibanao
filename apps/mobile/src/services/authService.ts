@@ -37,14 +37,36 @@ export async function registerUser(input: RegisterInput): Promise<ApiResponse<Au
   });
 }
 
+export async function loginWithFirebase(
+  idToken: string,
+  profileFor?: string
+): Promise<ApiResponse<AuthResponse>> {
+  return apiClient<ApiResponse<AuthResponse>>('/auth/firebase-login', {
+    method: 'POST',
+    body: JSON.stringify({ idToken, profileFor }),
+  });
+}
+
+
 export async function getCurrentUser(
-  accessToken: string
+  accessToken?: string
 ): Promise<ApiResponse<{ user: UserSummary }>> {
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
   return apiClient<ApiResponse<{ user: UserSummary }>>('/auth/me', {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers,
+  });
+}
+
+export async function refreshTokens(
+  refreshToken: string
+): Promise<ApiResponse<AuthResponse>> {
+  return apiClient<ApiResponse<AuthResponse>>('/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
   });
 }
 

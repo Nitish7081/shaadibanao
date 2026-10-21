@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Button } from '../components/common/Button';
 import { BackendStatusBadge } from '../components/common/BackendStatusBadge';
@@ -18,7 +18,7 @@ interface DashboardScreenProps {
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({ mobile, onLogout }) => {
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <View style={styles.topBar}>
         <View>
           <Text style={styles.greetingText}>Namaste,</Text>
@@ -135,8 +135,8 @@ const styles = StyleSheet.create({
     color: colors.royalMaroon,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    padding: spacing.base,
+    paddingBottom: 60,
   },
   completionCard: {
     backgroundColor: colors.surface,

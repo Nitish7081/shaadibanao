@@ -3,35 +3,65 @@ import { View, Text, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing } from '../constants/theme';
+import { loadSessionFromStorage, hasActiveSession, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
+import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
+import { VedicDivider } from '../components/royal/VedicOrnament';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
 export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
-    // 2-second timeout per blueprint S-00 rule (max 2 seconds then auto-moves ahead)
-    const timer = setTimeout(() => {
-      navigation.replace('LanguageSelection');
-    }, 2000);
-    return () => clearTimeout(timer);
+    let isMounted = true;
+
+    const checkAuthAndNavigate = async () => {
+      const startTime = Date.now();
+      const hasStoredSession = await loadSessionFromStorage();
+
+      if (hasStoredSession && hasActiveSession()) {
+        // Fetch latest approval status from MongoDB
+        await syncCurrentUserWithBackend();
+      }
+
+      // Ensure 1.2s - 1.5s splash display for smooth brand experience
+      const elapsed = Date.now() - startTime;
+      const delay = Math.max(0, 1400 - elapsed);
+
+      setTimeout(() => {
+        if (!isMounted) return;
+        if (hasStoredSession && hasActiveSession()) {
+          const user = getSessionUser();
+          if (user?.approvalStatus && user.approvalStatus !== 'approved') {
+            navigation.replace('ApprovalPending');
+          } else {
+            navigation.replace('MainTabs');
+          }
+        } else {
+          navigation.replace('LanguageSelection');
+        }
+      }, delay);
+    };
+
+    checkAuthAndNavigate();
+
+    return () => {
+      isMounted = false;
+    };
   }, [navigation]);
 
   return (
     <View style={styles.container}>
-      {/* Brand Emblem: Golden Setu (Bridge) representing two families joined */}
+      {/* Background Decorative Glow */}
+      <View style={styles.radialGlow} />
+
+      {/* ShaadiBanao Matrimonial Emblem */}
       <View style={styles.emblemContainer}>
-        <View style={styles.bridgeArch}>
-          <View style={styles.bridgePillarsContainer}>
-            <View style={styles.bridgePillar} />
-            <View style={styles.bridgePillar} />
-            <View style={styles.bridgePillar} />
-            <View style={styles.bridgePillar} />
-          </View>
-        </View>
-        <View style={styles.bridgeBase} />
+        <ShaadiBanaoLogo size="large" />
       </View>
 
-      <Text style={styles.brandTitle}>BandhanSetu</Text>
-      <Text style={styles.tagline}>Where trust meets togetherness</Text>
+      <Text style={styles.brandTitle}>ShaadiBanao</Text>
+      <Text style={styles.tagline}>Rishton ki nayi shuruaat</Text>
+
+      <VedicDivider color="rgba(212, 175, 55, 0.45)" style={styles.divider} />
 
       {/* Loading dots */}
       <View style={styles.dotsContainer}>
@@ -41,7 +71,7 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Made in India with care</Text>
+        <Text style={styles.footerText}>Sacred Sanatan Matrimony & Vedic Services</Text>
       </View>
     </View>
   );
@@ -54,62 +84,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
+    position: 'relative',
+  },
+  radialGlow: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(212, 175, 55, 0.10)',
   },
   emblemContainer: {
-    width: 110,
-    height: 65,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.base,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  bridgeArch: {
-    width: 100,
-    height: 50,
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
-    borderWidth: 3.5,
-    borderColor: colors.softGold,
-    borderBottomWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  bridgePillarsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    width: '100%',
-    height: 30,
-  },
-  bridgePillar: {
-    width: 2.5,
-    height: '100%',
-    backgroundColor: colors.softGold,
-  },
-  bridgeBase: {
-    width: 110,
-    height: 4,
-    backgroundColor: colors.softGold,
-    borderRadius: 2,
-    marginTop: 2,
+    justifyContent: 'center',
   },
   brandTitle: {
-    fontSize: typography.fontSizes['3xl'],
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 1.2,
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   tagline: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.warmGrey,
-    letterSpacing: 0.5,
-    marginBottom: spacing['3xl'],
+    fontSize: 14,
+    color: colors.lightGold,
+    fontStyle: 'italic',
+    letterSpacing: 0.6,
+    marginBottom: spacing.sm,
+  },
+  divider: {
+    maxWidth: 200,
+    marginBottom: spacing.lg,
   },
   dotsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.xl,
+    marginTop: spacing.md,
   },
   dot: {
     width: 8,
@@ -119,18 +130,19 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.xxs,
   },
   dotActive: {
-    backgroundColor: colors.softGold,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    backgroundColor: colors.royalGold,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   footer: {
     position: 'absolute',
     bottom: spacing['2xl'],
   },
   footerText: {
-    fontSize: typography.fontSizes.xs,
-    color: 'rgba(255, 255, 255, 0.6)',
-    letterSpacing: 0.5,
+    fontSize: 11,
+    color: colors.lightGold,
+    letterSpacing: 0.8,
+    opacity: 0.8,
   },
 });

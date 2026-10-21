@@ -27,7 +27,7 @@ export const inMemoryMembershipStore = new Map<string, InMemoryMembershipRecord>
 export const MEMBERSHIP_PLANS: MembershipPlan[] = [
   {
     id: 'free',
-    name: 'Bandhan Free',
+    name: 'ShaadiBanao Free',
     tier: 'free',
     priceInr: 0,
     billingCycle: 'Free Forever',
@@ -50,7 +50,7 @@ export const MEMBERSHIP_PLANS: MembershipPlan[] = [
   },
   {
     id: 'plus',
-    name: 'Bandhan Plus',
+    name: 'ShaadiBanao Plus',
     tier: 'plus',
     priceInr: 2999,
     billingCycle: '3 Months',
@@ -59,7 +59,7 @@ export const MEMBERSHIP_PLANS: MembershipPlan[] = [
       'Everything in Free Plan',
       'Initiate direct 1-on-1 chat with mutual matches',
       '25 verified contact disclosures after mutual consent',
-      'Profile Spotlight Badge (Bandhan Plus)',
+      'Profile Spotlight Badge (ShaadiBanao Plus)',
       'Priority placement in profile search results',
       'Read receipts and real-time delivery status',
     ],
@@ -75,7 +75,7 @@ export const MEMBERSHIP_PLANS: MembershipPlan[] = [
   },
   {
     id: 'premium',
-    name: 'Bandhan Premium',
+    name: 'ShaadiBanao Premium',
     tier: 'premium',
     priceInr: 4999,
     billingCycle: '6 Months',

@@ -4,14 +4,15 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
 import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
@@ -34,6 +35,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [heroImageError, setHeroImageError] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -112,12 +114,13 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const maritalStatus = profile?.maritalStatus ? profile.maritalStatus.replace('_', ' ') : 'Never Married';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title={displayName}
         subtitle={`ID: ${profileId}`}
         onBack={() => navigation.goBack()}
         showStatusBadge={true}
+        variant="royal"
         rightAction={
           <TouchableOpacity onPress={handleReport} style={styles.moreBtn}>
             <Text style={styles.moreIcon}>⚠️ Report</Text>
@@ -147,13 +150,22 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
         {/* Hero Photo Carousel Card */}
         <View style={styles.photoCarousel}>
-          <View style={styles.photoView}>
-            <Text style={styles.photoAvatar}>👤</Text>
-            <View style={styles.photoCountBadge}>
-              <Text style={styles.photoCountText}>
-                {profile?.photos?.length ? `${profile.photos.length} Photos` : '1 Photo'}
-              </Text>
+          {profile?.photos && profile.photos.length > 0 && profile.photos[0].url && !heroImageError ? (
+            <Image
+              source={{ uri: profile.photos[0].url }}
+              style={styles.heroImage}
+              resizeMode="cover"
+              onError={() => setHeroImageError(true)}
+            />
+          ) : (
+            <View style={styles.photoView}>
+              <Text style={styles.photoAvatar}>👤</Text>
             </View>
+          )}
+          <View style={styles.photoCountBadge}>
+            <Text style={styles.photoCountText}>
+              {profile?.photos?.length ? `${profile.photos.length} Photo${profile.photos.length > 1 ? 's' : ''}` : 'No Photos'}
+            </Text>
           </View>
         </View>
 
@@ -254,8 +266,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['4xl'],
+    padding: spacing.base,
+    paddingBottom: 60,
   },
   centerBox: {
     padding: spacing.xl,
@@ -305,6 +317,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.base,
     overflow: 'hidden',
   },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F0ECE4',
+  },
   photoView: {
     flex: 1,
     alignItems: 'center',
@@ -320,12 +337,13 @@ const styles = StyleSheet.create({
     right: 12,
     backgroundColor: 'rgba(0,0,0,0.6)',
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: borderRadius.full,
   },
   photoCountText: {
     color: '#FFFFFF',
-    fontSize: typography.fontSizes.xs - 2,
+    fontSize: 11,
+    fontFamily: fonts.bodySemiBold,
     fontWeight: '600',
   },
   detailsCard: {
@@ -339,11 +357,13 @@ const styles = StyleSheet.create({
   },
   profileName: {
     fontSize: typography.fontSizes.xl,
+    fontFamily: fonts.headingBold,
     fontWeight: '700',
     color: colors.charcoal,
   },
   headline: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
@@ -357,6 +377,7 @@ const styles = StyleSheet.create({
   },
   whyMatchTitle: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
     color: colors.deepTeal,
     marginBottom: spacing.sm,
@@ -374,10 +395,12 @@ const styles = StyleSheet.create({
   },
   matchText: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.charcoal,
   },
   sectionHeading: {
     fontSize: typography.fontSizes.base,
+    fontFamily: fonts.headingBold,
     fontWeight: '700',
     color: colors.royalMaroon,
     marginTop: spacing.md,
@@ -385,6 +408,7 @@ const styles = StyleSheet.create({
   },
   bodyText: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodyRegular,
     color: colors.charcoal,
     lineHeight: 22,
     marginBottom: spacing.md,
@@ -398,10 +422,12 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyRegular,
     color: colors.textSecondary,
   },
   detailValue: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodySemiBold,
     fontWeight: '600',
     color: colors.charcoal,
   },
@@ -424,12 +450,14 @@ const styles = StyleSheet.create({
   },
   lockTitle: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
     color: '#8D6E63',
     marginBottom: 2,
   },
   lockDesc: {
     fontSize: typography.fontSizes.xs - 2,
+    fontFamily: fonts.bodyRegular,
     color: colors.charcoal,
     lineHeight: 16,
   },
@@ -440,8 +468,10 @@ const styles = StyleSheet.create({
   },
   mainActionBtn: {
     flex: 2,
+    minHeight: 50,
   },
   saveActionBtn: {
     flex: 1,
+    minHeight: 50,
   },
 });

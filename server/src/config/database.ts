@@ -1,3 +1,4 @@
+import dns from 'dns';
 import mongoose from 'mongoose';
 import { config } from './env';
 
@@ -22,6 +23,13 @@ export const validateMongoUri = (uri: string): { valid: boolean; reason?: string
     return { valid: false, reason: 'MONGODB_URI is empty' };
   }
   const cleanUri = uri.trim();
+  if (cleanUri.includes('<db_password>') || cleanUri.includes('<password>')) {
+    return {
+      valid: false,
+      reason:
+        'Placeholder password detected in MONGODB_URI. Please replace <db_password> with your actual database user password in server/.env.',
+    };
+  }
   if (!cleanUri.startsWith('mongodb://') && !cleanUri.startsWith('mongodb+srv://')) {
     return {
       valid: false,
@@ -72,11 +80,25 @@ export const connectDatabase = async (): Promise<void> => {
 
   const masked = maskMongoUri(config.mongodbUri);
 
+  // If using SRV protocol, ensure DNS resolves SRV records via reliable public DNS resolvers
+  if (config.mongodbUri.startsWith('mongodb+srv://')) {
+    try {
+      dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+    } catch {
+      // Continue if DNS server override is not permitted
+    }
+  }
+
   try {
     dbStatus = 'connecting';
     console.log(`[Database] Connecting to MongoDB (${masked})...`);
     await mongoose.connect(config.mongodbUri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 15000,
+      maxPoolSize: 10,
+      minPoolSize: 1,
+      maxIdleTimeMS: 30000,
     });
     dbStatus = 'connected';
     console.log(`[Database] Successfully connected to MongoDB at ${mongoose.connection.host}`);
@@ -89,6 +111,10 @@ export const connectDatabase = async (): Promise<void> => {
       console.warn('[Database] The server will remain running for non-database operations, health check, and dev mocks.');
     }
   }
+
+  mongoose.connection.on('error', (err) => {
+    console.warn('[Database Connection Error]', err.message);
+  });
 
   mongoose.connection.on('disconnected', () => {
     console.warn('[Database] Lost connection to MongoDB.');

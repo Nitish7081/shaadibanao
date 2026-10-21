@@ -14,6 +14,16 @@ import { MembershipScreen } from '../screens/MembershipScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { PrivacySettingsScreen } from '../screens/PrivacySettingsScreen';
 import { ReportBlockScreen } from '../screens/ReportBlockScreen';
+import { ApprovalPendingScreen } from '../screens/ApprovalPendingScreen';
+import { PanditServicesScreen } from '../screens/PanditServicesScreen';
+import { PanditDetailScreen } from '../screens/PanditDetailScreen';
+import { BookingFlowScreen } from '../screens/BookingFlowScreen';
+import { MyBookingsScreen } from '../screens/MyBookingsScreen';
+import { VideoConsultationScreen } from '../screens/VideoConsultationScreen';
+import { KundliFormScreen } from '../screens/KundliFormScreen';
+import { IdentityVerificationScreen } from '../screens/IdentityVerificationScreen';
+import { CreatePostScreen } from '../screens/CreatePostScreen';
+import { SearchScreen } from '../screens/SearchScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,6 +48,17 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
       <Stack.Screen name="ReportBlock" component={ReportBlockScreen} />
+      <Stack.Screen name="ApprovalPending" component={ApprovalPendingScreen} />
+      <Stack.Screen name="PanditServices" component={PanditServicesScreen} />
+      <Stack.Screen name="PanditDetail" component={PanditDetailScreen} />
+      <Stack.Screen name="BookingFlow" component={BookingFlowScreen} />
+      <Stack.Screen name="MyBookings" component={MyBookingsScreen} />
+      <Stack.Screen name="VideoConsultation" component={VideoConsultationScreen} />
+      <Stack.Screen name="KundliForm" component={KundliFormScreen} />
+      <Stack.Screen name="IdentityVerification" component={IdentityVerificationScreen} />
+      <Stack.Screen name="CreatePost" component={CreatePostScreen} />
+      <Stack.Screen name="Search" component={SearchScreen} />
+      <Stack.Screen name="Chat" component={ChatScreen} />
     </Stack.Navigator>
   );
 };

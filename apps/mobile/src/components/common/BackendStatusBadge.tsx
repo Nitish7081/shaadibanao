@@ -13,7 +13,12 @@ import { checkBackendHealth, HealthCheckResult } from '../../services/healthServ
 import { getApiBaseUrl } from '../../services/apiClient';
 import { colors, spacing, borderRadius, typography } from '../../constants/theme';
 
-export const BackendStatusBadge: React.FC = () => {
+export interface BackendStatusBadgeProps {
+  compact?: boolean;
+  dark?: boolean;
+}
+
+export const BackendStatusBadge: React.FC<BackendStatusBadgeProps> = ({ compact = false, dark = false }) => {
   const [result, setResult] = useState<HealthCheckResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -43,10 +48,10 @@ export const BackendStatusBadge: React.FC = () => {
     return colors.alertRed;
   };
 
-  const getStatusText = () => {
-    if (loading && !result) return 'Connecting...';
-    if (result?.isHealthy) return `Backend OK (${result.latencyMs}ms)`;
-    return 'Backend Offline';
+  const getStatusLabel = () => {
+    if (loading && !result) return 'Connecting';
+    if (result?.isHealthy) return `${result.latencyMs}ms`;
+    return 'Offline';
   };
 
   return (
@@ -54,13 +59,26 @@ export const BackendStatusBadge: React.FC = () => {
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={() => setShowModal(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Backend connection status: ${result?.isHealthy ? 'Connected' : 'Offline'}. Tap for diagnostics.`}
         style={[
           styles.badgeContainer,
-          { borderColor: getStatusColor() },
+          dark && { backgroundColor: 'rgba(0, 0, 0, 0.25)', borderColor: 'rgba(212, 175, 55, 0.4)' },
+          compact && { paddingVertical: 2, paddingHorizontal: 7 },
+          !dark && { borderColor: getStatusColor() },
         ]}
       >
         <View style={[styles.dot, { backgroundColor: getStatusColor() }]} />
-        <Text style={styles.badgeText}>{getStatusText()}</Text>
+        {!compact && (
+          <Text style={[styles.badgeText, { color: dark ? '#FFFFFF' : getStatusColor() }]}>
+            {getStatusLabel()}
+          </Text>
+        )}
+        {compact && result?.isHealthy && (
+          <Text style={[styles.badgeText, { color: dark ? '#F3E5AB' : getStatusColor(), fontSize: 10 }]}>
+            Live
+          </Text>
+        )}
         {loading && <ActivityIndicator size="small" color={getStatusColor()} style={styles.spinner} />}
       </TouchableOpacity>
 
@@ -159,30 +177,31 @@ const styles = StyleSheet.create({
   badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
+    paddingVertical: 3,
     paddingHorizontal: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
     borderRadius: borderRadius.full,
-    borderWidth: 1.2,
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 1,
+    flexShrink: 0,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: spacing.xs,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
   },
   badgeText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: '600',
-    color: colors.charcoal,
+    fontSize: typography.fontSizes.xs - 1,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   spinner: {
-    marginLeft: spacing.xs,
+    marginLeft: 4,
   },
   modalOverlay: {
     flex: 1,

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "680373929265",
+    "project_id": "saadibaano",
+    "storage_bucket": "saadibaano.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:680373929265:android:f9145b5132f5d51a6f9c10",
+        "android_client_info": {
+          "package_name": "com.shaadibanao.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "680373929265-4o135sk0pjkirjvpmbht9c8d6c0d1ef8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmDW3tbPEJPJQqea522_cI5EpNFSVF_04"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "680373929265-4o135sk0pjkirjvpmbht9c8d6c0d1ef8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

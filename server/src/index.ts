@@ -3,6 +3,7 @@ import http from 'http';
 import { createApp } from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { SocketService } from './socket/socket.service';
+import { MigrationService } from './services/migration.service';
 
 const startServer = async (): Promise<void> => {
   const app = createApp();
@@ -14,9 +15,13 @@ const startServer = async (): Promise<void> => {
   // Attempt database connection (non-blocking for health check)
   await connectDatabase();
 
-  const server = httpServer.listen(config.port, () => {
+  // Run legacy user approval status migration safely and idempotently
+  await MigrationService.runApprovalsMigration();
+
+  const server = httpServer.listen(config.port, '0.0.0.0', () => {
     console.log(`===============================================`);
-    console.log(`  BandhanSetu Server running on port ${config.port}`);
+    console.log(`  ShaadiBanao Server running on port ${config.port}`);
+    console.log(`  Host Binding: 0.0.0.0 (LAN Accessible)`);
     console.log(`  Environment: ${config.nodeEnv}`);
     console.log(`  Real-Time WebSockets: Active via Socket.IO`);
     console.log(`  Health Check: http://localhost:${config.port}/api/v1/health`);

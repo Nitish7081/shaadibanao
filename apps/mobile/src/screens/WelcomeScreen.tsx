@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   View,
@@ -5,13 +6,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { colors, typography, spacing, borderRadius, shadows, fonts } from '../constants/theme';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
+import { VedicDivider } from '../components/royal/VedicOrnament';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
@@ -20,32 +22,33 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const slides = [
     {
-      title: 'Verified profiles you can trust',
-      description: 'Photo checks, ID badges, and a dedicated moderation team that reviews reports.',
-      icon: '🛡️',
+      title: 'Profiles you can trust',
+      description: 'Photo checks, ID badges, and a dedicated moderation team that reviews profiles.',
+      icon: 'shield-checkmark' as const,
       tag: 'TRUST & SAFETY',
     },
     {
       title: 'Privacy control in your hands',
       description: 'You control who sees your photos, contact details, and horoscope background.',
-      icon: '🔒',
+      icon: 'lock-closed' as const,
       tag: 'PRIVACY BY DEFAULT',
     },
     {
-      title: 'Kundli & Astrology guidance',
-      description: 'Authentic Guna Milan calculations and verified astrologers for traditional guidance.',
-      icon: '✨',
+      title: 'Kundli & Vedic Guidance',
+      description: 'Vedic Kundli guidance and Pandit services for sacred muhurats.',
+      icon: 'planet' as const,
       tag: 'VEDIC GUIDANCE',
     },
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
-        title="BandhanSetu"
-        subtitle="Where trust meets togetherness"
+        title="ShaadiBanao"
+        subtitle="Rishton ki nayi shuruaat"
         onBack={() => navigation.navigate('LanguageSelection')}
         showStatusBadge={true}
+        variant="royal"
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -55,7 +58,7 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.tagText}>{slides[activeSlide].tag}</Text>
           </View>
           <View style={styles.iconCircle}>
-            <Text style={styles.iconText}>{slides[activeSlide].icon}</Text>
+            <Ionicons name={slides[activeSlide].icon} size={30} color={colors.royalMaroon} />
           </View>
           <Text style={styles.slideTitle}>{slides[activeSlide].title}</Text>
           <Text style={styles.slideDescription}>{slides[activeSlide].description}</Text>
@@ -75,19 +78,21 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
+        <VedicDivider color="rgba(212, 175, 55, 0.4)" style={{ marginVertical: spacing.sm }} />
+
         {/* Trust Badges Bar */}
         <View style={styles.trustStrip}>
           <View style={styles.trustItem}>
-            <Text style={styles.trustCheck}>✓</Text>
-            <Text style={styles.trustLabel}>100% Verified Profiles</Text>
+            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
+            <Text style={styles.trustLabel}>Moderated Profiles</Text>
           </View>
           <View style={styles.trustItem}>
-            <Text style={styles.trustCheck}>✓</Text>
+            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
             <Text style={styles.trustLabel}>Zero Spam Tolerance</Text>
           </View>
           <View style={styles.trustItem}>
-            <Text style={styles.trustCheck}>✓</Text>
-            <Text style={styles.trustLabel}>Strict Privacy</Text>
+            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
+            <Text style={styles.trustLabel}>Strict Privacy Controls</Text>
           </View>
         </View>
 
@@ -109,7 +114,7 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => navigation.navigate('MainTabs')}
             style={styles.browseButton}
           >
-            <Text style={styles.browseText}>Browse profiles without login</Text>
+            <Text style={styles.browseText}>Browse profiles without login →</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -120,38 +125,35 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.ivory,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['3xl'],
+    padding: spacing.base,
+    paddingBottom: 50,
   },
   slideCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
-    padding: spacing.xl,
+    padding: spacing.lg,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
+    borderColor: '#EFE8DE',
+    ...shadows.card,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   tagBadge: {
-    backgroundColor: colors.warningBg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    backgroundColor: '#FAF5ED',
+    paddingHorizontal: spacing.sm + 4,
+    paddingVertical: 4,
     borderRadius: borderRadius.full,
     borderWidth: 1,
-    borderColor: colors.warningBorder,
+    borderColor: colors.goldBorder,
     marginBottom: spacing.md,
   },
   tagText: {
-    fontSize: typography.fontSizes.xs - 2,
+    fontSize: 10,
+    fontFamily: fonts.headingBold,
     fontWeight: '800',
     color: '#8D6E63',
     letterSpacing: 0.8,
@@ -160,26 +162,28 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.surfaceCard,
+    backgroundColor: '#FAF5ED',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.warmGrey,
+    borderWidth: 1.5,
+    borderColor: colors.royalGold,
   },
   iconText: {
-    fontSize: 30,
+    fontSize: 28,
   },
   slideTitle: {
     fontSize: typography.fontSizes.lg,
-    fontWeight: '700',
+    fontFamily: fonts.headingBold,
+    fontWeight: '800',
     color: colors.charcoal,
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   slideDescription: {
     fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
+    fontFamily: fonts.bodyRegular,
+    color: colors.bodyText,
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: spacing.lg,
@@ -192,53 +196,62 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.warmGrey,
+    backgroundColor: '#E0D6C8',
     marginHorizontal: spacing.xxs,
   },
   sliderDotActive: {
     backgroundColor: colors.royalMaroon,
-    width: 20,
+    width: 22,
   },
   trustStrip: {
-    backgroundColor: colors.surfaceCard,
+    backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginBottom: spacing.xl,
+    borderColor: '#EFE8DE',
+    marginBottom: spacing.lg,
+    ...shadows.subtle,
   },
   trustItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 3,
+    marginVertical: 4,
   },
   trustCheck: {
     color: colors.verifiedGreen,
     fontWeight: '800',
     marginRight: spacing.sm,
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
   },
   trustLabel: {
     fontSize: typography.fontSizes.xs,
+    fontFamily: fonts.bodyMedium,
     color: colors.charcoal,
     fontWeight: '600',
+    marginLeft: spacing.xs,
   },
   actionContainer: {
     marginTop: spacing.xs,
   },
   mainCta: {
     marginBottom: spacing.sm,
+    minHeight: 50,
+    ...shadows.subtle,
   },
   secondaryCta: {
     marginBottom: spacing.md,
+    minHeight: 50,
   },
   browseButton: {
     alignItems: 'center',
     paddingVertical: spacing.sm,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   browseText: {
     fontSize: typography.fontSizes.sm,
+    fontFamily: fonts.bodySemiBold,
     color: colors.royalMaroon,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

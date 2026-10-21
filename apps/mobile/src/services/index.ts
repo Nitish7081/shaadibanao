@@ -9,3 +9,7 @@ export * from './interestService';
 export * from './authSession';
 export * from './chatService';
 export * from './membershipService';
+export * from './firebaseAuthService';
+export * from './storageService';
+export * from './astrologyService';
+

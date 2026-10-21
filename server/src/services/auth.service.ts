@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { UserModel, IUser } from '../models/user.model';
 import { TokenService } from './token.service';
 import { OtpService } from './otp.service';
+import { verifyFirebaseIdToken } from '../config/firebase';
 import { AppError } from '../middleware/errorHandler';
 import {
   AuthResponse,
@@ -18,13 +19,29 @@ export class AuthService {
    * Helper to format User model or in-memory object to UserSummary
    */
   private static formatUserSummary(user: any): UserSummary {
+    const approvalStatus =
+      user.approvalStatus || (user.role === 'admin' ? 'approved' : 'pending');
+
     return {
       id: user._id?.toString() || user.id,
       mobile: user.mobile,
+      email: user.email,
       role: user.role,
       hasProfile: user.hasProfile || false,
       profileFor: user.profileFor || 'myself',
       status: user.status || 'active',
+      approvalStatus,
+      phoneVerified: user.phoneVerified ?? false,
+      identityVerificationStatus: user.identityVerificationStatus || 'none',
+      photoApprovalStatus: user.photoApprovalStatus || 'none',
+      approvedBy: user.approvedBy?.toString?.() || user.approvedBy,
+      approvedAt: user.approvedAt?.toISOString?.() || user.approvedAt,
+      rejectionReason: user.rejectionReason,
+      moderationRemarks: user.moderationRemarks,
+      authProvider: user.authProvider || (user.email && !user.mobile ? 'google' : 'phone'),
+      firebaseUid: user.firebaseUid,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
       createdAt: user.createdAt?.toISOString?.() || new Date().toISOString(),
     };
   }
@@ -37,6 +54,37 @@ export class AuthService {
       return UserModel.findOne({ mobile, status: { $ne: 'deleted' } });
     }
     return inMemoryUserStore.get(mobile) || null;
+  }
+
+  /**
+   * Finds user by Firebase UID across MongoDB or dev in-memory store
+   */
+  public static async findUserByFirebaseUid(firebaseUid: string): Promise<any> {
+    if (mongoose.connection.readyState === 1) {
+      return UserModel.findOne({ firebaseUid, status: { $ne: 'deleted' } });
+    }
+    for (const user of inMemoryUserStore.values()) {
+      if (user.firebaseUid === firebaseUid && user.status !== 'deleted') {
+        return user;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Finds user by email across MongoDB or dev in-memory store
+   */
+  public static async findUserByEmail(email: string): Promise<any> {
+    const cleanEmail = email.toLowerCase().trim();
+    if (mongoose.connection.readyState === 1) {
+      return UserModel.findOne({ email: cleanEmail, status: { $ne: 'deleted' } });
+    }
+    for (const user of inMemoryUserStore.values()) {
+      if (user.email?.toLowerCase?.() === cleanEmail && user.status !== 'deleted') {
+        return user;
+      }
+    }
+    return null;
   }
 
   /**
@@ -53,6 +101,160 @@ export class AuthService {
     }
     return null;
   }
+
+  /**
+   * Authenticates or creates user from verified Firebase ID token
+   */
+  public static async loginWithFirebase(
+    idToken: string,
+    profileFor: string = 'myself',
+    ipAddress?: string
+  ): Promise<AuthResponse> {
+    const decoded = await verifyFirebaseIdToken(idToken);
+
+    // Rule 5: Never link accounts based only on an unverified email address
+    if (decoded.email && decoded.email_verified !== true) {
+      throw new AppError(
+        'Email address is not verified by Google. Cannot authenticate or link unverified email.',
+        400,
+        'UNVERIFIED_EMAIL'
+      );
+    }
+
+    let existingUser: any = null;
+    let cleanMobile: string | undefined = undefined;
+
+    if (decoded.phone_number) {
+      cleanMobile = decoded.phone_number.replace(/^\+91/, '').replace(/\D/g, '');
+      if (cleanMobile.length > 10) {
+        cleanMobile = cleanMobile.slice(-10);
+      }
+    }
+
+    // 1. Try finding by firebaseUid first
+    if (decoded.uid) {
+      existingUser = await this.findUserByFirebaseUid(decoded.uid);
+    }
+
+    // 2. If not found by firebaseUid, try finding by verified phone or email
+    if (!existingUser && cleanMobile) {
+      existingUser = await this.findUserByMobile(cleanMobile);
+    }
+
+    if (!existingUser && decoded.email && decoded.email_verified === true) {
+      existingUser = await this.findUserByEmail(decoded.email);
+    }
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+    let isNewUser = false;
+    let targetUser: any = null;
+
+    if (existingUser) {
+      targetUser = existingUser;
+      // Link firebaseUid if not present
+      if (!targetUser.firebaseUid) {
+        targetUser.firebaseUid = decoded.uid;
+      }
+
+      // Link phone if user previously only had Google
+      if (cleanMobile && !targetUser.mobile) {
+        targetUser.mobile = cleanMobile;
+      }
+
+      // Link email if verified and user didn't have email
+      if (decoded.email && decoded.email_verified === true && !targetUser.email) {
+        targetUser.email = decoded.email.toLowerCase().trim();
+        targetUser.emailVerified = true;
+      }
+
+      // Update provider to both if both phone & email exist
+      if (targetUser.mobile && targetUser.email) {
+        targetUser.authProvider = 'both';
+      }
+
+      if (!targetUser.displayName && decoded.name) {
+        targetUser.displayName = decoded.name;
+      }
+      if (!targetUser.avatarUrl && decoded.picture) {
+        targetUser.avatarUrl = decoded.picture;
+      }
+
+      if (isDbConnected) {
+        await targetUser.save();
+      } else {
+        const storeKey = targetUser.mobile || targetUser.email || targetUser.firebaseUid;
+        inMemoryUserStore.set(storeKey, targetUser);
+      }
+    } else {
+      // Create new user
+      isNewUser = true;
+      const authProvider = cleanMobile && decoded.email ? 'both' : (decoded.email ? 'google' : 'phone');
+
+      const userData: any = {
+        mobile: cleanMobile,
+        email: decoded.email ? decoded.email.toLowerCase().trim() : undefined,
+        emailVerified: !!decoded.email_verified,
+        firebaseUid: decoded.uid,
+        authProvider,
+        displayName: decoded.name,
+        avatarUrl: decoded.picture,
+        role: 'member',
+        status: 'active',
+        approvalStatus: 'pending',
+        hasProfile: false,
+        profileFor: profileFor || 'myself',
+        consent: {
+          agreedAt: new Date(),
+          ipAddress,
+          termsVersion: 'v1.0',
+        },
+        refreshTokens: [],
+      };
+
+      if (isDbConnected) {
+        targetUser = await UserModel.create(userData);
+      } else {
+        const tempId = `usr_${Date.now()}`;
+        targetUser = {
+          id: tempId,
+          _id: tempId,
+          ...userData,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        const storeKey = cleanMobile || decoded.email || decoded.uid;
+        inMemoryUserStore.set(storeKey, targetUser);
+      }
+    }
+
+    const userSummary = this.formatUserSummary(targetUser);
+    const tokens = TokenService.generateTokens({
+      userId: userSummary.id,
+      mobile: userSummary.mobile,
+      email: userSummary.email,
+      role: userSummary.role,
+    });
+
+    const tokenHash = TokenService.hashToken(tokens.refreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    targetUser.refreshTokens = targetUser.refreshTokens || [];
+    targetUser.refreshTokens.push({ tokenHash, expiresAt, createdAt: new Date() });
+
+    if (isDbConnected) {
+      await targetUser.save();
+    } else {
+      const storeKey = targetUser.mobile || targetUser.email || targetUser.firebaseUid;
+      inMemoryUserStore.set(storeKey, targetUser);
+    }
+
+    return {
+      user: userSummary,
+      tokens,
+      isNewUser,
+    };
+  }
+
 
   /**
    * Verifies OTP and logs in existing user or provides verificationToken for new registration
@@ -127,9 +329,11 @@ export class AuthService {
     if (mongoose.connection.readyState === 1) {
       newUser = await UserModel.create({
         mobile,
+        phoneVerified: true,
         profileFor,
         role: 'member',
         status: 'active',
+        approvalStatus: 'pending',
         hasProfile: false,
         consent: {
           agreedAt: new Date(),
@@ -143,9 +347,11 @@ export class AuthService {
         id: `usr_${Date.now()}`,
         _id: `usr_${Date.now()}`,
         mobile,
+        phoneVerified: true,
         profileFor,
         role: 'member',
         status: 'active',
+        approvalStatus: 'pending',
         hasProfile: false,
         consent: {
           agreedAt: new Date(),
@@ -216,5 +422,97 @@ export class AuthService {
     } else {
       inMemoryUserStore.set(user.mobile, user);
     }
+  }
+
+  /**
+   * Refreshes access token using a valid, unexpired refresh token
+   */
+  public static async refreshSession(refreshToken: string): Promise<AuthResponse> {
+    if (!refreshToken || !refreshToken.trim()) {
+      throw new AppError('Refresh token is required.', 400, 'REFRESH_TOKEN_REQUIRED');
+    }
+
+    const tokenHash = TokenService.hashToken(refreshToken);
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    let user: any = null;
+
+    if (isDbConnected) {
+      user = await UserModel.findOne({
+        'refreshTokens.tokenHash': tokenHash,
+        status: { $ne: 'deleted' },
+      });
+    } else {
+      for (const u of inMemoryUserStore.values()) {
+        const hasToken = (u.refreshTokens || []).some((t: any) => t.tokenHash === tokenHash);
+        if (hasToken) {
+          user = u;
+          break;
+        }
+      }
+    }
+
+    if (!user) {
+      throw new AppError('Invalid or revoked refresh token. Please log in again.', 401, 'INVALID_REFRESH_TOKEN');
+    }
+
+    // Check if the specific refresh token has expired
+    const tokenRecord = (user.refreshTokens || []).find((t: any) => t.tokenHash === tokenHash);
+    if (!tokenRecord || new Date() > new Date(tokenRecord.expiresAt)) {
+      // Remove expired token
+      if (isDbConnected && user._id) {
+        await UserModel.findByIdAndUpdate(user._id, {
+          $pull: { refreshTokens: { tokenHash } },
+        });
+      } else {
+        user.refreshTokens = (user.refreshTokens || []).filter((t: any) => t.tokenHash !== tokenHash);
+        inMemoryUserStore.set(user.mobile, user);
+      }
+      throw new AppError('Refresh token has expired. Please log in again.', 401, 'REFRESH_TOKEN_EXPIRED');
+    }
+
+    // Generate fresh tokens
+    const userSummary = this.formatUserSummary(user);
+    const newTokens = TokenService.generateTokens({
+      userId: userSummary.id,
+      mobile: userSummary.mobile,
+      role: userSummary.role,
+    });
+
+    // Rotate refresh token: replace old token with new token
+    const newHash = TokenService.hashToken(newTokens.refreshToken);
+    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const updatedRefreshTokens = [
+      ...(user.refreshTokens || []).filter((t: any) => t.tokenHash !== tokenHash),
+      { tokenHash: newHash, expiresAt: newExpiresAt, createdAt: new Date() },
+    ];
+    user.refreshTokens = updatedRefreshTokens;
+
+    if (isDbConnected && user._id) {
+      // Atomic findByIdAndUpdate prevents Mongoose VersionError on concurrent refresh requests
+      await UserModel.findByIdAndUpdate(user._id, {
+        $set: { refreshTokens: updatedRefreshTokens },
+      });
+    } else {
+      inMemoryUserStore.set(user.mobile, user);
+    }
+
+    return {
+      user: userSummary,
+      tokens: newTokens,
+      isNewUser: false,
+    };
+  }
+
+  public static registerInMemoryUserForTesting(user: any): void {
+    const id = user._id?.toString() || user.id;
+    if (id) inMemoryUserStore.set(id, user);
+    if (user.mobile) inMemoryUserStore.set(user.mobile, user);
+    if (user.email) inMemoryUserStore.set(user.email, user);
+  }
+
+  public static clearInMemoryUserForTesting(): void {
+    inMemoryUserStore.clear();
   }
 }

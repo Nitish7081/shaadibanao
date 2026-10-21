@@ -1,7 +1,9 @@
+import mongoose from 'mongoose';
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { TokenService } from '../services/token.service';
 import { ChatService } from '../services/chat.service';
+import { UserModel } from '../models/user.model';
 import { config } from '../config/env';
 
 let ioInstance: Server | null = null;
@@ -54,6 +56,15 @@ export class SocketService {
       }
     });
 
+    const checkUserApproved = async (userId: string, role?: string): Promise<boolean> => {
+      if (role === 'admin') return true;
+      if (mongoose.connection.readyState === 1) {
+        const u = await UserModel.findById(userId).select('approvalStatus status');
+        return u?.status === 'active' && u?.approvalStatus === 'approved';
+      }
+      return true;
+    };
+
     // Connection Handler
     io.on('connection', (socket: Socket) => {
       const user = socket.data.user;
@@ -61,12 +72,22 @@ export class SocketService {
       // Join Personal User Notification Room
       socket.join(`user_${user.userId}`);
 
-      // Join specific conversation room after verifying membership
+      // Join specific conversation room after verifying membership and approval
       socket.on('join_conversation', async (data: { conversationId: string }, callback?: (res: any) => void) => {
         try {
           const { conversationId } = data || {};
           if (!conversationId) {
             callback?.({ success: false, error: 'conversationId required' });
+            return;
+          }
+
+          const isApproved = await checkUserApproved(user.userId, user.role);
+          if (!isApproved) {
+            socket.emit('error_event', {
+              code: 'APPROVAL_REQUIRED',
+              message: 'Your profile must be approved by administration to participate in chats.',
+            });
+            callback?.({ success: false, error: 'Account approval required' });
             return;
           }
 
@@ -98,7 +119,7 @@ export class SocketService {
         }
       });
 
-      // Send Message over Socket
+      // Send Message over Socket (Requires approval)
       socket.on(
         'send_message',
         async (
@@ -109,6 +130,16 @@ export class SocketService {
             const { conversationId, text } = data || {};
             if (!conversationId || !text || !text.trim()) {
               callback?.({ success: false, error: 'conversationId and text are required' });
+              return;
+            }
+
+            const isApproved = await checkUserApproved(user.userId, user.role);
+            if (!isApproved) {
+              socket.emit('error_event', {
+                code: 'APPROVAL_REQUIRED',
+                message: 'Your profile must be approved by administration to send messages.',
+              });
+              callback?.({ success: false, error: 'Account approval required' });
               return;
             }
 

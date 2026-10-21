@@ -35,15 +35,75 @@ export interface AuthTokens {
   expiresIn: number; // in seconds
 }
 
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
+
 export interface UserSummary {
   id: string;
-  mobile: string;
+  mobile?: string;
+  email?: string;
   role: 'member' | 'pandit' | 'moderator' | 'admin';
   hasProfile: boolean;
   profileFor: string;
   status: 'active' | 'pending' | 'suspended';
+  approvalStatus: ApprovalStatus;
+  phoneVerified?: boolean;
+  identityVerificationStatus?: 'none' | 'pending' | 'verified' | 'rejected';
+  photoApprovalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  moderationRemarks?: string;
+  authProvider?: 'phone' | 'google' | 'both';
+  firebaseUid?: string;
+  displayName?: string;
+  avatarUrl?: string;
   createdAt: string;
 }
+
+export interface PendingApprovalItem {
+  id: string;
+  mobile?: string;
+  email?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  role: string;
+  status: string;
+  approvalStatus: ApprovalStatus;
+  phoneVerified?: boolean;
+  identityVerificationStatus?: string;
+  identityDocumentType?: string;
+  identityDocumentReferenceMasked?: string;
+  photoApprovalStatus?: string;
+  rejectionReason?: string;
+  moderationRemarks?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  createdAt: string;
+  hasProfile: boolean;
+  profile?: any | null;
+  preferences?: any | null;
+  kundli?: any | null;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  adminId: string;
+  adminEmail?: string;
+  adminName?: string;
+  action: string;
+  targetUserId?: string;
+  targetUserEmail?: string;
+  targetUserMobile?: string;
+  details?: any;
+  ipAddress?: string;
+  createdAt: string;
+}
+
+export interface FirebaseLoginInput {
+  idToken: string;
+  profileFor?: string;
+}
+
 
 export interface AuthResponse {
   user: UserSummary;
@@ -68,6 +128,7 @@ export interface VerifyOtpResponse {
 export interface PhotoData {
   id?: string;
   url: string;
+  publicId?: string;
   isMain: boolean;
   privacy: 'everyone' | 'after_interest_accepted' | 'blurred';
   approved: boolean;
@@ -287,3 +348,200 @@ export interface CheckoutResponse {
   currency: 'INR';
   paymentGatewayStatus: 'unconfigured' | 'test_mode' | 'live';
 }
+
+/**
+ * Identity Verification Types (Aadhaar consent-based workflow)
+ */
+export interface IdentityVerificationConsent {
+  hasConsent: boolean;
+  termsVersion: string;
+  timestamp: string;
+}
+
+export interface IdentityVerificationItem {
+  id: string;
+  userId: string;
+  userDisplayName?: string;
+  userMobile?: string;
+  userEmail?: string;
+  documentType: 'aadhaar_card' | 'passport' | 'voter_id';
+  documentReferenceMasked: string; // e.g. "XXXX-XXXX-1234"
+  status: 'pending' | 'verified' | 'rejected';
+  consentGranted: boolean;
+  rejectionReason?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  createdAt: string;
+}
+
+/**
+ * Astrology & Kundli Types
+ */
+export interface BirthLocation {
+  name: string;
+  state: string;
+  country: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+}
+
+export interface KundliProfile {
+  id?: string;
+  userId: string;
+  dateOfBirth: string;
+  timeOfBirth: string;
+  isApproximateTime: boolean;
+  birthPlace: BirthLocation;
+  rashi: string;
+  nakshatra: string;
+  charan?: number;
+  lagna?: string;
+  manglikStatus: 'non_manglik' | 'manglik' | 'anshik_manglik' | 'dont_know';
+  visibility: 'private' | 'matches_only' | 'shared_with_pandit';
+  chartUrl?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AshtaKootaScore {
+  kootaName: string;
+  sanskritName: string;
+  maxPoints: number;
+  obtainedPoints: number;
+  description: string;
+}
+
+export interface KundliMatchingResult {
+  boyRashi: string;
+  boyNakshatra: string;
+  girlRashi: string;
+  girlNakshatra: string;
+  totalScore: number; // Out of 36
+  maxScore: 36;
+  compatibilityVerdict: 'Excellent' | 'Good' | 'Average' | 'Not Recommended';
+  manglikAnalysis: {
+    boyManglik: boolean;
+    girlManglik: boolean;
+    manglikMatch: boolean;
+    summary: string;
+  };
+  breakdown: AshtaKootaScore[];
+}
+
+/**
+ * Pandit & Ceremony Booking Types
+ */
+export interface PanditServiceItem {
+  serviceId: string;
+  name: string;
+  description: string;
+  durationMinutes: number;
+  priceInr: number;
+  ceremonyType: string;
+}
+
+export interface PanditAvailabilitySlot {
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+  startTime: string; // e.g. "09:00"
+  endTime: string;   // e.g. "13:00"
+  isAvailable: boolean;
+}
+
+export interface PanditProfile {
+  id: string;
+  userId: string;
+  name: string;
+  profilePhoto?: string;
+  phone?: string;
+  email?: string;
+  bio: string;
+  experienceYears: number;
+  languages: string[];
+  serviceLocations: string[];
+  religiousTradition: string;
+  services: PanditServiceItem[];
+  availability: PanditAvailabilitySlot[];
+  verificationStatus: 'pending' | 'verified' | 'rejected';
+  verifiedBy?: string;
+  verifiedAt?: string;
+  rating: number;
+  reviewsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PujaBooking {
+  id: string;
+  bookingReference: string; // e.g. "SB-2026-8492"
+  userId: string;
+  userName?: string;
+  userMobile?: string;
+  panditId: string;
+  panditName?: string;
+  serviceId: string;
+  serviceName: string;
+  ceremonyType: string;
+  bookingDate: string; // YYYY-MM-DD
+  timeSlot: string;    // e.g. "10:00 AM - 01:00 PM"
+  mode: 'in_person' | 'online';
+  venueAddress?: string;
+  priceInr: number;
+  status: 'requested' | 'accepted' | 'declined' | 'rescheduled' | 'completed' | 'cancelled';
+  cancellationReason?: string;
+  kundliSharedConsent: boolean;
+  specialRequests?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Video/Voice Consultation Types
+ */
+export interface ConsultationSessionToken {
+  roomId: string;
+  bookingId: string;
+  token: string;
+  userId: string;
+  role: 'host' | 'client';
+  expiresInSeconds: number;
+}
+
+/**
+ * Community Posts Types
+ */
+export interface CommunityPostItem {
+  id: string;
+  userId: string;
+  authorName: string;
+  authorAvatar?: string;
+  mediaUrl: string;
+  caption: string;
+  category: 'wedding_story' | 'culture' | 'festivals' | 'advice' | 'general';
+  moderationStatus: 'pending' | 'approved' | 'rejected';
+  likesCount: number;
+  isLikedByMe?: boolean;
+  reportsCount: number;
+  createdAt: string;
+}
+
+/**
+ * Comprehensive Admin Dashboard Stats (12 Metrics)
+ */
+export interface DashboardStatsExtended {
+  totalUsers: number;
+  pendingApprovals: number;
+  approvedUsers: number;
+  rejectedUsers: number;
+  suspendedUsers: number;
+  activeMemberships: number;
+  pendingVerifications: number;
+  openReports: number;
+  // New domain metrics
+  totalPandits: number;
+  pendingPandits: number;
+  totalBookings: number;
+  pendingCommunityPosts: number;
+}
+

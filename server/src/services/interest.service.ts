@@ -77,7 +77,7 @@ export class InterestService {
     if (!doc) {
       return {
         id: userId,
-        displayName: 'BandhanSetu Member',
+        displayName: 'ShaadiBanao Member',
         gender: 'female' as const,
         age: 26,
         heightCm: 160,

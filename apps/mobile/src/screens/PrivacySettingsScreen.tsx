@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   Switch,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing } from '../constants/theme';
@@ -53,12 +53,13 @@ export const PrivacySettingsScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title="Privacy & Account Settings"
         subtitle="Privacy by default. You are in control."
         onBack={() => navigation.goBack()}
         showStatusBadge={true}
+        variant="royal"
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -197,8 +198,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.lg,
-    paddingBottom: spacing['4xl'],
+    padding: spacing.base,
+    paddingBottom: 60,
   },
   sectionTitle: {
     fontSize: typography.fontSizes.sm,

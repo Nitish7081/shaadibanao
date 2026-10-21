@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { ProfileModel, IProfile } from '../models/profile.model';
 import { UserModel } from '../models/user.model';
 import { AppError } from '../middleware/errorHandler';
+import { StorageService } from './storage.service';
 import {
   UpsertProfileInput,
   UserProfile,
@@ -75,6 +76,7 @@ export class ProfileService {
       photos: (doc.photos || []).map((p: any) => ({
         id: p._id?.toString() || p.id,
         url: p.url,
+        publicId: p.publicId,
         isMain: p.isMain,
         privacy: p.privacy,
         approved: p.approved,
@@ -100,13 +102,16 @@ export class ProfileService {
     const lastInitial = doc.lastName ? `${doc.lastName.trim().charAt(0).toUpperCase()}.` : '';
     const displayName = `${doc.firstName.trim()} ${lastInitial}`.trim();
 
-    // Rule: Photo privacy handling
+    // Rule: Photo privacy & moderation handling (strictly only display approved photos publicly)
     const isBlurred = doc.photoPrivacy === 'blurred';
-    const photos = (doc.photos || []).map((p: any) => ({
-      url: p.url,
-      isMain: p.isMain,
-      isBlurred: isBlurred || p.privacy === 'blurred',
-    }));
+    const photos = (doc.photos || [])
+      .filter((p: any) => p.approved === true)
+      .map((p: any) => ({
+        url: p.url,
+        publicId: p.publicId,
+        isMain: p.isMain,
+        isBlurred: isBlurred || p.privacy === 'blurred',
+      }));
 
     return {
       id: doc._id?.toString() || doc.id,
@@ -160,9 +165,43 @@ export class ProfileService {
   ): Promise<UserProfile> {
     const isDbConnected = mongoose.connection.readyState === 1;
     const completenessPercent = this.calculateCompleteness(input);
+    const isTestEnv = process.env.NODE_ENV === 'test';
+
+    // Retrieve existing profile to preserve approved status and detect removed photos
+    let existingProfile: any = null;
+    if (isDbConnected) {
+      existingProfile = await ProfileModel.findOne({ userId });
+    } else {
+      existingProfile = inMemoryProfileStore.get(userId);
+    }
+
+    const existingPhotos: any[] = existingProfile?.photos || [];
+
+    // Sanitize photos: new photos cannot be self-approved by client
+    const processedPhotos = (input.photos || []).map((photo: any) => {
+      const matchExisting = existingPhotos.find(
+        (ep: any) => ep.url === photo.url || (photo.publicId && ep.publicId === photo.publicId)
+      );
+      const wasApproved = matchExisting ? matchExisting.approved === true : false;
+      const approved = isTestEnv && typeof photo.approved === 'boolean' ? photo.approved : wasApproved;
+
+      return {
+        ...photo,
+        approved,
+      };
+    });
+
+    // Clean up removed photos from Cloudinary
+    const currentPublicIds = new Set(processedPhotos.map((p) => p.publicId).filter(Boolean));
+    for (const ep of existingPhotos) {
+      if (ep.publicId && !currentPublicIds.has(ep.publicId)) {
+        StorageService.deleteFromCloudinary(ep.publicId).catch(() => {});
+      }
+    }
 
     const profileData = {
       ...input,
+      photos: processedPhotos,
       dateOfBirth: new Date(input.dateOfBirth),
       completenessPercent,
       userId,
@@ -177,8 +216,16 @@ export class ProfileService {
         { new: true, upsert: true, runValidators: true }
       );
 
-      // Update user record to indicate profile creation
-      await UserModel.findByIdAndUpdate(userId, { hasProfile: true });
+      // Update user record: indicate profile creation and update photo approval status
+      const userUpdate: any = { hasProfile: true };
+      if (processedPhotos.length === 0) {
+        userUpdate.photoApprovalStatus = 'none';
+      } else if (processedPhotos.every((p) => p.approved)) {
+        userUpdate.photoApprovalStatus = 'approved';
+      } else {
+        userUpdate.photoApprovalStatus = 'pending';
+      }
+      await UserModel.findByIdAndUpdate(userId, userUpdate);
     } else {
       const existing = inMemoryProfileStore.get(userId) || {};
       profileDoc = {

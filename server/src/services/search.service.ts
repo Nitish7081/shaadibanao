@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import { ProfileModel } from '../models/profile.model';
+import { UserModel } from '../models/user.model';
+import { ReportModel } from '../models/report.model';
 import { PreferenceService } from './preference.service';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
 import { MatchExplanationService } from './match.service';
@@ -48,9 +50,41 @@ export class SearchService {
     let totalCount = 0;
 
     if (isDbConnected) {
-      // Build MongoDB query
+      // Build MongoDB query: only approved and active accounts are eligible
+      const queryUserId = mongoose.Types.ObjectId.isValid(requestingUserId)
+        ? new mongoose.Types.ObjectId(requestingUserId)
+        : requestingUserId;
+
+      // 1. Fetch eligible user IDs (Active and Approved)
+      const approvedUsers = await UserModel.find({
+        status: 'active',
+        approvalStatus: 'approved',
+        _id: { $ne: queryUserId },
+      }).select('_id');
+
+      const approvedUserIds = approvedUsers.map((u) => u._id);
+
+      // 2. Fetch blocked/reported users to respect trust & safety
+      const reports = await ReportModel.find({
+        $or: [{ reporterId: queryUserId }, { reportedUserId: queryUserId }],
+        status: { $in: ['pending', 'reviewed', 'actioned'] },
+      }).select('reporterId reportedUserId');
+
+      const excludedIds = new Set<string>();
+      reports.forEach((r: any) => {
+        if (r.reporterId.toString() === requestingUserId.toString()) {
+          excludedIds.add(r.reportedUserId.toString());
+        } else {
+          excludedIds.add(r.reporterId.toString());
+        }
+      });
+
+      const eligibleUserIds = approvedUserIds.filter(
+        (id) => !excludedIds.has(id.toString())
+      );
+
       const query: any = {
-        userId: { $ne: new mongoose.Types.ObjectId(requestingUserId) },
+        userId: { $in: eligibleUserIds },
       };
 
       if (gender) query.gender = gender;

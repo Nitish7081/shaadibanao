@@ -64,4 +64,5 @@ const ConversationSchema = new Schema<IConversation>(
 ConversationSchema.index({ user1Id: 1, user2Id: 1 }, { unique: true });
 ConversationSchema.index({ lastMessageAt: -1 });
 
-export const ConversationModel = mongoose.model<IConversation>('Conversation', ConversationSchema);
+export const ConversationModel =
+  mongoose.models.Conversation || mongoose.model<IConversation>('Conversation', ConversationSchema);
