@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "680373929265-28j28ieoaesl00ovame0qb2ivfuvb1is.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shaadibanao.app",
+            "certificate_hash": "af52822780cdcec715460db7303c4caccde67b5c"
+          }
+        },
+        {
           "client_id": "680373929265-4o135sk0pjkirjvpmbht9c8d6c0d1ef8.apps.googleusercontent.com",
           "client_type": 3
         }
