@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Shared TypeScript types, Zod schemas, and design tokens for BandhanSetu",
   "main": "dist/index.js",
+  "react-native": "src/index.ts",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
