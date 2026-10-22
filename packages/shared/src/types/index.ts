@@ -24,6 +24,7 @@ export interface HealthCheckResponse {
   database: {
     status: 'connected' | 'disconnected' | 'connecting' | 'unconfigured';
     host?: string;
+    name?: string;
     isProduction?: boolean;
   };
   environment: string;

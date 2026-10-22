@@ -39,7 +39,7 @@ export const validateMongoUri = (uri: string): { valid: boolean; reason?: string
   return { valid: true };
 };
 
-export const getDbStatus = (): { status: DbStatus; host?: string; isProduction: boolean } => {
+export const getDbStatus = (): { status: DbStatus; host?: string; name?: string; isProduction: boolean } => {
   if (!config.mongodbUri) {
     return { status: 'unconfigured', isProduction: config.isProduction };
   }
@@ -47,7 +47,12 @@ export const getDbStatus = (): { status: DbStatus; host?: string; isProduction: 
   const state = mongoose.connection.readyState;
   switch (state) {
     case 1:
-      return { status: 'connected', host: mongoose.connection.host, isProduction: config.isProduction };
+      return {
+        status: 'connected',
+        host: mongoose.connection.host,
+        name: mongoose.connection.name,
+        isProduction: config.isProduction,
+      };
     case 2:
       return { status: 'connecting', isProduction: config.isProduction };
     default:
@@ -93,6 +98,7 @@ export const connectDatabase = async (): Promise<void> => {
     dbStatus = 'connecting';
     console.log(`[Database] Connecting to MongoDB (${masked})...`);
     await mongoose.connect(config.mongodbUri, {
+      dbName: 'bandhansetu',
       serverSelectionTimeoutMS: 15000,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 15000,
