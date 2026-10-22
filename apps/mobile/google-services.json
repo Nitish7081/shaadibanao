@@ -14,11 +14,19 @@
       },
       "oauth_client": [
         {
-          "client_id": "680373929265-28j28ieoaesl00ovame0qb2ivfuvb1is.apps.googleusercontent.com",
+          "client_id": "680373929265-ljt8b6kd7tdurrqitsarh34mcdetqbl1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.shaadibanao.app",
-            "certificate_hash": "af52822780cdcec715460db7303c4caccde67b5c"
+            "certificate_hash": "0b13d374380a3ac6432a8d9013fae9ce9e22f96f"
+          }
+        },
+        {
+          "client_id": "680373929265-lr2og36ckeq3bd027cojbse6ccrmmjmu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shaadibanao.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
           }
         },
         {

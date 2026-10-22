@@ -39,6 +39,8 @@ ios/
 *.jks
 *.p8
 *.p12
+*.apk
+*.aab
 
 # Firebase Secrets & Service Account
 *service-account*.json

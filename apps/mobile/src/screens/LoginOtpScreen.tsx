@@ -62,6 +62,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     setLoading(true);
+    let nativeFbError: string | null = null;
 
     // 1. Try Native Firebase Phone OTP (Available in native development build)
     if (isFirebaseNativeAvailable()) {
@@ -77,6 +78,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         );
         return;
       } catch (fbErr: any) {
+        nativeFbError = fbErr.message || 'Firebase phone verification failed';
         console.warn('[FirebasePhoneAuth] Native SMS failed, checking server fallback:', fbErr.message);
         // Fall through to server fallback if native verification is unavailable in current client
       }
@@ -96,7 +98,14 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('OTP Dispatched', notice);
     } catch (err: any) {
       setLoading(false);
-      Alert.alert('Request Failed', err.message || 'Unable to request OTP. Check backend server connection.');
+      if (nativeFbError) {
+        Alert.alert(
+          'Phone Verification Failed',
+          `Firebase SMS: ${nativeFbError}\n\nServer Fallback: ${err.message || 'Unable to connect to backend.'}`
+        );
+      } else {
+        Alert.alert('Request Failed', err.message || 'Unable to request OTP. Check backend server connection.');
+      }
     }
   };
 
@@ -251,6 +260,19 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     } catch (err: any) {
       setGoogleLoading(false);
       if (err.code === 'SIGN_IN_CANCELLED' || err.message?.includes('CANCELLED')) {
+        return;
+      }
+      const isDeveloperError =
+        err.message?.includes('DEVELOPER_ERROR') ||
+        err.code === 10 ||
+        err.code === '10' ||
+        err.code === 'DEVELOPER_ERROR';
+
+      if (isDeveloperError) {
+        Alert.alert(
+          'Google Sign-In Configuration Required',
+          'DEVELOPER_ERROR (Status 10): The APK signing certificate SHA-1 fingerprint is not registered in Firebase / Google Cloud Console for com.shaadibanao.app.\n\nPlease add the EAS build / debug keystore SHA-1 to Firebase Console to activate Google Sign-In on real devices.'
+        );
         return;
       }
       Alert.alert('Google Sign-In Failed', err.message || 'Unable to sign in with Google. Check Google Play Services.');

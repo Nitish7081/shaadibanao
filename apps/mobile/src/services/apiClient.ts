@@ -96,7 +96,7 @@ export async function apiClient<T = any>(
   endpoint: string,
   options: ApiClientOptions & { _isRetry?: boolean } = {}
 ): Promise<T> {
-  const { timeoutMs = 12000, headers, _isRetry, ...restOptions } = options;
+  const { timeoutMs = 45000, headers, _isRetry, ...restOptions } = options;
 
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${BASE_URL}${cleanEndpoint}`;
@@ -165,16 +165,35 @@ export async function apiClient<T = any>(
       throw err;
     }
 
-    if (err.name === 'AbortError') {
-      throw new ApiError(
-        `Request to ${cleanEndpoint} timed out after ${timeoutMs}ms. Please verify backend server is running at ${BASE_URL} and your phone is on the same Wi-Fi.`,
-        408,
-        'TIMEOUT_ERROR'
-      );
+    const isAborted =
+      controller.signal.aborted ||
+      err.name === 'AbortError' ||
+      (typeof err.message === 'string' &&
+        (err.message.toLowerCase().includes('canceled') ||
+          err.message.toLowerCase().includes('cancelled') ||
+          err.message.toLowerCase().includes('abort')));
+
+    if (isAborted) {
+      const isRender = BASE_URL.includes('onrender.com');
+      const timeoutMessage = isRender
+        ? `Request timed out (${Math.round(timeoutMs / 1000)}s). Render backend is waking up from sleep (cold start). Please wait a few seconds and try again.`
+        : `Request to ${cleanEndpoint} timed out after ${timeoutMs}ms. Please check your network connection.`;
+
+      throw new ApiError(timeoutMessage, 408, 'TIMEOUT_ERROR');
     }
 
+    const isLocalUrl =
+      BASE_URL.includes('192.168.') ||
+      BASE_URL.includes('10.0.2.2') ||
+      BASE_URL.includes('localhost') ||
+      BASE_URL.includes('127.0.0.1');
+
+    const networkHint = isLocalUrl
+      ? ' Ensure PC and phone are on the same Wi-Fi and PC IP has not changed.'
+      : ' Please check your mobile internet or backend server status.';
+
     throw new ApiError(
-      `Unable to connect to backend server at ${BASE_URL}. Ensure PC and phone are on the same Wi-Fi and PC IP has not changed. (${err.message || 'Network request failed'})`,
+      `Unable to connect to backend server at ${BASE_URL}.${networkHint} (${err.message || 'Network request failed'})`,
       0,
       'CONNECTION_FAILED'
     );
