@@ -13,6 +13,7 @@
     "test:atlas": "ts-node --transpile-only scripts/test-atlas-persistence.ts",
     "test:e2e": "ts-node --transpile-only scripts/test-matrimonial-e2e.ts",
     "create:admin": "ts-node --transpile-only scripts/create-admin.ts",
+    "db:init": "ts-node --transpile-only scripts/init-all-collections.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {
