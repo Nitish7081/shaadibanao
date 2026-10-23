@@ -22,6 +22,7 @@ import {
   setSessionAuth,
   clearSessionAuth,
   getSessionToken,
+  hasActiveSession,
   syncCurrentUserWithBackend,
   onUserUpdated,
 } from '../services/authSession';
@@ -42,6 +43,11 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       const updatedUser = await syncCurrentUserWithBackend();
+      if (!updatedUser && !hasActiveSession()) {
+        isNavigatingRef.current = true;
+        navigation.replace('LoginOtp');
+        return;
+      }
       if (updatedUser) {
         setUser(updatedUser);
 

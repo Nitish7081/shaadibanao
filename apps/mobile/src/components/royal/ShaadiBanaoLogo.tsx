@@ -1,89 +1,41 @@
 import React from 'react';
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../constants/theme';
+import { Image, StyleSheet, StyleProp, ImageStyle } from 'react-native';
 
 interface ShaadiBanaoLogoProps {
   size?: 'small' | 'medium' | 'large';
-  style?: ViewStyle;
+  style?: StyleProp<ImageStyle>;
 }
+
+const logoSource = require('../../../assets/logo.png');
 
 export const ShaadiBanaoLogo: React.FC<ShaadiBanaoLogoProps> = ({ size = 'medium', style }) => {
   const dimensions = {
-    small: { outer: 36, inner: 30, text: 13, icon: 10 },
-    medium: { outer: 46, inner: 38, text: 16, icon: 12 },
-    large: { outer: 64, inner: 54, text: 22, icon: 16 },
+    small: { width: 35, height: 24 },
+    medium: { width: 50, height: 34 },
+    large: { width: 95, height: 64 },
   }[size];
 
   return (
-    <View
+    <Image
+      source={logoSource}
       style={[
-        styles.outerRing,
+        styles.logoImage,
         {
-          width: dimensions.outer,
-          height: dimensions.outer,
-          borderRadius: dimensions.outer / 2,
+          width: dimensions.width,
+          height: dimensions.height,
         },
         style,
       ]}
-    >
-      <View
-        style={[
-          styles.innerRing,
-          {
-            width: dimensions.inner,
-            height: dimensions.inner,
-            borderRadius: dimensions.inner / 2,
-          },
-        ]}
-      >
-        {/* Vedic Monogram SB with Royal Gold Accents */}
-        <View style={styles.contentWrap}>
-          <Text style={[styles.monogramText, { fontSize: dimensions.text }]}>SB</Text>
-          <View style={styles.sparkleWrap}>
-            <Ionicons name="sparkles" size={dimensions.icon} color={colors.royalGold} />
-          </View>
-        </View>
-      </View>
-    </View>
+      resizeMode="contain"
+      accessibilityRole="image"
+      accessibilityLabel="ShaadiBanao Logo"
+    />
   );
 };
 
 const styles = StyleSheet.create({
-  outerRing: {
-    backgroundColor: 'rgba(212, 175, 55, 0.22)',
-    borderWidth: 1.5,
-    borderColor: colors.royalGold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.deepMaroon,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  innerRing: {
-    backgroundColor: colors.deepMaroon,
-    borderWidth: 1,
-    borderColor: colors.brightGold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  contentWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monogramText: {
-    color: '#FFF8E7',
-    fontWeight: '900',
-    letterSpacing: 0.5,
-    fontFamily: undefined,
-  },
-  sparkleWrap: {
-    position: 'absolute',
-    top: -4,
-    right: -7,
+  logoImage: {
+    backgroundColor: 'transparent',
   },
 });
+

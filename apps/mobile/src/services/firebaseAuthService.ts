@@ -139,7 +139,7 @@ export async function signInWithGoogle(): Promise<{ idToken: string }> {
   }
 
   const { GoogleSignin } = require('@react-native-google-signin/google-signin');
-  const auth = require('@react-native-firebase/auth').default;
+  const authModule = require('@react-native-firebase/auth');
 
   configureGoogleSignIn();
 
@@ -152,10 +152,37 @@ export async function signInWithGoogle(): Promise<{ idToken: string }> {
     throw new Error('No Google ID token was returned by Google Play Services.');
   }
 
+  // Resolve GoogleAuthProvider (modular v22+/v26+ export vs legacy namespaced)
+  const GoogleAuthProvider =
+    authModule.GoogleAuthProvider ||
+    authModule.default?.GoogleAuthProvider;
+
+  if (!GoogleAuthProvider) {
+    throw new Error('Firebase GoogleAuthProvider could not be loaded from @react-native-firebase/auth.');
+  }
+
   // Create Firebase credential using the Google ID token
-  const googleCredential = auth.GoogleAuthProvider.credential(idToken);
-  const userCredential = await auth().signInWithCredential(googleCredential);
+  const googleCredential = GoogleAuthProvider.credential(idToken);
+
+  let userCredential: any;
+  if (typeof authModule.getAuth === 'function' && typeof authModule.signInWithCredential === 'function') {
+    // Modular API (RN Firebase v22+ / v26+)
+    const authInstance = authModule.getAuth();
+    userCredential = await authModule.signInWithCredential(authInstance, googleCredential);
+  } else {
+    // Legacy namespaced API
+    const authFn = typeof authModule === 'function' ? authModule : authModule.default;
+    userCredential = await authFn().signInWithCredential(googleCredential);
+  }
+
+  if (!userCredential?.user) {
+    throw new Error('Firebase Google Sign-In failed: User credential was not returned.');
+  }
+
   const firebaseIdToken = await userCredential.user.getIdToken(true);
+  if (!firebaseIdToken) {
+    throw new Error('Failed to retrieve Firebase ID token from authenticated Google user.');
+  }
 
   return { idToken: firebaseIdToken };
 }
@@ -172,12 +199,26 @@ export async function sendFirebasePhoneOtp(
     );
   }
 
-  const auth = require('@react-native-firebase/auth').default;
+  const authModule = require('@react-native-firebase/auth');
 
   const clean = rawMobile.replace(/\D/g, '');
   const formattedPhone = clean.startsWith('+') ? clean : `+91${clean.slice(-10)}`;
 
-  const confirmation = await auth().signInWithPhoneNumber(formattedPhone);
+  let confirmation: any;
+  if (typeof authModule.getAuth === 'function' && typeof authModule.signInWithPhoneNumber === 'function') {
+    // Modular API (RN Firebase v22+ / v26+)
+    const authInstance = authModule.getAuth();
+    confirmation = await authModule.signInWithPhoneNumber(authInstance, formattedPhone);
+  } else {
+    // Legacy namespaced API
+    const authFn = typeof authModule === 'function' ? authModule : authModule.default;
+    confirmation = await authFn().signInWithPhoneNumber(formattedPhone);
+  }
+
+  if (!confirmation || typeof confirmation.confirm !== 'function') {
+    throw new Error('Firebase SMS verification could not be initialized.');
+  }
+
   return confirmation;
 }
 
@@ -189,6 +230,14 @@ export async function confirmFirebasePhoneOtp(
   otpCode: string
 ): Promise<{ idToken: string }> {
   const userCredential = await confirmation.confirm(otpCode);
+  if (!userCredential?.user) {
+    throw new Error('Firebase phone confirmation failed: User was not returned.');
+  }
+
   const idToken = await userCredential.user.getIdToken(true);
+  if (!idToken) {
+    throw new Error('Failed to retrieve Firebase ID token after phone confirmation.');
+  }
+
   return { idToken };
 }

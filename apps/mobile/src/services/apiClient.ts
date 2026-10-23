@@ -133,23 +133,30 @@ export async function apiClient<T = any>(
         cleanEndpoint.includes('/auth/verify-otp') ||
         cleanEndpoint.includes('/auth/register');
 
+      const isTokenExpired =
+        response.status === 401 &&
+        (errorCode === 'TOKEN_EXPIRED' ||
+          errorCode === 'INVALID_TOKEN' ||
+          (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes('expired')));
+
       // Transparent token refresh and single retry on 401 TOKEN_EXPIRED
       if (
-        response.status === 401 &&
-        (errorCode === 'TOKEN_EXPIRED' || errorCode === 'INVALID_TOKEN') &&
+        isTokenExpired &&
         !_isRetry &&
         !isUnauthenticatedAuthRoute &&
         tokenRefresher
       ) {
         const refreshedToken = await tokenRefresher();
         if (refreshedToken) {
+          const updatedHeaders: Record<string, string> = { ...(headers as any) };
+          delete updatedHeaders['authorization'];
+          delete updatedHeaders['Authorization'];
+          updatedHeaders['Authorization'] = `Bearer ${refreshedToken}`;
+
           return apiClient<T>(endpoint, {
             ...options,
             _isRetry: true,
-            headers: {
-              ...headers,
-              Authorization: `Bearer ${refreshedToken}`,
-            },
+            headers: updatedHeaders,
           });
         }
       }

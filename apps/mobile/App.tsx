@@ -18,6 +18,8 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { navigationRef, navigateToLogin } from './src/navigation/navigationRef';
+import { onAuthExpired } from './src/services/authSession';
 import { colors } from './src/constants/theme';
 
 export default function App() {
@@ -33,6 +35,14 @@ export default function App() {
     Inter_700Bold,
   });
 
+  React.useEffect(() => {
+    // Listen for complete session expiration to navigate safely to Login/OTP screen
+    const unsubscribe = onAuthExpired(() => {
+      navigateToLogin();
+    });
+    return unsubscribe;
+  }, []);
+
   if (!fontsLoaded) {
     return (
       <View style={styles.loadingContainer}>
@@ -43,7 +53,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <StatusBar style="auto" />
         <RootNavigator />
       </NavigationContainer>

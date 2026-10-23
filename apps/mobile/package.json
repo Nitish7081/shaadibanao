@@ -32,6 +32,8 @@
   },
   "scripts": {
     "eas-build-post-install": "npm run build --workspace=@bandhansetu/shared",
+    "build:apk": "eas build -p android --profile preview",
+    "build:apk:local": "eas build -p android --profile preview --local",
     "start": "expo start --lan",
     "start:lan": "expo start --lan",
     "start:tunnel": "expo start --tunnel",

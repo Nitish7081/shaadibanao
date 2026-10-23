@@ -1,7 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSummary, AuthTokens } from '@bandhansetu/shared';
-import { refreshTokens as apiRefreshTokens, getCurrentUser as apiGetCurrentUser } from './authService';
-import { registerTokenRefresher } from './apiClient';
+import {
+  refreshTokens as apiRefreshTokens,
+  getCurrentUser as apiGetCurrentUser,
+  loginWithFirebase,
+} from './authService';
+import { registerTokenRefresher, getApiBaseUrl, ApiError } from './apiClient';
+import { isFirebaseNativeAvailable } from './firebaseAuthService';
 
 /**
  * BandhanSetu Mobile Session & Auth State Manager
@@ -187,37 +192,121 @@ export function clearSessionAuth(): void {
   ]).catch(() => {});
 }
 
+// In-flight refresh mutex to prevent duplicate concurrent refresh requests and race conditions
+let activeRefreshPromise: Promise<string | null> | null = null;
+
 /**
- * Attempts to exchange current refresh token for a new access token
+ * Attempts to re-authenticate with the backend via native Firebase Auth if available.
+ * Obtains a fresh Firebase ID token using getIdToken(true) and exchanges it via /auth/firebase-login.
  */
-export async function refreshSessionTokens(): Promise<string | null> {
-  if (!currentRefreshToken) {
-    clearSessionAuth();
-    notifyAuthExpired('Your session has expired. Please log in again.');
+async function tryRefreshViaFirebase(): Promise<AuthTokens | null> {
+  if (!isFirebaseNativeAvailable()) {
     return null;
+  }
+  try {
+    const authModule = require('@react-native-firebase/auth');
+    const authInstance =
+      typeof authModule.getAuth === 'function'
+        ? authModule.getAuth()
+        : typeof authModule === 'function'
+        ? authModule()
+        : authModule.default?.();
+
+    const fbUser = authInstance?.currentUser;
+    if (!fbUser) {
+      return null;
+    }
+
+    const freshFirebaseIdToken = await fbUser.getIdToken(true);
+    if (!freshFirebaseIdToken) {
+      return null;
+    }
+
+    const loginRes = await loginWithFirebase(freshFirebaseIdToken);
+    if (loginRes.data?.tokens) {
+      return loginRes.data.tokens;
+    }
+  } catch {
+    // Firebase refresh not possible or user not signed in via Firebase
+  }
+  return null;
+}
+
+/**
+ * Executes token refresh logic:
+ * 1. Primary: Exchanges backend refresh token with /auth/refresh
+ * 2. Secondary: If backend refresh token is expired/invalid, attempts native Firebase re-authentication
+ * 3. Fallback: Clears session and notifies app listeners that re-login is required.
+ */
+async function executeTokenRefresh(): Promise<string | null> {
+  // 1. Primary: Try backend refresh token
+  if (currentRefreshToken) {
+    try {
+      const res = await apiRefreshTokens(currentRefreshToken);
+      if (res.data?.tokens) {
+        setSessionAuth(
+          res.data.tokens,
+          res.data.user?.id || currentUserId,
+          res.data.user || currentUser
+        );
+        return res.data.tokens.accessToken;
+      }
+    } catch (err: any) {
+      const isNetworkError =
+        err instanceof ApiError
+          ? err.status === 0 || err.code === 'NETWORK_ERROR'
+          : err?.message?.toLowerCase().includes('network') ||
+            err?.message?.toLowerCase().includes('timeout') ||
+            err?.message?.toLowerCase().includes('aborted');
+
+      if (isNetworkError) {
+        // Keep session for offline retry; do not log out on transient connectivity issues
+        return null;
+      }
+      // If 400 or 401, refresh token is invalid or expired in DB. Proceed to secondary recovery.
+    }
   }
 
+  // 2. Secondary: If backend refresh token failed, try native Firebase recovery if logged in with Firebase
   try {
-    const res = await apiRefreshTokens(currentRefreshToken);
-    if (res.data?.tokens) {
-      setSessionAuth(res.data.tokens, res.data.user.id, res.data.user);
-      return res.data.tokens.accessToken;
+    const fbTokens = await tryRefreshViaFirebase();
+    if (fbTokens) {
+      setSessionAuth(fbTokens, currentUserId, currentUser);
+      return fbTokens.accessToken;
     }
-    clearSessionAuth();
-    notifyAuthExpired('Unable to refresh session. Please log in again.');
-    return null;
-  } catch (error: any) {
-    clearSessionAuth();
-    const reason = error.message || 'Session expired. Please log in with OTP.';
-    notifyAuthExpired(reason);
-    return null;
+  } catch {
+    // Secondary recovery failed
   }
+
+  // 3. Complete Session Expiry: Clear tokens safely and notify navigation to redirect
+  clearSessionAuth();
+  notifyAuthExpired('Your session has expired. Please log in again.');
+  return null;
+}
+
+/**
+ * Thread-safe token refresher. Deduplicates multiple concurrent refresh requests
+ * into a single in-flight Promise so tokens are never rotated multiple times simultaneously.
+ */
+export async function refreshSessionTokens(): Promise<string | null> {
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
+  }
+
+  activeRefreshPromise = (async () => {
+    try {
+      return await executeTokenRefresh();
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+
+  return activeRefreshPromise;
 }
 
 // Wire automatic token refresh to apiClient
 registerTokenRefresher(refreshSessionTokens);
 
-import { getApiBaseUrl } from './apiClient';
 export const API_BASE = getApiBaseUrl();
 
 export async function getAuthHeader(): Promise<Record<string, string>> {
@@ -227,9 +316,9 @@ export async function getAuthHeader(): Promise<Record<string, string>> {
 
 /**
  * Synchronizes the current user session with MongoDB via /auth/me.
- * Ensures admin approvals, photo approvals, and status changes are immediately reflected.
+ * Transparently refreshes expired access tokens without duplicate calls or loops.
  */
-export async function syncCurrentUserWithBackend(): Promise<UserSummary | null> {
+export async function syncCurrentUserWithBackend(isRetry = false): Promise<UserSummary | null> {
   const token = getSessionToken();
   if (!token) return null;
 
@@ -246,23 +335,42 @@ export async function syncCurrentUserWithBackend(): Promise<UserSummary | null> 
       return updatedUser;
     }
   } catch (err: any) {
-    if (err?.code === 'TOKEN_EXPIRED' || err?.message?.includes('expired')) {
+    const isTokenExpired =
+      err?.status === 401 &&
+      (err?.code === 'TOKEN_EXPIRED' ||
+        err?.code === 'INVALID_TOKEN' ||
+        err?.message?.toLowerCase().includes('expired'));
+
+    if (isTokenExpired && !isRetry) {
+      // apiClient already attempts transparent refresh. If we reach here, attempt a single coordinated refresh
       const refreshedToken = await refreshSessionTokens();
       if (refreshedToken) {
-        try {
-          const retryRes = await apiGetCurrentUser(refreshedToken);
-          if (retryRes.data?.user) {
-            currentUser = retryRes.data.user;
-            await persistSessionToStorage();
-            notifyUserUpdated(currentUser);
-            return currentUser;
-          }
-        } catch {
-          // secondary error handled below
-        }
+        return syncCurrentUserWithBackend(true);
       }
+      // If refresh returned null, session is dead and has been cleared
+      return null;
     }
-    console.warn('[SessionSync] Unable to sync user profile:', err.message);
+
+    // 403: Account suspended or rejected by admin
+    if (err?.status === 403) {
+      if (err?.details?.user) {
+        currentUser = err.details.user;
+        await persistSessionToStorage();
+        notifyUserUpdated(currentUser!);
+      }
+      return currentUser;
+    }
+
+    // Network / timeout errors: return last cached user without clearing session
+    const isNetworkError =
+      err?.status === 0 ||
+      err?.code === 'NETWORK_ERROR' ||
+      err?.message?.toLowerCase().includes('network') ||
+      err?.message?.toLowerCase().includes('timeout');
+
+    if (isNetworkError) {
+      return currentUser;
+    }
   }
   return currentUser;
 }

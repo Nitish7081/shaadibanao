@@ -21,6 +21,8 @@
     "mobile:tunnel": "npm run start:tunnel --workspace=@bandhansetu/mobile",
     "mobile:dev": "npm run start:dev --workspace=@bandhansetu/mobile",
     "mobile:android": "npm run android --workspace=@bandhansetu/mobile",
+    "mobile:build:apk": "npx eas-cli build --platform android --profile preview",
+    "mobile:build:local": "npx eas-cli build --platform android --profile preview --local",
     "lint": "npm run lint --workspaces --if-present"
   },
   "overrides": {
