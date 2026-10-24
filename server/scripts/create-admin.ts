@@ -52,6 +52,7 @@ async function main() {
   if (existingUser) {
     existingUser.role = 'admin';
     existingUser.status = 'active';
+    existingUser.approvalStatus = 'approved';
     existingUser.passwordHash = passwordHash;
     if (displayName) existingUser.displayName = displayName;
     if (email && !existingUser.email) existingUser.email = email;
@@ -64,6 +65,7 @@ async function main() {
     console.log(`  Email: ${existingUser.email || 'N/A'}`);
     console.log(`  Mobile: ${existingUser.mobile || 'N/A'}`);
     console.log(`  Role: ${existingUser.role}`);
+    console.log(`  Approval Status: ${existingUser.approvalStatus}`);
     console.log(`===============================================`);
   } else {
     const newUser = await UserModel.create({
@@ -73,6 +75,7 @@ async function main() {
       passwordHash,
       role: 'admin',
       status: 'active',
+      approvalStatus: 'approved',
       profileFor: 'myself',
       hasProfile: false,
       consent: {

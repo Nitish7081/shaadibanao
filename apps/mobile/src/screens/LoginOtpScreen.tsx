@@ -29,6 +29,7 @@ import {
   signInWithGoogle,
   sendFirebasePhoneOtp,
   confirmFirebasePhoneOtp,
+  describeFirebaseAuthError,
   PhoneConfirmResult,
 } from '../services/firebaseAuthService';
 
@@ -62,7 +63,6 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     setLoading(true);
-    let nativeFbError: string | null = null;
 
     // 1. Try Native Firebase Phone OTP (Available in native development build)
     if (isFirebaseNativeAvailable()) {
@@ -78,9 +78,11 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         );
         return;
       } catch (fbErr: any) {
-        nativeFbError = fbErr.message || 'Firebase phone verification failed';
-        console.warn('[FirebasePhoneAuth] Native SMS failed, checking server fallback:', fbErr.message);
-        // Fall through to server fallback if native verification is unavailable in current client
+        // Firebase is the production OTP provider: do NOT fall back to the server OTP route.
+        setLoading(false);
+        console.warn('[FirebasePhoneAuth] SMS request failed:', fbErr?.code || fbErr?.message);
+        Alert.alert('Phone Verification Failed', describeFirebaseAuthError(fbErr));
+        return;
       }
     }
 
@@ -98,14 +100,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('OTP Dispatched', notice);
     } catch (err: any) {
       setLoading(false);
-      if (nativeFbError) {
-        Alert.alert(
-          'Phone Verification Failed',
-          `Firebase SMS: ${nativeFbError}\n\nServer Fallback: ${err.message || 'Unable to connect to backend.'}`
-        );
-      } else {
-        Alert.alert('Request Failed', err.message || 'Unable to request OTP. Check backend server connection.');
-      }
+      Alert.alert('Request Failed', err.message || 'Unable to request OTP. Check backend server connection.');
     }
   };
 
@@ -152,7 +147,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         setLoading(false);
         Alert.alert(
           'Verification Failed',
-          fbVerifyErr.message || 'Invalid or expired Firebase OTP. Please request a new code.'
+          describeFirebaseAuthError(fbVerifyErr)
         );
         return;
       }
@@ -275,7 +270,10 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         );
         return;
       }
-      Alert.alert('Google Sign-In Failed', err.message || 'Unable to sign in with Google. Check Google Play Services.');
+      Alert.alert(
+        'Google Sign-In Failed',
+        `${describeFirebaseAuthError(err)}${err?.code ? `\n\n(code: ${err.code})` : ''}`
+      );
     }
   };
 

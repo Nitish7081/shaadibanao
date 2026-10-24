@@ -197,7 +197,7 @@ describe('Authentication & Security Suite (/api/v1/auth)', () => {
   });
 
   describe('Production OTP Security Guard', () => {
-    it('should strictly reject mock OTP in production mode with 503 SMS_GATEWAY_UNCONFIGURED', async () => {
+    it('should strictly reject server OTP in production mode with 503 SERVER_OTP_DISABLED', async () => {
       const originalIsProd = config.isProduction;
       try {
         config.isProduction = true;
@@ -206,8 +206,9 @@ describe('Authentication & Security Suite (/api/v1/auth)', () => {
           .send({ mobile: '9988776655' });
 
         expect(response.status).toBe(503);
-        expect(response.body.error).toHaveProperty('code', 'SMS_GATEWAY_UNCONFIGURED');
-        expect(response.body.message).toContain('Real SMS delivery is required');
+        expect(response.body.error).toHaveProperty('code', 'SERVER_OTP_DISABLED');
+        expect(response.body.message).toContain('Firebase Phone Authentication');
+        expect(response.body.data?.devTestOtpHint).toBeUndefined();
       } finally {
         config.isProduction = originalIsProd;
       }

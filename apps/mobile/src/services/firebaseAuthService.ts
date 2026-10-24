@@ -146,10 +146,19 @@ export async function signInWithGoogle(): Promise<{ idToken: string }> {
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   const signInResult = await GoogleSignin.signIn();
 
-  // In newer @react-native-google-signin versions, idToken may be nested under data or top-level
+  // @react-native-google-signin v13+ resolves with { type: 'cancelled' } instead of throwing
+  if (signInResult?.type === 'cancelled') {
+    const cancelled: any = new Error('Google Sign-In was cancelled.');
+    cancelled.code = 'SIGN_IN_CANCELLED';
+    throw cancelled;
+  }
+
+  // In newer @react-native-google-signin versions, idToken is nested under data
   const idToken = signInResult.data?.idToken || signInResult.idToken;
   if (!idToken) {
-    throw new Error('No Google ID token was returned by Google Play Services.');
+    throw new Error(
+      'No Google ID token was returned. Verify the Web client ID matches the Firebase project (saadibaano) and the Google provider is enabled.'
+    );
   }
 
   // Resolve GoogleAuthProvider (modular v22+/v26+ export vs legacy namespaced)
@@ -240,4 +249,35 @@ export async function confirmFirebasePhoneOtp(
   }
 
   return { idToken };
+}
+
+/**
+ * Converts raw Firebase / Google Sign-In native errors into actionable, non-sensitive messages.
+ */
+export function describeFirebaseAuthError(err: any): string {
+  const code: string = err?.code || '';
+  const msg: string = err?.message || '';
+
+  if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
+    return 'SMS to this region is blocked by the Firebase SMS region policy (or Phone sign-in is disabled). The administrator must allow India (+91) in Firebase Console > Authentication > Settings > SMS region policy.';
+  }
+  if (code === 'auth/invalid-phone-number') {
+    return 'This phone number is not valid. Enter a 10-digit Indian mobile number.';
+  }
+  if (code === 'auth/too-many-requests' || code === 'auth/quota-exceeded') {
+    return 'Too many verification attempts or SMS quota exceeded. Please wait and try again later.';
+  }
+  if (code === 'auth/app-not-authorized' || msg.includes('Play Integrity') || msg.includes('app-not-authorized')) {
+    return 'This app build is not authorised for Firebase. The signing SHA-1/SHA-256 certificate must be registered in Firebase project settings.';
+  }
+  if (code === 'auth/network-request-failed') {
+    return 'Network error while contacting Firebase. Check your internet connection.';
+  }
+  if (code === 'auth/invalid-verification-code') {
+    return 'The verification code is incorrect.';
+  }
+  if (code === 'auth/code-expired' || code === 'auth/session-expired') {
+    return 'The verification code has expired. Request a new code.';
+  }
+  return msg || 'Firebase authentication failed.';
 }

@@ -52,12 +52,15 @@ export class OtpService {
   public static async requestOtp(mobile: string): Promise<RequestOtpResponse> {
     this.checkRateLimit(mobile);
 
-    // Production Guard: Mock OTP '123456' is strictly prohibited in production mode
-    if (config.isProduction && config.otp.deliveryMode === 'development_mock') {
+    // Production Guard: No server-side SMS provider is integrated. In production, phone OTP is
+    // delivered and verified exclusively by Firebase Phone Authentication; the client sends the
+    // resulting Firebase ID token to /auth/firebase-login, which verifies it cryptographically.
+    // Never generate an OTP that cannot be delivered, and never allow the mock OTP in production.
+    if (config.isProduction) {
       throw new AppError(
-        'SMS gateway is unconfigured in production mode. Real SMS delivery is required and mock OTP is disabled.',
+        'Server-side SMS OTP is disabled in production. Phone verification is handled by Firebase Phone Authentication.',
         503,
-        'SMS_GATEWAY_UNCONFIGURED'
+        'SERVER_OTP_DISABLED'
       );
     }
 
