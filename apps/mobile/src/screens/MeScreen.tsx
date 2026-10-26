@@ -24,7 +24,7 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { getMyProfile } from '../services/profileService';
 import { getMyMembership } from '../services/membershipService';
-import { getSessionToken, clearSessionAuth, getSessionUser } from '../services/authSession';
+import { getSessionToken, performLogout, getSessionUser } from '../services/authSession';
 
 type MeNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Me'>,
@@ -162,8 +162,8 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       {
         text: 'Sign Out',
         style: 'destructive',
-        onPress: () => {
-          clearSessionAuth();
+        onPress: async () => {
+          await performLogout();
           const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
           if (parentNav) {
             parentNav.reset({

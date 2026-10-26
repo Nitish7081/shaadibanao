@@ -21,6 +21,7 @@ import {
   getSessionUser,
   setSessionAuth,
   clearSessionAuth,
+  performLogout,
   getSessionToken,
   hasActiveSession,
   syncCurrentUserWithBackend,
@@ -118,8 +119,8 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
     };
   }, []);
 
-  const handleLogout = () => {
-    clearSessionAuth();
+  const handleLogout = async () => {
+    await performLogout();
     navigation.replace('LoginOtp');
   };
 

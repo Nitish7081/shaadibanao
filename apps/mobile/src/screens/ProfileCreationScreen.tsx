@@ -61,41 +61,48 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
   }, [currentStep, totalSteps, animatedProgress]);
 
   // Step 1: Basics
-  const [firstName, setFirstName] = useState('Priya');
-  const [lastName, setLastName] = useState('Sharma');
+  // Prefill name from the real signed-in Google account (no mock data)
+  const [firstName, setFirstName] = useState(() => {
+    const dn = (getSessionUser() as any)?.displayName as string | undefined;
+    return dn ? dn.trim().split(/\s+/)[0] : '';
+  });
+  const [lastName, setLastName] = useState(() => {
+    const dn = (getSessionUser() as any)?.displayName as string | undefined;
+    return dn ? dn.trim().split(/\s+/).slice(1).join(' ') : '';
+  });
   const [gender, setGender] = useState<'male' | 'female'>('female');
-  const [dateOfBirth, setDateOfBirth] = useState('1998-05-14');
-  const [heightCm, setHeightCm] = useState('163');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [heightCm, setHeightCm] = useState('');
   const [maritalStatus, setMaritalStatus] = useState<'never_married' | 'divorced' | 'widowed'>('never_married');
-  const [motherTongue, setMotherTongue] = useState('Hindi');
+  const [motherTongue, setMotherTongue] = useState('');
 
   // Step 2: Religion & Kundli
-  const [religion, setReligion] = useState('Hindu');
-  const [caste, setCaste] = useState('Brahmin');
-  const [gotra, setGotra] = useState('Kashyap');
+  const [religion, setReligion] = useState('');
+  const [caste, setCaste] = useState('');
+  const [gotra, setGotra] = useState('');
   const [manglik, setManglik] = useState<'yes' | 'no' | 'dont_know' | 'anshik'>('no');
   const [includeKundli, setIncludeKundli] = useState(false);
-  const [birthTime, setBirthTime] = useState('14:30');
+  const [birthTime, setBirthTime] = useState('');
   const [birthCity, setBirthCity] = useState('');
   const [rashi, setRashi] = useState<string>(RASHI_LIST[0]);
   const [nakshatra, setNakshatra] = useState<string>(NAKSHATRA_LIST[0]);
 
   // Step 3: Location
   const [country, setCountry] = useState('India');
-  const [state, setState] = useState('Delhi');
-  const [city, setCity] = useState('Delhi NCR');
+  const [state, setState] = useState('');
+  const [city, setCity] = useState('');
 
   // Step 4: Family
   const [familyValues, setFamilyValues] = useState<'traditional' | 'moderate' | 'liberal'>('moderate');
   const [familyType, setFamilyType] = useState<'joint' | 'nuclear'>('nuclear');
-  const [fatherOccupation, setFatherOccupation] = useState('Government Officer (Retd)');
-  const [motherOccupation, setMotherOccupation] = useState('Homemaker');
+  const [fatherOccupation, setFatherOccupation] = useState('');
+  const [motherOccupation, setMotherOccupation] = useState('');
 
   // Step 5: Education & Career
-  const [education, setEducation] = useState('MBA in Finance');
+  const [education, setEducation] = useState('');
   const [employedIn, setEmployedIn] = useState<'private' | 'government' | 'business' | 'self_employed' | 'not_working'>('private');
-  const [occupation, setOccupation] = useState('Senior Product Manager');
-  const [annualIncomeBand, setAnnualIncomeBand] = useState('₹15L - ₹25L');
+  const [occupation, setOccupation] = useState('');
+  const [annualIncomeBand, setAnnualIncomeBand] = useState('');
   const [showIncomeBand, setShowIncomeBand] = useState(true);
 
   // Step 6: Photos & Visibility Rules
@@ -108,16 +115,14 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null);
 
   // Step 7: About
-  const [aboutMe, setAboutMe] = useState(
-    'Family-oriented, ambitious, and passionate about travel and good food. Looking for an educated, supportive partner who shares traditional values.'
-  );
+  const [aboutMe, setAboutMe] = useState('');
 
   // Step 8: Partner Preferences
-  const [prefMinAge, setPrefMinAge] = useState('25');
-  const [prefMaxAge, setPrefMaxAge] = useState('32');
-  const [prefMinHeight, setPrefMinHeight] = useState('165');
-  const [prefMaxHeight, setPrefMaxHeight] = useState('185');
-  const [prefCities, setPrefCities] = useState('Delhi NCR, Gurgaon, Noida');
+  const [prefMinAge, setPrefMinAge] = useState('21');
+  const [prefMaxAge, setPrefMaxAge] = useState('35');
+  const [prefMinHeight, setPrefMinHeight] = useState('150');
+  const [prefMaxHeight, setPrefMaxHeight] = useState('190');
+  const [prefCities, setPrefCities] = useState('');
 
   // Pre-load existing saved profile and preferences from MongoDB if authenticated
   useEffect(() => {
@@ -299,6 +304,10 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
         Alert.alert('Required Field', 'Please enter your last name.');
         return false;
       }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.trim())) {
+        Alert.alert('Required Field', 'Please enter your date of birth as YYYY-MM-DD.');
+        return false;
+      }
       const h = parseInt(heightCm, 10);
       if (isNaN(h) || h < 100 || h > 250) {
         Alert.alert('Invalid Height', 'Please enter a valid height in centimeters (e.g. 165).');
@@ -379,7 +388,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
       education: education.trim(),
       employedIn,
       occupation: occupation.trim(),
-      annualIncomeBand,
+      annualIncomeBand: annualIncomeBand || (undefined as any),
       showIncomeBand,
       photos: photos.map((p) => ({ ...p, privacy: photoPrivacy })),
       photoPrivacy,

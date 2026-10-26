@@ -281,3 +281,65 @@ export function describeFirebaseAuthError(err: any): string {
   }
   return msg || 'Firebase authentication failed.';
 }
+
+/**
+ * Signs out of BOTH Firebase and the native Google account so the next login starts clean
+ * (fresh Google account chooser, fresh Firebase ID token). Never throws.
+ */
+export async function signOutNativeAuth(): Promise<void> {
+  if (isGoogleSignInNativeAvailable()) {
+    try {
+      const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+      await GoogleSignin.signOut();
+    } catch (e: any) {
+      console.warn('[Logout] Google signOut skipped:', e?.code || e?.message);
+    }
+  }
+  if (isFirebaseNativeAvailable()) {
+    try {
+      const authModule = require('@react-native-firebase/auth');
+      if (typeof authModule.getAuth === 'function' && typeof authModule.signOut === 'function') {
+        await authModule.signOut(authModule.getAuth());
+      } else {
+        const authFn = typeof authModule === 'function' ? authModule : authModule.default;
+        await authFn().signOut();
+      }
+    } catch (e: any) {
+      console.warn('[Logout] Firebase signOut skipped:', e?.code || e?.message);
+    }
+  }
+}
+
+/**
+ * Turns a login failure (backend ApiError or native error) into a clear, actionable message.
+ * Backend error codes come from POST /auth/firebase-login.
+ */
+export function describeLoginError(err: any): string {
+  const code: string = err?.code || '';
+  const status: number = err?.status ?? -1;
+
+  switch (code) {
+    case 'ACCOUNT_CONFLICT':
+      return 'This phone number or email is already linked to a different account. Please contact support.';
+    case 'UNVERIFIED_EMAIL':
+      return 'Your Google email is not verified. Verify it with Google and try again.';
+    case 'TOKEN_EXPIRED':
+      return 'Your sign-in expired before it finished. Please try again.';
+    case 'INVALID_FIREBASE_TOKEN':
+      return 'We could not verify your sign-in. Please sign in again.';
+    case 'RATE_LIMIT_EXCEEDED':
+      return 'Too many sign-in attempts. Please wait a few minutes and try again.';
+    case 'DATABASE_TEMPORARY_UNAVAILABLE':
+      return 'Our server is reconnecting. Please try again in a moment.';
+    case 'TIMEOUT_ERROR':
+    case 'CONNECTION_FAILED':
+      return err?.message || 'Cannot reach the server. Check your internet connection and try again.';
+    default:
+      break;
+  }
+  if (status >= 500) {
+    return 'Something went wrong on our side. Please try again shortly.';
+  }
+  return describeFirebaseAuthError(err);
+}
+

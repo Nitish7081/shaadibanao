@@ -30,6 +30,7 @@ import {
   sendFirebasePhoneOtp,
   confirmFirebasePhoneOtp,
   describeFirebaseAuthError,
+  describeLoginError,
   PhoneConfirmResult,
 } from '../services/firebaseAuthService';
 
@@ -133,6 +134,15 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                 },
               ]
             );
+          } else if (!res.data.user.hasProfile) {
+            Alert.alert('Welcome Back', 'Let\'s finish building your profile.', [
+              {
+                text: 'Create Profile',
+                onPress: () => navigation.navigate('ProfileCreation'),
+              },
+            ]);
+          } else if (res.data.user.approvalStatus && res.data.user.approvalStatus !== 'approved') {
+            navigation.replace('ApprovalPending');
           } else {
             Alert.alert('Welcome Back', 'Authentication successful!', [
               {
@@ -147,7 +157,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         setLoading(false);
         Alert.alert(
           'Verification Failed',
-          describeFirebaseAuthError(fbVerifyErr)
+          describeLoginError(fbVerifyErr)
         );
         return;
       }
@@ -240,7 +250,14 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
             },
           ]);
         } else {
-          if (res.data.user.approvalStatus && res.data.user.approvalStatus !== 'approved') {
+          if (!res.data.user.hasProfile) {
+            Alert.alert('Welcome Back', 'Let\'s finish building your profile.', [
+              {
+                text: 'Create Profile',
+                onPress: () => navigation.navigate('ProfileCreation'),
+              },
+            ]);
+          } else if (res.data.user.approvalStatus && res.data.user.approvalStatus !== 'approved') {
             navigation.replace('ApprovalPending');
           } else {
             Alert.alert('Welcome Back', 'Signed in successfully with Google!', [
@@ -272,7 +289,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       }
       Alert.alert(
         'Google Sign-In Failed',
-        `${describeFirebaseAuthError(err)}${err?.code ? `\n\n(code: ${err.code})` : ''}`
+        `${describeLoginError(err)}${err?.code ? `\n\n(code: ${err.code})` : ''}`
       );
     }
   };

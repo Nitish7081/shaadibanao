@@ -4,9 +4,10 @@ import {
   refreshTokens as apiRefreshTokens,
   getCurrentUser as apiGetCurrentUser,
   loginWithFirebase,
+  logoutUser as apiLogoutUser,
 } from './authService';
 import { registerTokenRefresher, getApiBaseUrl, ApiError } from './apiClient';
-import { isFirebaseNativeAvailable } from './firebaseAuthService';
+import { isFirebaseNativeAvailable, signOutNativeAuth } from './firebaseAuthService';
 
 /**
  * BandhanSetu Mobile Session & Auth State Manager
@@ -178,7 +179,12 @@ export function hasActiveSession(): boolean {
   return !!currentAccessToken;
 }
 
+// Incremented on every logout/clear. Async work started before a logout compares this value and
+// drops its result, so a late token refresh can never silently re-create a logged-out session.
+let sessionEpoch = 0;
+
 export function clearSessionAuth(): void {
+  sessionEpoch += 1;
   currentAccessToken = null;
   currentRefreshToken = null;
   currentUserId = null;
@@ -190,6 +196,39 @@ export function clearSessionAuth(): void {
     STORAGE_KEY_USER_ID,
     STORAGE_KEY_USER,
   ]).catch(() => {});
+}
+
+/**
+ * Full logout:
+ * 1. Revokes this device's refresh token on the server (best effort, never blocks logout)
+ * 2. Signs out of Firebase AND the native Google account
+ * 3. Clears in-memory + AsyncStorage session (awaited, so an app restart cannot restore it)
+ */
+export async function performLogout(): Promise<void> {
+  const access = currentAccessToken;
+  const refresh = currentRefreshToken;
+
+  if (access) {
+    try {
+      await apiLogoutUser(access, refresh || undefined);
+    } catch (err: any) {
+      console.warn('[Logout] Server session revoke skipped:', err?.code || err?.message);
+    }
+  }
+
+  await signOutNativeAuth();
+
+  clearSessionAuth();
+  try {
+    await AsyncStorage.multiRemove([
+      STORAGE_KEY_ACCESS,
+      STORAGE_KEY_REFRESH,
+      STORAGE_KEY_USER_ID,
+      STORAGE_KEY_USER,
+    ]);
+  } catch {
+    // best effort; in-memory state is already cleared
+  }
 }
 
 // In-flight refresh mutex to prevent duplicate concurrent refresh requests and race conditions
@@ -239,10 +278,15 @@ async function tryRefreshViaFirebase(): Promise<AuthTokens | null> {
  * 3. Fallback: Clears session and notifies app listeners that re-login is required.
  */
 async function executeTokenRefresh(): Promise<string | null> {
+  const epochAtStart = sessionEpoch;
   // 1. Primary: Try backend refresh token
   if (currentRefreshToken) {
     try {
       const res = await apiRefreshTokens(currentRefreshToken);
+      if (epochAtStart !== sessionEpoch) {
+        // User logged out while this refresh was in flight: discard the new tokens
+        return null;
+      }
       if (res.data?.tokens) {
         setSessionAuth(
           res.data.tokens,
