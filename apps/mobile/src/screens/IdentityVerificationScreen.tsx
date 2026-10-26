@@ -12,7 +12,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
 import { API_BASE } from '../services/authSession';
-import { getAuthHeader } from '../services/authSession';
+import { getAuthHeader, getSessionToken } from '../services/authSession';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadAsset } from '../services/imageUpload';
 
 export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
   const [docType, setDocType] = useState<'aadhaar_card' | 'passport' | 'voter_id'>('aadhaar_card');
@@ -21,6 +23,33 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
   const [submitting, setSubmitting] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<any>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  // Selected document photo (local only until submit; uploaded privately to Cloudinary)
+  const [docAsset, setDocAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
+
+  const pickDocument = async (fromCamera: boolean) => {
+    try {
+      const perm = fromCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow access to select your document photo.');
+        return;
+      }
+      const opts: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.9,
+        base64: true,
+      };
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+      if (!result.canceled && result.assets?.[0]) setDocAsset(result.assets[0]);
+    } catch {
+      Alert.alert('Error', 'Could not select the document photo.');
+    }
+  };
 
   useEffect(() => {
     fetchStatus();
@@ -52,8 +81,27 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
       return;
     }
 
+    if (!docAsset) {
+      Alert.alert('Document Required', 'Please upload a clear photo of your document.');
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const token = getSessionToken();
+      if (!token) {
+        Alert.alert('Session expired', 'Please log in again.');
+        return;
+      }
+      // Private upload (Cloudinary "authenticated"); only an opaque key comes back, never a URL.
+      setUploadPct(0);
+      const uploaded = await uploadAsset({
+        token,
+        asset: docAsset,
+        purpose: 'identity_document',
+        onProgress: setUploadPct,
+      });
+
       const headers = await getAuthHeader();
       const res = await fetch(`${API_BASE}/verification/identity`, {
         method: 'POST',
@@ -64,7 +112,7 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
         body: JSON.stringify({
           documentType: docType,
           documentReferenceNumber: docNumber.trim(),
-          documentStorageKey: `secure-vault/identity/${docType}_doc.pdf`,
+          documentStorageKey: uploaded.fileKey,
           consentGranted: true,
           termsVersion: 'v1.0',
         }),
@@ -72,6 +120,7 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
 
       const json = await res.json();
       if (json.success) {
+        setDocAsset(null);
         Alert.alert(
           'Verification Submitted! 🛡️',
           'Your identity proof has been securely recorded. Our trust & safety team will verify your document and issue your verified profile badge.',
@@ -80,10 +129,14 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
       } else {
         Alert.alert('Error', json.error?.message || json.message || 'Submission failed.');
       }
-    } catch {
-      Alert.alert('Network Error', 'Please check your connection and try again.');
+    } catch (e: any) {
+      Alert.alert(
+        e?.name === 'UploadError' ? 'Upload Problem' : 'Network Error',
+        e?.name === 'UploadError' ? e.message : 'Please check your connection and try again.'
+      );
     } finally {
       setSubmitting(false);
+      setUploadPct(null);
     }
   };
 
@@ -179,6 +232,25 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
           keyboardType={docType === 'aadhaar_card' ? 'number-pad' : 'default'}
           maxLength={docType === 'aadhaar_card' ? 14 : 20}
         />
+
+        {/* Document Photo (private upload) */}
+        <Text style={styles.sectionLabel}>Upload Document Photo</Text>
+        <View style={styles.typeRow}>
+          <TouchableOpacity style={styles.typeBtn} onPress={() => pickDocument(false)} activeOpacity={0.75}>
+            <Ionicons name="images-outline" size={14} color={colors.royalMaroon} style={{ marginRight: 4 }} />
+            <Text style={styles.typeBtnText}>Gallery</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.typeBtn} onPress={() => pickDocument(true)} activeOpacity={0.75}>
+            <Ionicons name="camera-outline" size={14} color={colors.royalMaroon} style={{ marginRight: 4 }} />
+            <Text style={styles.typeBtnText}>Camera</Text>
+          </TouchableOpacity>
+        </View>
+        {docAsset && (
+          <Text style={styles.maskedDoc}>
+            ✓ Document photo selected (kept private, visible only to you and our verification team)
+          </Text>
+        )}
+        {uploadPct !== null && <Text style={styles.maskedDoc}>Uploading securely... {uploadPct}%</Text>}
 
         {/* Consent Clause */}
         <TouchableOpacity

@@ -4,10 +4,14 @@ import { createApp } from './app';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import { SocketService } from './socket/socket.service';
 import { MigrationService } from './services/migration.service';
+import { StorageService } from './services/storage.service';
 
 const startServer = async (): Promise<void> => {
   const app = createApp();
   const httpServer = http.createServer(app);
+
+  // Report whether Cloudinary is configured (uploads are rejected, never saved locally, if not)
+  StorageService.logStartupStatus();
 
   // Initialize Socket.IO with WebSocket and JWT handshake
   SocketService.init(httpServer);

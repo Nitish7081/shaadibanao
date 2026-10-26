@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
+import { cloudinaryUrl } from '../services/cloudinaryUrl';
 import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
@@ -152,7 +153,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={styles.photoCarousel}>
           {profile?.photos && profile.photos.length > 0 && profile.photos[0].url && !heroImageError ? (
             <Image
-              source={{ uri: profile.photos[0].url }}
+              source={{ uri: cloudinaryUrl(profile.photos[0].url, 'hero') }}
               style={styles.heroImage}
               resizeMode="cover"
               onError={() => setHeroImageError(true)}

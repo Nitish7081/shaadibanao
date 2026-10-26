@@ -142,8 +142,8 @@ export class StorageService {
     // Signed upload URL to backend gateway
     const uploadUrl = `/api/v1/storage/upload?key=${encodeURIComponent(fileKey)}&sig=${signature}&exp=${expiresAt}&uid=${encodeURIComponent(userId)}&purp=${purpose}`;
     
-    // Controlled public delivery URL for public-media (only returned if non-private)
-    const publicUrl = isPrivate ? undefined : `/media/${fileKey}`;
+    // Public delivery URL is the Cloudinary secure_url returned AFTER upload (never a local /media path)
+    const publicUrl = undefined;
 
     return {
       uploadUrl,
@@ -168,29 +168,79 @@ export class StorageService {
     uid?: string,
     purp?: string
   ): boolean {
-    if (!fileKey || !signature) return false;
+    // Signature, expiry, user and purpose are ALL mandatory (no legacy "any 64-hex string" bypass)
+    if (!fileKey || !signature || !exp || !uid || !purp) return false;
 
-    // If expiration and payload parameters are provided, strictly verify HMAC & expiration
-    if (exp && uid && purp) {
-      const expTime = Number(exp);
-      if (isNaN(expTime) || expTime < Date.now()) {
-        return false; // Expired
-      }
-      const tokenPayload = `${uid}:${fileKey}:${purp}:${exp}`;
-      const expected = crypto
-        .createHmac('sha256', config.jwt.accessSecret)
-        .update(tokenPayload)
-        .digest('hex');
-
-      try {
-        return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
-      } catch {
-        return false;
-      }
+    const expTime = Number(exp);
+    if (isNaN(expTime) || expTime < Date.now()) {
+      return false; // Expired
     }
+    const tokenPayload = `${uid}:${fileKey}:${purp}:${exp}`;
+    const expected = crypto
+      .createHmac('sha256', config.jwt.accessSecret)
+      .update(tokenPayload)
+      .digest('hex');
 
-    // Backwards-compatible validation for testing / simple callers
-    return signature.length === 64 && /^[0-9a-f]{64}$/i.test(signature);
+    try {
+      return crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'));
+    } catch {
+      return false;
+    }
+  }
+
+  /** True when Cloudinary credentials are present. Uploads must never fall back to local disk. */
+  static isConfigured(): boolean {
+    return config.cloudinary.isConfigured;
+  }
+
+  /** Logs storage readiness once at startup. Never prints secrets. */
+  static logStartupStatus(): void {
+    if (config.cloudinary.isConfigured) {
+      console.log(`[Storage] Cloudinary configured (cloud: ${config.cloudinary.cloudName}). All uploads go to Cloudinary.`);
+    } else {
+      console.error(
+        '[Storage] CLOUDINARY NOT CONFIGURED: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET. ' +
+          'Image uploads will be rejected with STORAGE_NOT_CONFIGURED (no local-disk fallback).'
+      );
+    }
+  }
+
+  /** Private (authenticated) assets live under this prefix: shaadibanao/private/<purpose>/<userId>/<id> */
+  static readonly PRIVATE_PREFIX = 'shaadibanao/private/';
+
+  static isPrivatePublicId(publicId: string): boolean {
+    return typeof publicId === 'string' && publicId.startsWith(StorageService.PRIVATE_PREFIX);
+  }
+
+  /** Owner user id is encoded in the private public_id, so no extra DB field is needed. */
+  static getPrivateOwnerId(publicId: string): string | null {
+    if (!StorageService.isPrivatePublicId(publicId)) return null;
+    const parts = publicId.split('/');
+    return parts[3] || null;
+  }
+
+  /**
+   * Create a short-lived (default 10 min) signed download URL for a PRIVATE asset.
+   * Callers MUST have authorised the request (owner or admin) before calling this.
+   * The URL and public_id are never logged.
+   */
+  static async getSignedPrivateUrl(publicId: string, ttlSeconds = 600): Promise<{ url: string; expiresInSeconds: number }> {
+    this.ensureCloudinaryConfigured();
+    if (!config.cloudinary.isConfigured) {
+      throw new Error('Cloudinary environment credentials are not configured on server.');
+    }
+    if (!StorageService.isPrivatePublicId(publicId)) {
+      throw new Error('Not a private asset.');
+    }
+    const resource: any = await cloudinary.api.resource(publicId, { type: 'authenticated', resource_type: 'image' });
+    const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
+    const url = cloudinary.utils.private_download_url(publicId, resource.format, {
+      type: 'authenticated',
+      resource_type: 'image',
+      expires_at: expiresAt,
+      attachment: false,
+    });
+    return { url, expiresInSeconds: ttlSeconds };
   }
 
   /**
@@ -202,6 +252,8 @@ export class StorageService {
       folder: string;
       publicId?: string;
       tags?: string[];
+      /** true => Cloudinary type "authenticated" (not publicly reachable; signed URL required) */
+      isPrivate?: boolean;
     }
   ): Promise<CloudinaryUploadResult> {
     this.ensureCloudinaryConfigured();
@@ -210,17 +262,20 @@ export class StorageService {
       throw new Error('Cloudinary environment credentials are not configured on server.');
     }
 
+    const isPrivate = options.isPrivate === true;
+
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder: options.folder,
           public_id: options.publicId,
           resource_type: 'image',
-          allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-          transformation: [
-            { quality: 'auto:good' },
-            { fetch_format: 'auto' },
-          ],
+          type: isPrivate ? 'authenticated' : 'upload',
+          allowed_formats: isPrivate ? ['jpg', 'jpeg', 'png', 'pdf'] : ['jpg', 'jpeg', 'png', 'webp'],
+          // Private documents are stored untouched; public images get auto quality/format
+          ...(isPrivate
+            ? {}
+            : { transformation: [{ quality: 'auto:good' }, { fetch_format: 'auto' }] }),
           tags: options.tags || ['shaadibanao'],
         },
         (error, result: UploadApiResponse | undefined) => {

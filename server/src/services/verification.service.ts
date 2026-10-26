@@ -3,6 +3,8 @@ import { VerificationRequestModel } from '../models/verification-request.model';
 import { UserModel } from '../models/user.model';
 import { ProfileModel } from '../models/profile.model';
 import { AuditLogModel } from '../models/audit-log.model';
+import { StorageService } from './storage.service';
+import { AppError } from '../middleware/errorHandler';
 
 export interface SubmitIdentityInput {
   userId: string;
@@ -199,6 +201,42 @@ export class VerificationService {
     });
 
     return { success: true, message: 'Identity verification rejected.' };
+  }
+
+  /**
+   * Admin: short-lived (10 min) signed URL to view the submitted identity document.
+   * The raw Cloudinary URL is never stored or returned; the access is audit-logged
+   * (request id only, never the URL, key or document number).
+   */
+  static async getDocumentSignedUrl(requestId: string, adminId: string, ipAddress?: string) {
+    const request: any = await VerificationRequestModel.findById(requestId).select('+documentStorageKey');
+    if (!request) throw new AppError('Verification request not found.', 404, 'NOT_FOUND');
+
+    const key: string = request.documentStorageKey;
+    if (!StorageService.isPrivatePublicId(key)) {
+      throw new AppError(
+        'This request has no document in the private vault (legacy or missing upload).',
+        404,
+        'DOCUMENT_NOT_AVAILABLE'
+      );
+    }
+
+    let signed;
+    try {
+      signed = await StorageService.getSignedPrivateUrl(key, 600);
+    } catch {
+      throw new AppError('The document could not be retrieved from secure storage.', 502, 'DOCUMENT_FETCH_FAILED');
+    }
+
+    await AuditLogModel.create({
+      adminId,
+      action: 'VIEW_IDENTITY_DOCUMENT',
+      targetUserId: request.userId.toString(),
+      details: { requestId },
+      ipAddress,
+    });
+
+    return { url: signed.url, expiresInSeconds: signed.expiresInSeconds };
   }
 
   /**

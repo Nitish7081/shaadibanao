@@ -91,12 +91,12 @@ export const createApp = (): Express => {
     next();
   });
 
-  // Serve Public Media (Non-private profile photos & community posts)
+  // LEGACY read-only: serves files already on disk from before the Cloudinary migration.
+  // The server never writes here anymore. Remove once scripts/migrate-local-uploads-to-cloudinary.ts is applied.
   const mediaPath = path.resolve(__dirname, '../uploads');
-  if (!fs.existsSync(mediaPath)) {
-    fs.mkdirSync(mediaPath, { recursive: true });
+  if (fs.existsSync(mediaPath)) {
+    app.use('/media', express.static(mediaPath));
   }
-  app.use('/media', express.static(mediaPath));
 
   // Serve Admin Web Panel
   const adminStaticPath = path.resolve(__dirname, '../public/admin');

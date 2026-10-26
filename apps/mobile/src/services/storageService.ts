@@ -51,53 +51,6 @@ export async function requestUploadIntent(
 }
 
 /**
- * Upload image asset to backend cloud gateway using signed intent
- */
-export async function uploadImageToStorage(
-  intent: UploadIntentResult,
-  base64Data?: string
-): Promise<UploadResponse> {
-  let fullUploadUrl = intent.uploadUrl;
-  if (!fullUploadUrl.startsWith('http')) {
-    const apiBase = getApiBaseUrl();
-    const serverOrigin = apiBase.replace(/\/api\/v1\/?$/, '');
-    fullUploadUrl = `${serverOrigin}${intent.uploadUrl.startsWith('/') ? '' : '/'}${intent.uploadUrl}`;
-  }
-
-  const res = await fetch(fullUploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Upload-Signature': intent.headers['X-Upload-Signature'] || '',
-    },
-    body: JSON.stringify({
-      base64: base64Data || '',
-    }),
-  });
-
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message || json.message || 'Image upload failed.');
-  }
-
-  // Resolve absolute URL for display
-  let resolvedUrl = json.data?.url || intent.publicUrl || '';
-  if (resolvedUrl && !resolvedUrl.startsWith('http')) {
-    const apiBase = getApiBaseUrl();
-    const serverOrigin = apiBase.replace(/\/api\/v1\/?$/, '');
-    resolvedUrl = `${serverOrigin}${resolvedUrl.startsWith('/') ? '' : '/'}${resolvedUrl}`;
-  }
-
-  return {
-    success: true,
-    fileKey: json.data?.fileKey || intent.fileKey,
-    url: resolvedUrl,
-    publicId: json.data?.publicId,
-    secureUrl: json.data?.secureUrl,
-  };
-}
-
-/**
  * Pick image from gallery with validation and compression
  */
 export async function pickImageFromGallery(options?: {

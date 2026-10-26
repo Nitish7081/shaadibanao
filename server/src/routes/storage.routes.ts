@@ -1,16 +1,31 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import path from 'path';
-import fs from 'fs';
 import { StorageService, MAX_FILE_SIZES } from '../services/storage.service';
 import { requireAuth } from '../middleware/auth.middleware';
-import { config } from '../config/env';
 import { ApiResponse } from '@bandhansetu/shared';
 
 export const storageRouter = Router();
 
+const PRIVATE_PURPOSES = ['identity_document', 'kundli_chart'];
+
+function storageNotConfigured(res: Response): void {
+  res.status(503).json({
+    success: false,
+    message: 'Image storage is not available right now. Please try again later.',
+    error: {
+      code: 'STORAGE_NOT_CONFIGURED',
+      message: 'Cloudinary is not configured on the server. Uploads are disabled (no local-disk fallback).',
+    },
+  });
+}
+
 // POST /api/v1/storage/upload-intent (Authenticated)
 storageRouter.post('/upload-intent', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    if (!StorageService.isConfigured()) {
+      storageNotConfigured(res);
+      return;
+    }
+
     const { purpose, fileName, fileType, fileSizeBytes } = req.body;
     const userId = (req as any).user.id || (req as any).user.userId;
 
@@ -22,13 +37,22 @@ storageRouter.post('/upload-intent', requireAuth, async (req: Request, res: Resp
       return;
     }
 
-    const intent = StorageService.generateUploadIntent({
-      userId,
-      purpose,
-      fileName,
-      fileType,
-      fileSizeBytes: Number(fileSizeBytes),
-    });
+    let intent;
+    try {
+      intent = StorageService.generateUploadIntent({
+        userId,
+        purpose,
+        fileName,
+        fileType,
+        fileSizeBytes: Number(fileSizeBytes),
+      });
+    } catch (validationErr: any) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_UPLOAD', message: validationErr.message },
+      });
+      return;
+    }
 
     const response: ApiResponse = {
       success: true,
@@ -41,7 +65,7 @@ storageRouter.post('/upload-intent', requireAuth, async (req: Request, res: Resp
   }
 });
 
-// POST /api/v1/storage/upload (Upload handler / gateway)
+// POST /api/v1/storage/upload (signed upload gateway -> Cloudinary only)
 storageRouter.post('/upload', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const key = req.query.key as string;
@@ -67,13 +91,16 @@ storageRouter.post('/upload', async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    // Extract key metadata
-    const parts = key.split('/');
-    const folderType = parts[0]; // 'secure-vault' or 'public-media'
-    const purpose = parts[1] || 'profile_photo'; // 'profile_photo', 'community_post', 'identity_document', 'kundli_chart'
-    const isPrivate = folderType === 'secure-vault' || purpose === 'identity_document' || purpose === 'kundli_chart';
-    const fileIdentifier = parts[2] || '';
-    const userIdFromKey = fileIdentifier.split('_')[0] || uid || 'member';
+    if (!StorageService.isConfigured()) {
+      console.error('[Storage] Upload rejected: Cloudinary is not configured (code=STORAGE_NOT_CONFIGURED).');
+      storageNotConfigured(res);
+      return;
+    }
+
+    // purpose and uid come from the SIGNED query (tamper-proof), not from client-controlled data
+    const purpose = purp as string;
+    const ownerId = uid as string;
+    const isPrivate = PRIVATE_PURPOSES.includes(purpose);
 
     // Extract file buffer from request body
     let buffer: Buffer | null = null;
@@ -108,120 +135,131 @@ storageRouter.post('/upload', async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    // Validate actual file content via magic bytes
+    // Validate actual file content via magic bytes (never trust the client-declared type)
     const detectedFormat = StorageService.detectFileFormat(buffer);
-
-    if (purpose === 'profile_photo' || purpose === 'community_post' || purpose === 'public_banner') {
-      if (!['jpeg', 'png', 'webp'].includes(detectedFormat)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_FILE_TYPE',
-            message: `Invalid file content. Expected JPEG, PNG, or WebP image, but detected '${detectedFormat}'.`,
-          },
-        });
-        return;
-      }
-    } else if (isPrivate) {
-      if (!['jpeg', 'png', 'pdf'].includes(detectedFormat)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_FILE_TYPE',
-            message: `Invalid file content. Identity documents must be JPEG, PNG, or PDF, but detected '${detectedFormat}'.`,
-          },
-        });
-        return;
-      }
-    }
-
-    // STRICT PRIVACY GUARD:
-    // Identity verification / Aadhaar documents must NEVER be stored on public Cloudinary URLs!
-    if (isPrivate) {
-      const uploadsBase = path.resolve(__dirname, '../../uploads');
-      const targetFilePath = path.join(uploadsBase, key);
-      const targetDir = path.dirname(targetFilePath);
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-      fs.writeFileSync(targetFilePath, buffer);
-
-      res.status(200).json({
-        success: true,
-        message: 'Identity document secured in private restricted vault successfully.',
-        data: {
-          fileKey: key,
-          isPrivate: true,
-          uploadedAt: new Date().toISOString(),
+    const allowedFormats = isPrivate ? ['jpeg', 'png', 'pdf'] : ['jpeg', 'png', 'webp'];
+    if (!allowedFormats.includes(detectedFormat)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_FILE_TYPE',
+          message: `Invalid file content. Allowed: ${allowedFormats.join(', ').toUpperCase()}, but detected '${detectedFormat}'.`,
         },
       });
       return;
     }
 
-    // Public Media (Profile photos, Community posts, Public Banners):
-    // Upload to Cloudinary if configured; fallback gracefully to local storage if running in offline test environment
-    if (config.cloudinary.isConfigured) {
-      try {
-        let cloudinaryFolder = `shaadibanao/community/${userIdFromKey}`;
-        if (purpose === 'profile_photo') {
-          cloudinaryFolder = `shaadibanao/profiles/${userIdFromKey}`;
-        } else if (purpose === 'public_banner') {
-          cloudinaryFolder = 'shaadibanao/banners';
-        }
-
+    try {
+      // ---------- PRIVATE: identity & kundli files -> Cloudinary "authenticated" ----------
+      if (isPrivate) {
         const cloudResult = await StorageService.uploadToCloudinary(buffer, {
-          folder: cloudinaryFolder,
-          tags: ['shaadibanao', purpose],
+          folder: `${StorageService.PRIVATE_PREFIX}${purpose}/${ownerId}`,
+          tags: ['shaadibanao', 'private', purpose],
+          isPrivate: true,
         });
 
+        // NEVER return the raw Cloudinary URL for private files; only the opaque key
         res.status(200).json({
           success: true,
-          message: 'Photo uploaded and secured in Cloudinary successfully.',
+          message: 'Document stored securely in the private vault.',
           data: {
-            fileKey: key,
-            url: cloudResult.secureUrl,
-            publicId: cloudResult.publicId,
-            secureUrl: cloudResult.secureUrl,
-            format: cloudResult.format,
-            width: cloudResult.width,
-            height: cloudResult.height,
-            bytes: cloudResult.bytes,
+            fileKey: cloudResult.publicId,
+            isPrivate: true,
             uploadedAt: new Date().toISOString(),
           },
         });
         return;
-      } catch (cloudErr: any) {
-        // Safe sanitization: never expose secret or credentials in error response
-        res.status(502).json({
-          success: false,
-          error: {
-            code: 'STORAGE_UPLOAD_FAILED',
-            message: `Cloudinary upload failed: ${cloudErr.message || 'Remote gateway error'}`,
-          },
-        });
-        return;
       }
+
+      // ---------- PUBLIC: profile photos, community posts, banners -> Cloudinary public ----------
+      let cloudinaryFolder = `shaadibanao/community/${ownerId}`;
+      if (purpose === 'profile_photo') {
+        cloudinaryFolder = `shaadibanao/profiles/${ownerId}`;
+      } else if (purpose === 'public_banner') {
+        cloudinaryFolder = 'shaadibanao/banners';
+      }
+
+      const cloudResult = await StorageService.uploadToCloudinary(buffer, {
+        folder: cloudinaryFolder,
+        tags: ['shaadibanao', purpose],
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Photo uploaded and secured in Cloudinary successfully.',
+        data: {
+          fileKey: key,
+          url: cloudResult.secureUrl,
+          publicId: cloudResult.publicId,
+          secureUrl: cloudResult.secureUrl,
+          format: cloudResult.format,
+          width: cloudResult.width,
+          height: cloudResult.height,
+          bytes: cloudResult.bytes,
+          uploadedAt: new Date().toISOString(),
+        },
+      });
+    } catch (cloudErr: any) {
+      // Log code + purpose only. Never log file content, URLs or document numbers.
+      console.error(`[Storage] Cloudinary upload failed (code=STORAGE_UPLOAD_FAILED, purpose=${purpose}, private=${isPrivate}).`);
+      res.status(502).json({
+        success: false,
+        error: {
+          code: 'STORAGE_UPLOAD_FAILED',
+          message: `Cloudinary upload failed: ${cloudErr.message || 'Remote gateway error'}`,
+        },
+      });
+    }
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// POST /api/v1/storage/private-url (Authenticated: owner or admin/moderator only)
+// Returns a short-lived (10 min) signed URL for a private identity/kundli file.
+storageRouter.post('/private-url', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { key } = req.body || {};
+    const user = (req as any).user;
+    const userId = String(user.id || user.userId);
+
+    if (!key || typeof key !== 'string' || !StorageService.isPrivatePublicId(key)) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_KEY', message: 'A valid private document key is required.' },
+      });
+      return;
     }
 
-    // Local disk fallback for disconnected / testing environments
-    const uploadsBase = path.resolve(__dirname, '../../uploads');
-    const targetFilePath = path.join(uploadsBase, key);
-    const targetDir = path.dirname(targetFilePath);
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
+    const ownerId = StorageService.getPrivateOwnerId(key);
+    const isStaff = user.role === 'admin' || user.role === 'moderator';
+    if (!isStaff && ownerId !== userId) {
+      console.warn(`[Storage] Private URL denied (code=FORBIDDEN, user=${userId}).`);
+      res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'You do not have access to this document.' },
+      });
+      return;
     }
-    fs.writeFileSync(targetFilePath, buffer);
 
-    res.status(200).json({
-      success: true,
-      message: 'File uploaded and secured successfully.',
-      data: {
-        fileKey: key,
-        url: `/media/${key}`,
-        publicId: `local_${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
-        uploadedAt: new Date().toISOString(),
-      },
-    });
+    if (!StorageService.isConfigured()) {
+      storageNotConfigured(res);
+      return;
+    }
+
+    try {
+      const signed = await StorageService.getSignedPrivateUrl(key, 600);
+      console.info(`[Storage] Private URL issued (user=${userId}, staff=${isStaff}).`);
+      res.status(200).json({
+        success: true,
+        data: { url: signed.url, expiresInSeconds: signed.expiresInSeconds },
+      });
+    } catch {
+      res.status(404).json({
+        success: false,
+        error: { code: 'DOCUMENT_NOT_FOUND', message: 'The requested document could not be found.' },
+      });
+    }
   } catch (error: any) {
     next(error);
   }

@@ -20,8 +20,18 @@ export class CommunityService {
     if (!user) throw new Error('User not found.');
 
     // Security check: Never allow identity documents / vault paths to be posted publicly
-    if (input.mediaUrl.includes('secure-vault') || input.mediaUrl.toLowerCase().includes('aadhaar')) {
+    if (
+      input.mediaUrl.includes('secure-vault') ||
+      input.mediaUrl.includes('/private/') ||
+      input.mediaUrl.includes('/authenticated/') ||
+      input.mediaUrl.toLowerCase().includes('aadhaar')
+    ) {
       throw new Error('Identity documents and private records cannot be published to community feed.');
+    }
+
+    // Images must be stored as hosted URLs (Cloudinary secure_url), never as base64/data URIs in the DB
+    if (!/^https?:\/\//i.test(input.mediaUrl) && !input.mediaUrl.startsWith('/media/')) {
+      throw new Error('mediaUrl must be a hosted image URL. Upload the image first.');
     }
 
     const post = await CommunityPostModel.create({

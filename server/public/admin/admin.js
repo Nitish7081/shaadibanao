@@ -459,7 +459,7 @@ async function loadApprovals() {
         const initials = (item.displayName || 'NA').slice(0, 2).toUpperCase();
 
         const avatarHtml = mainPhoto
-          ? `<img src="${escapeHtml(mainPhoto)}" class="user-cell-avatar" alt="Photo" onerror="this.outerHTML='<div class=\\'user-cell-initials\\'>${initials}</div>'"/>`
+          ? `<img src="${escapeHtml(cdnThumb(mainPhoto, 96, true))}" class="user-cell-avatar" alt="Photo" onerror="this.outerHTML='<div class=\\'user-cell-initials\\'>${initials}</div>'"/>`
           : `<div class="user-cell-initials">${initials}</div>`;
 
         const locationStr = profile ? [profile.city, profile.state].filter(Boolean).join(', ') : 'Location not submitted';
@@ -546,7 +546,7 @@ function openApplicantModal(userId) {
             .map(
               (p, idx) => `
             <div class="bio-photo-card" style="position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: #fff;">
-              <img src="${escapeHtml(p.url || FALLBACK_MEDIA_SVG)}" alt="Photo ${idx + 1}" style="width: 130px; height: 150px; object-fit: cover; display: block;" onerror="this.onerror=null; this.src=FALLBACK_MEDIA_SVG; this.classList.add('img-load-failed');"/>
+              <img src="${escapeHtml(p.url ? cdnThumb(p.url, 260, true) : FALLBACK_MEDIA_SVG)}" alt="Photo ${idx + 1}" style="width: 130px; height: 150px; object-fit: cover; display: block;" onerror="this.onerror=null; this.src=FALLBACK_MEDIA_SVG; this.classList.add('img-load-failed');"/>
               <div style="padding: 6px; font-size: 11px;">
                 ${p.isMain ? '<span style="background: var(--royal-maroon); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block; margin-bottom: 4px;">MAIN</span> ' : ''}
                 ${p.url?.includes('cloudinary.com') ? '<span style="background: rgba(16, 185, 129, 0.15); color: #059669; padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block; margin-bottom: 4px;">☁️ CLOUDINARY</span>' : ''}
@@ -1569,10 +1569,12 @@ async function loadVerifications() {
           ? '<span class="text-green text-xs">✓ Explicit Consent</span>'
           : '<span class="text-red text-xs">No Consent</span>';
 
+        const viewDocBtn = `<button class="btn-secondary btn-xs" onclick="viewVerificationDocument('${r.id}')">View document</button>`;
         const actions =
           r.status === 'pending'
             ? `
               <div class="action-buttons">
+                ${viewDocBtn}
                 <button class="btn-primary btn-xs" onclick="approveVerification('${r.id}')">✓ Approve</button>
                 <button class="btn-danger btn-xs" onclick="rejectVerification('${r.id}')">✕ Reject</button>
               </div>
@@ -1601,6 +1603,25 @@ async function loadVerifications() {
       .join('');
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-red">${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// Cloudinary display helper: f_auto,q_auto + width (c_fill/g_face for avatars). Public images only.
+function cdnThumb(url, width, face) {
+  if (!url || !/^https?:\/\/res\.cloudinary\.com\//i.test(url) || !url.includes('/image/upload/')) return url;
+  const t = ['f_auto', 'q_auto', `w_${width}`].concat(face ? ['h_' + width, 'c_fill', 'g_face'] : ['c_limit']);
+  return url.replace('/image/upload/', `/image/upload/${t.join(',')}/`);
+}
+
+// Private identity document: short-lived (10 min) signed URL fetched on demand, audit-logged server side.
+async function viewVerificationDocument(id) {
+  try {
+    const res = await adminFetch(`/admin/verifications/${id}/document-url`);
+    const url = res?.data?.url;
+    if (!url) throw new Error('Document not available.');
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (err) {
+    showToast(err.message || 'Could not open document.', 'error');
   }
 }
 

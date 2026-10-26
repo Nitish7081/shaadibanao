@@ -17,9 +17,8 @@ import { API_BASE, getAuthHeader, getSessionToken } from '../services/authSessio
 import {
   pickImageFromGallery,
   captureImageWithCamera,
-  requestUploadIntent,
-  uploadImageToStorage,
 } from '../services/storageService';
+import { uploadAsset } from '../services/imageUpload';
 
 export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
   const [caption, setCaption] = useState('');
@@ -77,22 +76,14 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
         throw new Error('You must be signed in to post stories.');
       }
 
-      // Step 1: Request signed upload intent from backend
-      setUploadProgressMsg('Generating upload intent...');
-      const fileName = selectedPhoto.fileName || `community_${Date.now()}.jpg`;
-      const fileType = selectedPhoto.mimeType || 'image/jpeg';
-      const fileSizeBytes = selectedPhoto.fileSize || 1024 * 500;
-
-      const intent = await requestUploadIntent(token, {
+      // Step 1+2: validate, compress, and upload to Cloudinary via shared helper
+      setUploadProgressMsg('Uploading photo...');
+      const uploadRes = await uploadAsset({
+        token,
+        asset: selectedPhoto,
         purpose: 'community_post',
-        fileName,
-        fileType,
-        fileSizeBytes,
+        onProgress: (pct) => setUploadProgressMsg(`Uploading photo... ${pct}%`),
       });
-
-      // Step 2: Upload photo bytes/base64 to backend storage gateway
-      setUploadProgressMsg('Uploading photo to storage...');
-      const uploadRes = await uploadImageToStorage(intent, selectedPhoto.base64 || undefined);
       const uploadedMediaUrl = uploadRes.url;
 
       // Step 3: Create post with uploaded media URL

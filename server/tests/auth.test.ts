@@ -9,6 +9,15 @@ describe('Authentication & Security Suite (/api/v1/auth)', () => {
   let accessToken = '';
   let refreshToken = '';
 
+  // Make the suite independent of the developer's local .env (never edits the real file)
+  const originalOtpMode = config.otp.deliveryMode;
+  beforeAll(() => {
+    config.otp.deliveryMode = 'development_mock';
+  });
+  afterAll(() => {
+    config.otp.deliveryMode = originalOtpMode;
+  });
+
   describe('POST /api/v1/auth/request-otp', () => {
     it('should reject invalid mobile number formats with 400', async () => {
       const response = await request(app)

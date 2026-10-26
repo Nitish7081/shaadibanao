@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image, ViewStyle } from 'reac
 import { Ionicons } from '@expo/vector-icons';
 import { SearchResultProfile } from '@bandhansetu/shared';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { cloudinaryUrl } from '../../services/cloudinaryUrl';
 
 interface MatchCardProps {
   match: SearchResultProfile;
@@ -39,7 +40,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, style }) =
         <View style={styles.avatarWrap}>
           {mainPhoto && !imageError ? (
             <Image
-              source={{ uri: mainPhoto }}
+              source={{ uri: cloudinaryUrl(mainPhoto, 'card') }}
               style={styles.avatarImg}
               onError={() => setImageError(true)}
             />

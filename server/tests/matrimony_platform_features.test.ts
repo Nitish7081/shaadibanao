@@ -21,7 +21,8 @@ describe('ShaadiBanao - Modern Matrimony, Astrology & Pandit Services Platform S
       expect(intent).toBeDefined();
       expect(intent.uploadUrl).toContain('/api/v1/storage/upload');
       expect(intent.isPrivate).toBe(false);
-      expect(intent.publicUrl).toBeDefined();
+      // No local-disk fallback anymore: public URL comes from Cloudinary after upload
+      expect(intent.publicUrl).toBeUndefined();
       expect(intent.headers['X-Upload-Signature']).toBeDefined();
     });
 

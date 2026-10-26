@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { VerificationService } from '../services/verification.service';
 import { requireAuth } from '../middleware/auth.middleware';
+import { StorageService } from '../services/storage.service';
 import { ApiResponse } from '@bandhansetu/shared';
 
 export const verificationRouter = Router();
@@ -31,6 +32,22 @@ verificationRouter.post('/identity', requireAuth, async (req: Request, res: Resp
       res.status(400).json({
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'documentType, documentReferenceNumber, and documentStorageKey are required.' },
+      });
+      return;
+    }
+
+    // The key must be a private-vault document uploaded by THIS user (prevents referencing others' files)
+    if (
+      typeof documentStorageKey !== 'string' ||
+      !StorageService.isPrivatePublicId(documentStorageKey) ||
+      StorageService.getPrivateOwnerId(documentStorageKey) !== String(userId)
+    ) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_DOCUMENT',
+          message: 'Please upload your identity document first, then submit the request.',
+        },
       });
       return;
     }

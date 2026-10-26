@@ -415,6 +415,20 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/verifications/:id/document-url
+   * Short-lived (10 min) signed URL for the private identity document. Audit-logged.
+   */
+  public static async getVerificationDocumentUrl(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const result = await VerificationService.getDocumentSignedUrl(req.params.id, adminId, req.ip);
+      res.status(200).json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/v1/admin/verifications/:id/reject
    */
   public static async rejectVerification(req: Request, res: Response, next: NextFunction): Promise<void> {

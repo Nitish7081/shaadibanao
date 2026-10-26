@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
 import { CommunityPostItem } from '@bandhansetu/shared';
 import { API_BASE } from '../services/authSession';
+import { cloudinaryUrl } from '../services/cloudinaryUrl';
 import { getAuthHeader } from '../services/authSession';
 
 export const CommunityScreen: React.FC<any> = ({ navigation }) => {
@@ -129,7 +130,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
         {/* Media Photo */}
         {item.mediaUrl ? (
           <Image
-            source={{ uri: item.mediaUrl }}
+            source={{ uri: cloudinaryUrl(item.mediaUrl, 'post') }}
             style={styles.postImage}
             resizeMode="cover"
           />

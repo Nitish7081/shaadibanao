@@ -38,9 +38,9 @@ import { getSessionToken, refreshSessionTokens, getSessionUser } from '../servic
 import {
   pickImageFromGallery,
   captureImageWithCamera,
-  requestUploadIntent,
-  uploadImageToStorage,
 } from '../services/storageService';
+import { uploadAsset } from '../services/imageUpload';
+import { cloudinaryUrl } from '../services/cloudinaryUrl';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProfileCreation'>;
 
@@ -180,7 +180,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
             setPhotos(p.photos);
             const main = p.photos.find((ph) => ph.isMain) || p.photos[0];
             if (main?.url) {
-              setSelectedPhotoUri(main.url);
+              setSelectedPhotoUri(cloudinaryUrl(main.url, 'hero'));
               setPhotoApprovalStatus(main.approved ? 'approved' : 'pending');
             }
           }
@@ -255,21 +255,10 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
 
     setUploadingPhoto(true);
     try {
-      const fileName = asset.fileName || `portrait_${Date.now()}.jpg`;
-      const fileType = asset.mimeType || 'image/jpeg';
-      const fileSizeBytes = asset.fileSize || 500 * 1024;
-
-      const intent = await requestUploadIntent(token, {
-        purpose: 'profile_photo',
-        fileName,
-        fileType,
-        fileSizeBytes,
-      });
-
-      const uploadResult = await uploadImageToStorage(intent, asset.base64);
+      const uploadResult = await uploadAsset({ token, asset, purpose: 'profile_photo' });
 
       const newPhoto: PhotoData = {
-        url: uploadResult.url,
+        url: uploadResult.url || '',
         publicId: uploadResult.publicId,
         isMain: true,
         privacy: photoPrivacy,
@@ -817,7 +806,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
                   {selectedPhotoUri ? (
                     <View style={styles.previewCard}>
                       <Image
-                        source={{ uri: selectedPhotoUri }}
+                        source={{ uri: cloudinaryUrl(selectedPhotoUri, 'hero') }}
                         style={styles.previewImage}
                         resizeMode="cover"
                       />

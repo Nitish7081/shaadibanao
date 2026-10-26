@@ -48,6 +48,7 @@ adminRouter.post('/pandits/:id/reject', AdminController.rejectPandit);
 adminRouter.get('/verifications', AdminController.getVerifications);
 adminRouter.post('/verifications/:id/approve', AdminController.approveVerification);
 adminRouter.post('/verifications/:id/reject', AdminController.rejectVerification);
+adminRouter.get('/verifications/:id/document-url', AdminController.getVerificationDocumentUrl);
 adminRouter.get('/photos/pending', AdminController.getPendingPhotos);
 adminRouter.post('/photos/:userId/moderate', AdminController.moderatePhoto);
 
