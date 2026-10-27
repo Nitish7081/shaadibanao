@@ -8,6 +8,11 @@ import {
 } from '../src/services/photoPrivacy';
 import { UpsertProfileInput } from '@bandhansetu/shared';
 
+import { config } from '../src/config/env';
+
+// DUMMY secret for tests only (never a real credential).
+config.cloudinary.apiSecret = 'dummy_test_secret';
+
 const ORIGINAL = 'https://res.cloudinary.com/demo/image/upload/v1700000000/profiles/abc123.jpg';
 const token = (userId: string, mobile: string) =>
   TokenService.generateTokens({ userId, mobile, role: 'member' }).accessToken;
@@ -16,14 +21,14 @@ describe('Photo privacy (server-side)', () => {
   describe('toBlurredUrl / effectivePhotoPrivacy', () => {
     it('inserts a strong Cloudinary blur and never returns the original URL', () => {
       const blurred = toBlurredUrl(ORIGINAL);
-      expect(blurred).toContain('/image/upload/e_blur:2000');
+      expect(blurred).toMatch(/\/image\/upload\/s--[\w-]{8}--\/e_blur:2000/);
       expect(blurred).not.toBe(ORIGINAL);
       expect(blurred.endsWith('/v1700000000/profiles/abc123.jpg')).toBe(true);
     });
 
     it('returns no URL when the photo cannot be blurred server-side', () => {
       expect(toBlurredUrl('https://images.unsplash.com/photo-1')).toBe('');
-      expect(toBlurredUrl('https://res.cloudinary.com/demo/image/authenticated/s--x--/v1/a.jpg')).toBe('');
+      expect(toBlurredUrl('https://res.cloudinary.com/demo/video/upload/v1/a.mp4')).toBe('');
       expect(toBlurredUrl('')).toBe('');
       expect(toBlurredUrl(undefined)).toBe('');
     });
