@@ -1,6 +1,14 @@
 import mongoose from 'mongoose';
 import { KundliModel } from '../models/kundli.model';
 import { KundliMatchingResult, AshtaKootaScore } from '@bandhansetu/shared';
+import { StorageService } from './storage.service';
+
+/** Only the owner's own private-vault key is accepted; a raw URL from the client is dropped. */
+export function safeChartKey(value: unknown, userId: string): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (!StorageService.isPrivatePublicId(value)) return undefined;
+  return StorageService.getPrivateOwnerId(value) === String(userId) ? value : undefined;
+}
 
 // Rashi mapped to planetary lord
 const RASHI_LORDS: Record<string, string> = {
@@ -115,7 +123,7 @@ export class AstrologyService {
         lagna: data.lagna,
         manglikStatus: data.manglikStatus || 'dont_know',
         visibility: data.visibility || 'matches_only',
-        chartUrl: data.chartUrl,
+        chartUrl: safeChartKey(data.chartUrl, userId),
         notes: data.notes,
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
