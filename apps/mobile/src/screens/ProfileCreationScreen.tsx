@@ -25,6 +25,8 @@ import {
   PartnerPreferencesInput,
   PhotoData,
   RASHI_LIST,
+  checkDateOfBirth,
+  DATE_OF_BIRTH_MESSAGES,
   NAKSHATRA_LIST,
 } from '@bandhansetu/shared';
 import { Input } from '../components/common/Input';
@@ -293,8 +295,14 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
         Alert.alert('Required Field', 'Please enter your last name.');
         return false;
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.trim())) {
-        Alert.alert('Required Field', 'Please enter your date of birth as YYYY-MM-DD.');
+      const dobError = checkDateOfBirth(dateOfBirth);
+      if (dobError) {
+        const title = dobError === 'format' ? 'Required Field' : 'Invalid Date of Birth';
+        const message =
+          dobError === 'format'
+            ? 'Please enter your date of birth as YYYY-MM-DD.'
+            : DATE_OF_BIRTH_MESSAGES[dobError] + '.';
+        Alert.alert(title, message);
         return false;
       }
       const h = parseInt(heightCm, 10);

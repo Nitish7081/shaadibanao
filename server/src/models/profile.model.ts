@@ -32,7 +32,7 @@ export interface IProfile extends Document {
   education: string;
   employedIn: string;
   occupation: string;
-  annualIncomeBand: string;
+  annualIncomeBand?: string;
   showIncomeBand: boolean;
   photos: IProfilePhoto[];
   photoPrivacy: PhotoPrivacy;
@@ -115,7 +115,7 @@ const ProfileSchema = new Schema<IProfile>(
       default: 'private',
     },
     occupation: { type: String, required: true },
-    annualIncomeBand: { type: String, default: '₹10L - ₹15L' },
+    annualIncomeBand: { type: String },
     showIncomeBand: { type: Boolean, default: true },
     photos: { type: [ProfilePhotoSchema], default: [] },
     photoPrivacy: {
