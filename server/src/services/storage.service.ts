@@ -254,6 +254,8 @@ export class StorageService {
       tags?: string[];
       /** true => Cloudinary type "authenticated" (not publicly reachable; signed URL required) */
       isPrivate?: boolean;
+      /** true => store as type "authenticated" but keep the public-image rules (formats/transform), e.g. profile photos */
+      authenticated?: boolean;
     }
   ): Promise<CloudinaryUploadResult> {
     this.ensureCloudinaryConfigured();
@@ -263,6 +265,7 @@ export class StorageService {
     }
 
     const isPrivate = options.isPrivate === true;
+    const deliveryType = isPrivate || options.authenticated === true ? 'authenticated' : 'upload';
 
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -270,7 +273,7 @@ export class StorageService {
           folder: options.folder,
           public_id: options.publicId,
           resource_type: 'image',
-          type: isPrivate ? 'authenticated' : 'upload',
+          type: deliveryType,
           allowed_formats: isPrivate ? ['jpg', 'jpeg', 'png', 'pdf'] : ['jpg', 'jpeg', 'png', 'webp'],
           // Private documents are stored untouched; public images get auto quality/format
           ...(isPrivate
@@ -307,11 +310,11 @@ export class StorageService {
   /**
    * Delete asset from Cloudinary by publicId
    */
-  static async deleteFromCloudinary(publicId: string): Promise<boolean> {
+  static async deleteFromCloudinary(publicId: string, type: 'upload' | 'authenticated' | 'private' = 'upload'): Promise<boolean> {
     if (!config.cloudinary.isConfigured || !publicId) return false;
     this.ensureCloudinaryConfigured();
     try {
-      const res = await cloudinary.uploader.destroy(publicId);
+      const res = await cloudinary.uploader.destroy(publicId, { type, resource_type: 'image', invalidate: true });
       return res?.result === 'ok';
     } catch {
       return false;

@@ -13,6 +13,7 @@ import { PartnerPreferenceModel } from '../models/preference.model';
 import { KundliModel } from '../models/kundli.model';
 import { BannerModel } from '../models/banner.model';
 import { StorageService } from './storage.service';
+import { presentPhoto, presentPhotoUrl } from './photoPrivacy';
 import { TokenService } from './token.service';
 import { SocketService } from '../socket/socket.service';
 import { AppError } from '../middleware/errorHandler';
@@ -429,7 +430,7 @@ export class AdminService {
         mobile: u.mobile,
         email: u.email,
         displayName: u.displayName || (p ? `${p.firstName} ${p.lastName}`.trim() : 'New Applicant'),
-        avatarUrl: u.avatarUrl || (p?.photos?.find((ph: any) => ph.isMain)?.url) || (p?.photos?.[0]?.url),
+        avatarUrl: u.avatarUrl || presentPhotoUrl((p?.photos?.find((ph: any) => ph.isMain)?.url) || (p?.photos?.[0]?.url), 'avatar'),
         role: u.role,
         status: u.status,
         approvalStatus: u.approvalStatus || 'pending',
@@ -476,7 +477,10 @@ export class AdminService {
               photoChecked: p.photoChecked,
               photoPrivacy: p.photoPrivacy,
               aboutMe: p.aboutMe,
-              photos: p.photos || [],
+              photos: (p.photos || []).map((ph: any) => ({
+                ...(ph.toObject?.() ?? ph),
+                ...presentPhoto(ph.url, ph.publicId), // staff see authenticated photos via signed URLs
+              })),
             }
           : null,
         preferences: pref

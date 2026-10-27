@@ -33,6 +33,10 @@ export const config = {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
     apiKey: process.env.CLOUDINARY_API_KEY || '',
     apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+    /** OPTIONAL: Cloudinary token-based-authentication key. When set, signed photo URLs also expire. */
+    authTokenKey: process.env.CLOUDINARY_AUTH_TOKEN_KEY || '',
+    /** Lifetime of expiring photo URLs (only used when authTokenKey is set). */
+    signedUrlTtlSeconds: Number(process.env.CLOUDINARY_SIGNED_URL_TTL_SECONDS) || 600,
     isConfigured: Boolean(
       process.env.CLOUDINARY_CLOUD_NAME &&
       process.env.CLOUDINARY_API_KEY &&

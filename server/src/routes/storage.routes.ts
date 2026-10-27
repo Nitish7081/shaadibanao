@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { StorageService, MAX_FILE_SIZES } from '../services/storage.service';
 import { requireAuth } from '../middleware/auth.middleware';
 import { ApiResponse } from '@bandhansetu/shared';
+import { presentPhoto } from '../services/photoPrivacy';
 
 export const storageRouter = Router();
 
@@ -179,19 +180,30 @@ storageRouter.post('/upload', async (req: Request, res: Response, next: NextFunc
         cloudinaryFolder = 'shaadibanao/banners';
       }
 
+      // Profile photos are stored as Cloudinary type "authenticated" (not publicly reachable);
+      // they are shown only through signed URLs issued by the API.
+      const isProfilePhoto = purpose === 'profile_photo';
       const cloudResult = await StorageService.uploadToCloudinary(buffer, {
         folder: cloudinaryFolder,
         tags: ['shaadibanao', purpose],
+        authenticated: isProfilePhoto,
       });
+
+      // For an authenticated photo the raw secure_url does not open; hand back a signed one for
+      // the immediate preview. The API stores only the plain asset reference (see ProfileService).
+      const shown = isProfilePhoto ? presentPhoto(cloudResult.secureUrl, cloudResult.publicId) : null;
+      const displayUrl = shown ? shown.url : cloudResult.secureUrl;
 
       res.status(200).json({
         success: true,
         message: 'Photo uploaded and secured in Cloudinary successfully.',
         data: {
           fileKey: key,
-          url: cloudResult.secureUrl,
+          url: displayUrl,
           publicId: cloudResult.publicId,
-          secureUrl: cloudResult.secureUrl,
+          secureUrl: displayUrl,
+          ...(shown?.variants ? { variants: shown.variants } : {}),
+          ...(shown?.urlExpiresAt ? { urlExpiresAt: shown.urlExpiresAt } : {}),
           format: cloudResult.format,
           width: cloudResult.width,
           height: cloudResult.height,

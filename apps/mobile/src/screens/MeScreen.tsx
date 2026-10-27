@@ -23,7 +23,7 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { getMyProfile } from '../services/profileService';
-import { cloudinaryUrl } from '../services/cloudinaryUrl';
+import { photoSrc } from '../services/cloudinaryUrl';
 import { getMyMembership } from '../services/membershipService';
 import { getSessionToken, performLogout, getSessionUser } from '../services/authSession';
 
@@ -201,7 +201,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.avatar}>
               {profile?.photos && profile.photos.length > 0 && profile.photos[0].url ? (
                 <Image
-                  source={{ uri: cloudinaryUrl(profile.photos[0].url, 'avatar') }}
+                  source={{ uri: photoSrc(profile.photos[0], 'avatar') }}
                   style={{ width: 60, height: 60, borderRadius: 30 }}
                   resizeMode="cover"
                 />

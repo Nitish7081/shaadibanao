@@ -22,3 +22,16 @@ export function cloudinaryUrl(url: string | undefined | null, preset: ImagePrese
   if (/\/image\/upload\/[^/]*(f_auto|q_auto)/.test(url)) return url; // already transformed
   return url.replace('/image/upload/', `/image/upload/${presetTransformation(preset)}/`);
 }
+
+/**
+ * Display URL for a photo object from the API. Authenticated photos come with server-signed
+ * per-size ariants; use the right size when present, else fall back to cloudinaryUrl().
+ */
+export function photoSrc(
+  photo: { url?: string | null; variants?: { avatar?: string; card?: string; hero?: string } } | undefined | null,
+  preset: ImagePreset = 'card'
+): string {
+  if (!photo) return '';
+  const v = photo.variants && (photo.variants as Record<string, string | undefined>)[preset];
+  return v || cloudinaryUrl(photo.url, preset);
+}

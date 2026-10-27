@@ -4,6 +4,7 @@ import { UserModel } from '../models/user.model';
 import { ProfileModel } from '../models/profile.model';
 import { AuditLogModel } from '../models/audit-log.model';
 import { StorageService } from './storage.service';
+import { presentPhoto } from './photoPrivacy';
 import { AppError } from '../middleware/errorHandler';
 
 export interface SubmitIdentityInput {
@@ -329,7 +330,7 @@ export class VerificationService {
         email: u.email,
         photos: (prof?.photos || []).map((p: any) => ({
           id: p._id?.toString() || p.id,
-          url: p.url,
+          ...presentPhoto(p.url, p.publicId),
           isMain: p.isMain,
           approved: p.approved,
         })),

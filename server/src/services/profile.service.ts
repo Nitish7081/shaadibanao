@@ -3,7 +3,15 @@ import { ProfileModel, IProfile } from '../models/profile.model';
 import { UserModel } from '../models/user.model';
 import { AppError } from '../middleware/errorHandler';
 import { StorageService } from './storage.service';
-import { buildPublicPhotos, getAcceptedUserIds, PhotoViewerContext } from './photoPrivacy';
+import {
+  buildPublicPhotos,
+  getAcceptedUserIds,
+  PhotoViewerContext,
+  presentPhoto,
+  canonicalPhotoUrl,
+  photoDeliveryType,
+  parseCloudinaryUrl,
+} from './photoPrivacy';
 import {
   UpsertProfileInput,
   UserProfile,
@@ -76,7 +84,7 @@ export class ProfileService {
       showIncomeBand: doc.showIncomeBand,
       photos: (doc.photos || []).map((p: any) => ({
         id: p._id?.toString() || p.id,
-        url: p.url,
+        ...presentPhoto(p.url, p.publicId), // authenticated photos => short signed URLs (+ variants)
         publicId: p.publicId,
         isMain: p.isMain,
         privacy: p.privacy,
@@ -172,7 +180,20 @@ export class ProfileService {
     const existingPhotos: any[] = existingProfile?.photos || [];
 
     // Sanitize photos: new photos cannot be self-approved by client
-    const processedPhotos = (input.photos || []).map((photo: any) => {
+    const processedPhotos = (input.photos || []).map((rawPhoto: any) => {
+      // Clients send back the signed display URL they were given; the DB keeps only the plain reference.
+      const photo = { ...rawPhoto, url: canonicalPhotoUrl(rawPhoto.url) };
+      delete (photo as any).variants;
+      delete (photo as any).urlExpiresAt;
+      const parsedUrl = parseCloudinaryUrl(photo.url);
+      if (parsedUrl && parsedUrl.type !== 'upload') {
+        // Authenticated photos must live in this member's own folder (and the publicId must agree),
+        // otherwise the server would happily sign somebody else's private photo for them.
+        const ownPrefix = `shaadibanao/profiles/${userId}/`;
+        if (!parsedUrl.publicId.startsWith(ownPrefix) || (photo.publicId && photo.publicId !== parsedUrl.publicId)) {
+          throw new AppError('Photo does not belong to your account.', 400, 'INVALID_PHOTO');
+        }
+      }
       const matchExisting = existingPhotos.find(
         (ep: any) => ep.url === photo.url || (photo.publicId && ep.publicId === photo.publicId)
       );
@@ -189,7 +210,7 @@ export class ProfileService {
     const currentPublicIds = new Set(processedPhotos.map((p) => p.publicId).filter(Boolean));
     for (const ep of existingPhotos) {
       if (ep.publicId && !currentPublicIds.has(ep.publicId)) {
-        StorageService.deleteFromCloudinary(ep.publicId).catch(() => {});
+        StorageService.deleteFromCloudinary(ep.publicId, photoDeliveryType(ep.url) || 'upload').catch(() => {});
       }
     }
 

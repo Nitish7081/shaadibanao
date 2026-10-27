@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { UserProfile, SearchResultProfile } from '@bandhansetu/shared';
 import { GradientRingAvatar, PressableScale, Skeleton, ds } from '../../design';
-import { cloudinaryUrl } from '../../services/cloudinaryUrl';
+import { photoSrc } from '../../services/cloudinaryUrl';
 import { getInitials, getSafeMatchPhoto } from './matchPhoto';
 
 interface Props {
@@ -44,7 +44,7 @@ export const StoriesRow: React.FC<Props> = ({
       >
         <GradientRingAvatar
           size={SIZE}
-          uri={ownPhoto ? cloudinaryUrl(ownPhoto.url, 'avatar') : undefined}
+          uri={ownPhoto ? photoSrc(ownPhoto, 'avatar') : undefined}
           initials={getInitials(userName)}
           active={completion < 100}
           plus={completion < 100}

@@ -49,3 +49,31 @@ Real fix (not done in this branch, needs your go-ahead because stored URLs chang
 as `private` or `authenticated` and move existing ones with the Admin **Rename** API (`to_type`), then
 update the stored `url` values and serve ordinary photos as server-signed URLs too. The server code here
 already keeps the asset type (`upload` / `private` / `authenticated`) when signing.
+
+---
+
+## Update: profile photos are now `authenticated` (branch `photos-authenticated`)
+
+- **New uploads** (purpose `profile_photo`) are stored as Cloudinary type `authenticated`: the original
+  and every derived image need a valid signature. Removing the transformation / signature => 401.
+- The DB keeps only the plain reference (`.../image/authenticated/v<ver>/<id>.<ext>`). The API turns it
+  into signed URLs on every read: `url` (= hero) plus `variants.avatar|card|hero` for allowed viewers
+  (owner, staff, accepted viewers); locked viewers still get the signed blur (type preserved).
+- The server refuses (`INVALID_PHOTO`) an authenticated photo that is not inside
+  `shaadibanao/profiles/<your user id>/` so nobody can get a signed URL for another member's photo.
+- Signed presets need **no allow-listing** (signed URLs bypass Strict Transformations). The allow-list in the
+  table above is only for any remaining public `upload` photos (old, un-migrated ones).
+
+### Short-lived URLs: what is real
+A plain signed URL does not expire (Cloudinary signatures have no expiry). Real expiry needs Cloudinary
+**token-based authentication** (a separate account feature; check with Cloudinary that it is enabled for your plan).
+If you enable it and set `CLOUDINARY_AUTH_TOKEN_KEY` (and optionally `CLOUDINARY_SIGNED_URL_TTL_SECONDS`,
+default 600) in the server env, the server appends an expiring `__cld_token__` and returns `urlExpiresAt`.
+This path is unit-tested for URL shape only; **verify it once against your real account before relying on it**.
+Without the key, URLs are signed but not time-limited (they are re-issued on every API call).
+
+### Migrating the existing photos
+`server/scripts/migrate-photos-to-authenticated.ts` (dry run by default, reads DB, no writes, no Cloudinary calls).
+Apply mode needs `--apply` **and** `CONFIRM_PHOTO_MIGRATION=yes`; uses Rename API `to_type: authenticated`
+with the same public id (the same-id rename is unverified against the live API: test one photo first).
+Until a photo is migrated, it keeps working as before (public `upload` URL).

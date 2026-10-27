@@ -133,6 +133,10 @@ export interface PhotoData {
   isMain: boolean;
   privacy: 'everyone' | 'after_interest_accepted' | 'blurred';
   approved: boolean;
+  /** Added (optional): signed per-size URLs for authenticated photos. Server -> client only. */
+  variants?: { avatar?: string; card?: string; hero?: string };
+  /** Added (optional): ISO time when the signed URLs stop working (only with token auth). */
+  urlExpiresAt?: string;
 }
 
 /**
@@ -207,6 +211,9 @@ export interface PublicProfile {
     privacy?: 'everyone' | 'after_interest_accepted' | 'blurred';
     /** True when the viewer may not see the original photo (added, optional for old clients). */
     isLocked?: boolean;
+    /** Signed per-size URLs for authenticated photos the viewer may see (added, optional). */
+    variants?: { avatar?: string; card?: string; hero?: string };
+    urlExpiresAt?: string;
   }>;
   aboutMe: string;
   isVerified: boolean;

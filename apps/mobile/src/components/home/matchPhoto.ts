@@ -1,5 +1,5 @@
 import { SearchResultProfile } from '@bandhansetu/shared';
-import { cloudinaryUrl } from '../../services/cloudinaryUrl';
+import { photoSrc } from '../../services/cloudinaryUrl';
 
 export interface SafePhoto {
   uri: string;
@@ -17,7 +17,7 @@ export function getSafeMatchPhoto(match: SearchResultProfile, preset: 'avatar' |
   const photos = match.photos || [];
   const chosen = photos.find((p) => p.isMain && !!p.url) || photos.find((p) => !!p.url);
   if (!chosen) return null;
-  return { uri: cloudinaryUrl(chosen.url, preset), blurred: chosen.isBlurred === true };
+  return { uri: photoSrc(chosen, preset), blurred: chosen.isBlurred === true };
 }
 
 export function getInitials(name?: string): string {

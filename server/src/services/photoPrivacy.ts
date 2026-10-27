@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { v2 as cloudinary } from 'cloudinary';
-import { PhotoPrivacy, BLUR_TRANSFORMATION } from '@bandhansetu/shared';
+import { PhotoPrivacy, BLUR_TRANSFORMATION, presetTransformation } from '@bandhansetu/shared';
 import { config } from '../config/env';
 import { InterestModel } from '../models/interest.model';
 
@@ -29,6 +29,9 @@ export interface PhotoViewerContext {
   acceptedUserIds?: Set<string>;
 }
 
+export type PhotoVariant = 'avatar' | 'card' | 'hero';
+const VARIANTS: PhotoVariant[] = ['avatar', 'card', 'hero'];
+
 export interface PublicPhotoOut {
   url: string;
   publicId?: string;
@@ -38,6 +41,10 @@ export interface PublicPhotoOut {
   privacy: PhotoPrivacy;
   /** Added (backward compatible): true when the viewer is not allowed to see the original. */
   isLocked: boolean;
+  /** Added: signed per-size URLs for authenticated photos (avatar / card / hero). */
+  variants?: Partial<Record<PhotoVariant, string>>;
+  /** Added: when the signed URLs stop working (only if token auth is configured). */
+  urlExpiresAt?: string;
 }
 
 const RANK: Record<PhotoPrivacy, number> = {
@@ -117,12 +124,49 @@ function signatureFor(toSign: string, secret: string): string {
  * see docs/CLOUDINARY_PRIVACY_SETUP.md.
  */
 export function toBlurredUrl(url?: string, publicIdFallback?: string): string {
+  return signedPhoto(url, BLUR_TRANSFORM, publicIdFallback)?.url ?? '';
+}
+
+/** Cloudinary delivery type of a stored photo URL: 'upload' (public) | 'authenticated' | 'private' | null. */
+export function photoDeliveryType(url?: string): ParsedCloudinaryUrl['type'] | null {
+  return parseCloudinaryUrl(url)?.type ?? null;
+}
+
+/** True for photos stored as Cloudinary 'authenticated'/'private' (never reachable without a signature). */
+export function isAuthenticatedPhotoUrl(url?: string): boolean {
+  const t = photoDeliveryType(url);
+  return t === 'authenticated' || t === 'private';
+}
+
+/**
+ * Stored (DB) form of a photo URL. For authenticated photos any signature / transformation /
+ * token is stripped, so the DB only ever holds the plain asset reference. Other URLs are untouched.
+ */
+export function canonicalPhotoUrl(url?: string): string {
+  if (!url) return url ?? '';
+  const p = parseCloudinaryUrl(url);
+  if (!p || p.type === 'upload') return url;
+  const v = p.version ? `v${p.version}/` : '';
+  const ext = p.format ? `.${p.format}` : '';
+  return `https://res.cloudinary.com/${p.cloudName}/image/${p.type}/${v}${p.publicId}${ext}`;
+}
+
+/**
+ * SIGNED URL (+ optional expiry) for one transformation of a Cloudinary photo; null when it cannot
+ * be produced (non-Cloudinary / no secret). The signature covers transformation + public id.
+ * With CLOUDINARY_AUTH_TOKEN_KEY set, a token that expires after signedUrlTtlSeconds is added too.
+ */
+export function signedPhoto(
+  url: string | undefined,
+  transformation: string,
+  publicIdFallback?: string
+): { url: string; expiresAt?: string } | null {
   const secret = config.cloudinary.apiSecret;
-  if (!secret) return '';
+  if (!secret) return null;
   const parsed = parseCloudinaryUrl(url);
-  if (!parsed) return '';
+  if (!parsed) return null;
   const publicId = parsed.publicId || publicIdFallback;
-  if (!publicId) return '';
+  if (!publicId) return null;
   const signed = cloudinary.url(publicId, {
     cloud_name: parsed.cloudName,
     api_secret: secret,
@@ -132,18 +176,63 @@ export function toBlurredUrl(url?: string, publicIdFallback?: string): string {
     type: parsed.type,
     version: parsed.version,
     format: parsed.format,
-    raw_transformation: BLUR_TRANSFORM,
+    raw_transformation: transformation,
   });
-  const out = signed.split('?')[0];
-  return isValidBlurredPhotoUrl(out) ? out : '';
+  const base = signed.split('?')[0];
+  if (!/\/s--[\w-]{8}--\//.test(base)) return null;
+
+  const key = config.cloudinary.authTokenKey;
+  if (!key) return { url: base };
+  const ttl = config.cloudinary.signedUrlTtlSeconds;
+  const token: string = (cloudinary.utils as any).generate_auth_token({
+    key,
+    url: new URL(base).pathname,
+    duration: ttl,
+  });
+  return {
+    url: `${base}?${token}`,
+    expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+  };
+}
+
+export interface PresentedPhoto {
+  url: string;
+  variants?: Partial<Record<PhotoVariant, string>>;
+  urlExpiresAt?: string;
+}
+
+/**
+ * What an ALLOWED viewer (the owner, staff, or an accepted viewer) gets for a photo.
+ * Public ('upload') photos: unchanged. Authenticated photos: signed avatar/card/hero URLs
+ * (`url` = hero), or '' when signing is impossible - never the unsigned asset URL.
+ */
+export function presentPhoto(url: string | undefined, publicIdFallback?: string): PresentedPhoto {
+  if (!isAuthenticatedPhotoUrl(url)) return { url: url ?? '' };
+  const variants: Partial<Record<PhotoVariant, string>> = {};
+  let expiresAt: string | undefined;
+  for (const v of VARIANTS) {
+    const s = signedPhoto(url, presetTransformation(v), publicIdFallback);
+    if (!s) return { url: '' };
+    variants[v] = s.url;
+    expiresAt = s.expiresAt ?? expiresAt;
+  }
+  return { url: variants.hero as string, variants, ...(expiresAt ? { urlExpiresAt: expiresAt } : {}) };
+}
+
+/** Convenience: a single signed size, e.g. for an avatar in an admin list. */
+export function presentPhotoUrl(url: string | undefined, variant: PhotoVariant = 'avatar'): string | undefined {
+  if (!url) return url;
+  const p = presentPhoto(url);
+  return p.variants?.[variant] ?? p.url;
 }
 
 /**
  * True only for a URL carrying our exact blur transformation AND a valid signature for it.
  * A URL with the blur removed/changed, or without a (correct) signature, is rejected.
  */
-export function isValidBlurredPhotoUrl(url?: string): boolean {
+export function isValidBlurredPhotoUrl(rawUrl?: string): boolean {
   const secret = config.cloudinary.apiSecret;
+  const url = rawUrl?.split('?')[0]; // an optional expiry token lives in the query string
   if (!url || !secret) return false;
   const m = /^https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/(?:upload|private|authenticated)\/s--([\w-]{8})--\/([^/]+)\/(?:v\d+\/)?([^?#]+)$/i.exec(url);
   if (!m) return false;
@@ -171,13 +260,16 @@ export function buildPublicPhotos(doc: any, ctx: PhotoViewerContext = {}): Publi
       const canSeeOriginal = mode === 'everyone' || (mode === 'after_interest_accepted' && accepted);
 
       if (canSeeOriginal) {
+        const shown = presentPhoto(p.url, p.publicId);
         return {
-          url: p.url,
+          url: shown.url,
           publicId: p.publicId,
           isMain: !!p.isMain,
           isBlurred: false,
           privacy: mode,
           isLocked: false,
+          ...(shown.variants ? { variants: shown.variants } : {}),
+          ...(shown.urlExpiresAt ? { urlExpiresAt: shown.urlExpiresAt } : {}),
         };
       }
 
