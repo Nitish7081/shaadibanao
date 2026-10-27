@@ -64,6 +64,7 @@ export const RoyalTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
             <Text style={[styles.label, focused && styles.labelFocused]} numberOfLines={1}>
               {meta.label}
             </Text>
+            <View style={[styles.indicator, focused && styles.indicatorOn]} />
           </TouchableOpacity>
         );
       })}
@@ -119,5 +120,15 @@ const styles = StyleSheet.create({
   labelFocused: {
     color: colors.royalMaroon,
     fontWeight: '800',
+  },
+  indicator: {
+    width: 18,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 3,
+    backgroundColor: 'transparent',
+  },
+  indicatorOn: {
+    backgroundColor: colors.royalGold,
   },
 });

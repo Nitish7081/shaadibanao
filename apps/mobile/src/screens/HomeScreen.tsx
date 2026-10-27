@@ -1,38 +1,29 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  StatusBar,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { colors, spacing } from '../constants/theme';
 import { UserProfile, SearchResultProfile } from '@bandhansetu/shared';
 import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
 import { loadActivitySummary } from '../services/activityService';
 import { getSessionToken, getSessionUser } from '../services/authSession';
-import { Ionicons } from '@expo/vector-icons';
+import { EmptyMatchesState, ErrorState, OfflineBanner } from '../components/royal';
 import {
-  BrandedHeader,
-  PremiumHeroBanner,
-  ProfileCompletionCard,
-  QuickStatisticsGrid,
-  HomeSearchBar,
-  ExploreServicesGrid,
-  MatchCard,
-  EmptyMatchesState,
-  VipUpgradeBanner,
-  LoadingState,
-  ErrorState,
-  OfflineBanner,
-} from '../components/royal';
+  HomeHeader,
+  StoriesRow,
+  HeroBanner,
+  CompletionCard,
+  StatTiles,
+  SearchPill,
+  ServiceGrid,
+  FeedMatchCard,
+  FeedSkeleton,
+  VipBanner,
+} from '../components/home';
+import { SectionHeader, ds } from '../design';
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -132,12 +123,18 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const completeness = profile?.completenessPercent ?? 0;
   const hasUnreadActivity = stats.newInterests > 0 || stats.messages > 0;
 
+  const openMatch = (match: SearchResultProfile) =>
+    navigation.navigate('ProfileDetail', {
+      profileId: match.id,
+      name: match.displayName || 'Member',
+    });
+
   return (
     <View style={styles.screenContainer}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.royalMaroon} />
+      <StatusBar barStyle="dark-content" backgroundColor={ds.color.bg} />
 
-      {/* 1. BRANDED HEADER: ShaadiBanao logo, brand name, tagline, notification icon and user/account status */}
-      <BrandedHeader
+      {/* Header: existing ShaadiBanao logo + name, bell with badge, greeting, Live/Approved chips */}
+      <HomeHeader
         topInset={Math.max(insets.top, 14)}
         userName={greetingName}
         hasNotifications={hasUnreadActivity}
@@ -147,35 +144,37 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       />
 
       <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 90 },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 96 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadAllData(true)}
-            tintColor={colors.royalMaroon}
-            colors={[colors.royalMaroon, colors.royalGold]}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon, ds.color.gold]}
           />
         }
       >
-        {/* 2. PREMIUM HERO BANNER: Headline “Aapke perfect rishte ki shuruaat yahan se” & functional “Explore Matches” */}
         {offline && <OfflineBanner onRetry={() => loadAllData(true)} />}
 
-        <PremiumHeroBanner
-          onExplorePress={() => navigation.navigate('Matches')}
+        {/* Stories: your profile (+) then today's matches with real photos */}
+        <StoriesRow
+          profile={profile}
+          userName={greetingName}
+          matches={dailyMatches}
+          loading={loadingMatches && dailyMatches.length === 0}
+          onYourProfilePress={() => navigation.navigate('ProfileCreation')}
+          onMatchPress={openMatch}
         />
 
-        {/* 3. PROFILE COMPLETION: Progress indicator, actual percentage & “Complete Profile” action */}
-        <ProfileCompletionCard
+        <HeroBanner onExplorePress={() => navigation.navigate('Matches')} />
+
+        <CompletionCard
           percentage={completeness}
           onCompletePress={() => navigation.navigate('ProfileCreation')}
         />
 
-        {/* 4. QUICK STATISTICS: Attractive cards for interests, mutual matches and messages */}
-        <QuickStatisticsGrid
+        <StatTiles
           newInterests={stats.newInterests}
           mutualMatches={stats.mutualMatches}
           messages={stats.messages}
@@ -184,49 +183,14 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           onMessagesPress={() => navigation.navigate('Chat')}
         />
 
-        {/* 5. SEARCH: Modern rounded search bar for name, profile ID or city */}
-        <HomeSearchBar
-          placeholder="Search by name, profile ID, or city..."
-          onPress={() => navigation.navigate('Search')}
+        {/* Today's Matches (right after the stats) */}
+        <SectionHeader
+          title="Today's Matches"
+          actionLabel={`See all (${dailyMatches.length}) →`}
+          onActionPress={() => navigation.navigate('Search')}
         />
-
-        {/* 6. EXPLORE SERVICES: Colorful 2-column grid of 8 modules */}
-        <ExploreServicesGrid
-          onFindMatchPress={() => navigation.navigate('Search')}
-          onKundliMilanPress={() =>
-            navigation.navigate('Astrology', { initialTab: 'matching' })
-          }
-          onBookPanditPress={() => navigation.navigate('PanditServices')}
-          onMuhuratFinderPress={() =>
-            navigation.navigate('PanditServices', { ceremonyType: 'wedding' })
-          }
-          onAstrologyPress={() =>
-            navigation.navigate('Astrology', { initialTab: 'kundli' })
-          }
-          onCommunityPress={() => navigation.navigate('Community')}
-          onMessagesPress={() => navigation.navigate('Chat')}
-          onMyProfilePress={() => navigation.navigate('Profile')}
-          newInterestsCount={stats.newInterests}
-          unreadMessagesCount={stats.messages}
-          profileCompletionPercent={completeness}
-          isIdentityVerified={Boolean(profile?.isVerified || (sessionUser as any)?.identityVerificationStatus === 'verified')}
-        />
-
-        {/* 7. TODAY'S MATCHES: Modern profile cards with approved photos, age, city, profession and badges */}
-        <View style={[styles.sectionHeaderRow, { marginTop: spacing.sm }]}>
-          <View style={styles.sectionTitleGroup}>
-            <Text style={styles.sectionTitle}>Today's Matches</Text>
-          </View>
-          <Text
-            style={styles.sectionLink}
-            onPress={() => navigation.navigate('Search')}
-          >
-            See all ({dailyMatches.length}) →
-          </Text>
-        </View>
-
-        {loadingMatches ? (
-          <LoadingState label="Loading matches..." />
+        {loadingMatches && dailyMatches.length === 0 ? (
+          <FeedSkeleton />
         ) : matchesError && dailyMatches.length === 0 ? (
           <ErrorState
             title="Could not load matches"
@@ -236,27 +200,39 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           />
         ) : dailyMatches.length > 0 ? (
           dailyMatches.map((match) => (
-            <MatchCard
-              key={match.id}
-              match={match}
-              onPress={() =>
-                navigation.navigate('ProfileDetail', {
-                  profileId: match.id,
-                  name: match.displayName || 'Member',
-                })
-              }
-            />
+            <FeedMatchCard key={match.id} match={match} onPress={() => openMatch(match)} />
           ))
         ) : (
-          <EmptyMatchesState
-            onSearchPress={() => navigation.navigate('Search')}
-          />
+          <EmptyMatchesState onSearchPress={() => navigation.navigate('Search')} />
         )}
 
-        {/* VIP Upgrade Banner */}
-        <VipUpgradeBanner
-          onUpgradePress={() => navigation.navigate('Membership')}
+        <View style={{ height: ds.space.sm }} />
+
+        <SearchPill
+          placeholder="Search by name, profile ID, or city..."
+          onPress={() => navigation.navigate('Search')}
         />
+
+        <ServiceGrid
+          onFindMatchPress={() => navigation.navigate('Search')}
+          onKundliMilanPress={() => navigation.navigate('Astrology', { initialTab: 'matching' })}
+          onBookPanditPress={() => navigation.navigate('PanditServices')}
+          onMuhuratFinderPress={() =>
+            navigation.navigate('PanditServices', { ceremonyType: 'wedding' })
+          }
+          onAstrologyPress={() => navigation.navigate('Astrology', { initialTab: 'kundli' })}
+          onCommunityPress={() => navigation.navigate('Community')}
+          onMessagesPress={() => navigation.navigate('Chat')}
+          onMyProfilePress={() => navigation.navigate('Profile')}
+          newInterestsCount={stats.newInterests}
+          unreadMessagesCount={stats.messages}
+          profileCompletionPercent={completeness}
+          isIdentityVerified={Boolean(
+            profile?.isVerified || (sessionUser as any)?.identityVerificationStatus === 'verified'
+          )}
+        />
+
+        <VipBanner onUpgradePress={() => navigation.navigate('Membership')} />
       </ScrollView>
     </View>
   );
@@ -265,46 +241,10 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: colors.ivory,
+    backgroundColor: ds.color.bg,
   },
   scrollContent: {
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.base,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xs + 2,
-  },
-  sectionTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  sectionOmSymbol: {
-    fontSize: 18,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.charcoal,
-    letterSpacing: 0.1,
-  },
-  sectionLink: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.royalMaroon,
-  },
-  loadingContainer: {
-    paddingVertical: spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  loadingText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    fontWeight: '500',
+    paddingHorizontal: ds.space.lg,
+    paddingTop: ds.space.sm,
   },
 });
