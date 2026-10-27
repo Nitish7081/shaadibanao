@@ -17,7 +17,11 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, style }) =
   const locationStr = [match.city, match.state].filter(Boolean).join(', ');
   const professionStr = match.occupation || '';
   const educationStr = match.education || '';
-  const mainPhoto = match.photos?.find((p: any) => p.isMain)?.url || match.photos?.[0]?.url;
+  const mainPhotoObj =
+    match.photos?.find((p: any) => p.isMain && p.url) || match.photos?.find((p: any) => !!p.url);
+  const mainPhoto = mainPhotoObj?.url;
+  // Server sends a blurred URL (or no URL) for locked photos; blur again as a safety net.
+  const photoBlurred = mainPhotoObj?.isBlurred === true;
   const initials = displayName.slice(0, 2).toUpperCase();
   const matchScore = match.matchAlignment?.scoreText || '';
 
@@ -42,6 +46,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onPress, style }) =
             <Image
               source={{ uri: cloudinaryUrl(mainPhoto, 'card') }}
               style={styles.avatarImg}
+              blurRadius={photoBlurred ? 12 : 0}
               onError={() => setImageError(true)}
             />
           ) : (

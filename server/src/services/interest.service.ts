@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { InterestModel } from '../models/interest.model';
 import { MatchModel } from '../models/match.model';
 import { ProfileModel } from '../models/profile.model';
+import { getAcceptedUserIds } from './photoPrivacy';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
 import { inMemoryProfileRegistry } from './search.service';
 import { AppError } from '../middleware/errorHandler';
@@ -64,7 +65,7 @@ export class InterestService {
   /**
    * Helper to get public profile by userId
    */
-  private static async getPublicProfileByUserId(userId: string) {
+  private static async getPublicProfileByUserId(userId: string, viewerId?: string) {
     const isDbConnected = mongoose.connection.readyState === 1;
 
     let doc: any = null;
@@ -96,7 +97,8 @@ export class InterestService {
       };
     }
 
-    return ProfileService.formatPublicProfile(doc);
+    const acceptedUserIds = await getAcceptedUserIds(viewerId, [userId]);
+    return ProfileService.formatPublicProfile(doc, { viewerId, acceptedUserIds });
   }
 
   /**
@@ -132,7 +134,7 @@ export class InterestService {
         status: 'pending',
       });
 
-      const receiverProfile = await this.getPublicProfileByUserId(receiverId);
+      const receiverProfile = await this.getPublicProfileByUserId(receiverId, senderId);
 
       return {
         id: interest._id.toString(),
@@ -166,7 +168,7 @@ export class InterestService {
     };
     inMemoryInterestStore.push(newInterest);
 
-    const receiverProfile = await this.getPublicProfileByUserId(receiverId);
+    const receiverProfile = await this.getPublicProfileByUserId(receiverId, senderId);
 
     return {
       id: newInterest.id,
@@ -194,7 +196,7 @@ export class InterestService {
 
     const result: InterestItem[] = [];
     for (const item of items) {
-      const senderProfile = await this.getPublicProfileByUserId(item.senderId.toString());
+      const senderProfile = await this.getPublicProfileByUserId(item.senderId.toString(), receiverId);
       result.push({
         id: item._id?.toString() || item.id,
         senderId: item.senderId.toString(),
@@ -224,7 +226,7 @@ export class InterestService {
 
     const result: InterestItem[] = [];
     for (const item of items) {
-      const receiverProfile = await this.getPublicProfileByUserId(item.receiverId.toString());
+      const receiverProfile = await this.getPublicProfileByUserId(item.receiverId.toString(), senderId);
       result.push({
         id: item._id?.toString() || item.id,
         senderId: item.senderId.toString(),
@@ -308,7 +310,8 @@ export class InterestService {
     }
 
     const senderProfile = await this.getPublicProfileByUserId(
-      interest.senderId?.toString?.() || interest.senderId
+      interest.senderId?.toString?.() || interest.senderId,
+      receiverId
     );
 
     return {

@@ -199,9 +199,14 @@ export interface PublicProfile {
   occupation: string;
   annualIncomeBand?: string;
   photos: Array<{
+    /** Original URL, a server-blurred URL (isLocked), or '' when a locked photo cannot be blurred. */
     url: string;
     isMain: boolean;
     isBlurred: boolean;
+    /** Privacy mode that applies to this photo (added, optional for old clients). */
+    privacy?: 'everyone' | 'after_interest_accepted' | 'blurred';
+    /** True when the viewer may not see the original photo (added, optional for old clients). */
+    isLocked?: boolean;
   }>;
   aboutMe: string;
   isVerified: boolean;

@@ -3,6 +3,7 @@ import { ConversationModel, IConversation } from '../models/conversation.model';
 import { MessageModel, IMessage } from '../models/message.model';
 import { MatchModel } from '../models/match.model';
 import { ProfileModel } from '../models/profile.model';
+import { getAcceptedUserIds } from './photoPrivacy';
 import { UserModel } from '../models/user.model';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
 import { inMemoryProfileRegistry } from './search.service';
@@ -90,23 +91,24 @@ export class ChatService {
   /**
    * Helper to get public profile by userId
    */
-  private static async getPublicProfileByUserId(userId: string) {
+  private static async getPublicProfileByUserId(userId: string, viewerId?: string) {
     const isDbConnected = mongoose.connection.readyState === 1;
+    const ctx = { viewerId, acceptedUserIds: await getAcceptedUserIds(viewerId, [userId]) };
 
     if (isDbConnected) {
       const doc = await ProfileModel.findOne({ userId });
       if (doc) {
-        return ProfileService.formatPublicProfile(doc);
+        return ProfileService.formatPublicProfile(doc, ctx);
       }
     }
 
     if (inMemoryProfileStore.has(userId)) {
-      return ProfileService.formatPublicProfile(inMemoryProfileStore.get(userId));
+      return ProfileService.formatPublicProfile(inMemoryProfileStore.get(userId), ctx);
     }
 
     for (const p of inMemoryProfileStore.values()) {
       if (p.userId === userId || p.id === userId || p._id === userId) {
-        return ProfileService.formatPublicProfile(p);
+        return ProfileService.formatPublicProfile(p, ctx);
       }
     }
 
@@ -114,7 +116,7 @@ export class ChatService {
       (p) => p.userId === userId || p.id === userId || p._id === userId
     );
     if (reg) {
-      return ProfileService.formatPublicProfile(reg);
+      return ProfileService.formatPublicProfile(reg, ctx);
     }
 
     // Default fallback profile representation
@@ -186,7 +188,7 @@ export class ChatService {
       const user2 = conv.user2Id?.toString() || conv.user2Id;
       const partnerId = user1 === userId ? user2 : user1;
 
-      const participant = await this.getPublicProfileByUserId(partnerId);
+      const participant = await this.getPublicProfileByUserId(partnerId, userId);
 
       // Fetch last message & unread count
       let lastMsg: any = null;
@@ -344,7 +346,7 @@ export class ChatService {
     }
 
     const convId = conv._id?.toString() || conv.id;
-    const participant = await this.getPublicProfileByUserId(targetUserId);
+    const participant = await this.getPublicProfileByUserId(targetUserId, userId);
 
     return {
       id: convId,

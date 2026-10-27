@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { ShortlistModel } from '../models/shortlist.model';
 import { ProfileModel } from '../models/profile.model';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
+import { getAcceptedUserIds } from './photoPrivacy';
 import { inMemoryProfileRegistry } from './search.service';
 import { AppError } from '../middleware/errorHandler';
 import { ShortlistItem } from '@bandhansetu/shared';
@@ -114,18 +115,26 @@ export class ShortlistService {
 
     if (isDbConnected) {
       const entries = await ShortlistModel.find({ userId }).populate('profileId');
+      const accepted = await getAcceptedUserIds(
+        userId,
+        entries.filter((e: any) => e.profileId).map((e: any) => e.profileId.userId)
+      );
       return entries
         .filter((e) => e.profileId)
         .map((e: any) => ({
           id: e._id.toString(),
           userId,
           profileId: e.profileId._id.toString(),
-          profile: ProfileService.formatPublicProfile(e.profileId),
+          profile: ProfileService.formatPublicProfile(e.profileId, { viewerId: userId, acceptedUserIds: accepted }),
           createdAt: e.createdAt.toISOString(),
         }));
     }
 
     const entries = inMemoryShortlistStore.filter((s) => s.userId === userId);
+    const acceptedMem = await getAcceptedUserIds(
+      userId,
+      entries.map((e) => this.findInMemoryProfile(e.profileId)?.userId).filter(Boolean)
+    );
     return entries
       .map((e) => {
         const profileDoc = this.findInMemoryProfile(e.profileId);
@@ -134,7 +143,7 @@ export class ShortlistService {
           id: e.id,
           userId,
           profileId: e.profileId,
-          profile: ProfileService.formatPublicProfile(profileDoc),
+          profile: ProfileService.formatPublicProfile(profileDoc, { viewerId: userId, acceptedUserIds: acceptedMem }),
           createdAt: e.createdAt.toISOString(),
         };
       })

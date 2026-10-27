@@ -155,6 +155,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             <Image
               source={{ uri: cloudinaryUrl(profile.photos[0].url, 'hero') }}
               style={styles.heroImage}
+              blurRadius={profile.photos[0].isBlurred ? 12 : 0}
               resizeMode="cover"
               onError={() => setHeroImageError(true)}
             />

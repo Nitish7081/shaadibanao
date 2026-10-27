@@ -4,6 +4,7 @@ import { UserModel } from '../models/user.model';
 import { ReportModel } from '../models/report.model';
 import { PreferenceService } from './preference.service';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
+import { getAcceptedUserIds } from './photoPrivacy';
 import { MatchExplanationService } from './match.service';
 import {
   SearchFilterInput,
@@ -162,8 +163,15 @@ export class SearchService {
     }
 
     // Transform candidate profiles to redacted public profiles with factual match alignment
+    const acceptedUserIds = await getAcceptedUserIds(
+      requestingUserId,
+      candidateProfiles.map((p) => p.userId)
+    );
     const items: SearchResultProfile[] = candidateProfiles.map((p) => {
-      const publicProfile = ProfileService.formatPublicProfile(p);
+      const publicProfile = ProfileService.formatPublicProfile(p, {
+        viewerId: requestingUserId,
+        acceptedUserIds,
+      });
       const matchAlignment = MatchExplanationService.calculateAlignment(p, myPreferences);
 
       return {

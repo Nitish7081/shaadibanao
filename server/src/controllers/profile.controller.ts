@@ -39,7 +39,7 @@ export class ProfileController {
   public static async getPublicProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { profileId } = req.params;
-      const publicProfile = await ProfileService.getPublicProfile(profileId);
+      const publicProfile = await ProfileService.getPublicProfile(profileId, req.user?.userId);
 
       const response: ApiResponse = {
         success: true,

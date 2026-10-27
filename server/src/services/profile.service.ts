@@ -3,6 +3,7 @@ import { ProfileModel, IProfile } from '../models/profile.model';
 import { UserModel } from '../models/user.model';
 import { AppError } from '../middleware/errorHandler';
 import { StorageService } from './storage.service';
+import { buildPublicPhotos, getAcceptedUserIds, PhotoViewerContext } from './photoPrivacy';
 import {
   UpsertProfileInput,
   UserProfile,
@@ -94,7 +95,7 @@ export class ProfileService {
   /**
    * Formats profile to redacted PublicProfile according to blueprint privacy display rules
    */
-  public static formatPublicProfile(doc: any): PublicProfile {
+  public static formatPublicProfile(doc: any, ctx: PhotoViewerContext = {}): PublicProfile {
     const dob = doc.dateOfBirth;
     const age = this.calculateAge(dob);
 
@@ -102,16 +103,9 @@ export class ProfileService {
     const lastInitial = doc.lastName ? `${doc.lastName.trim().charAt(0).toUpperCase()}.` : '';
     const displayName = `${doc.firstName.trim()} ${lastInitial}`.trim();
 
-    // Rule: Photo privacy & moderation handling (strictly only display approved photos publicly)
-    const isBlurred = doc.photoPrivacy === 'blurred';
-    const photos = (doc.photos || [])
-      .filter((p: any) => p.approved === true)
-      .map((p: any) => ({
-        url: p.url,
-        publicId: p.publicId,
-        isMain: p.isMain,
-        isBlurred: isBlurred || p.privacy === 'blurred',
-      }));
+    // Rule: only approved photos are public, and a photo the viewer may not see in full is never
+    // sent with its original URL (see photoPrivacy.ts: blurred URL, or no URL at all).
+    const photos = buildPublicPhotos(doc, ctx);
 
     return {
       id: doc._id?.toString() || doc.id,
@@ -245,7 +239,7 @@ export class ProfileService {
   /**
    * GET /api/v1/profiles/:profileId (Public View)
    */
-  public static async getPublicProfile(profileId: string): Promise<PublicProfile> {
+  public static async getPublicProfile(profileId: string, viewerId?: string): Promise<PublicProfile> {
     const isDbConnected = mongoose.connection.readyState === 1;
 
     let profileDoc: any = null;
@@ -271,6 +265,7 @@ export class ProfileService {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
     }
 
-    return this.formatPublicProfile(profileDoc);
+    const acceptedUserIds = await getAcceptedUserIds(viewerId, [profileDoc.userId]);
+    return this.formatPublicProfile(profileDoc, { viewerId, acceptedUserIds });
   }
 }
