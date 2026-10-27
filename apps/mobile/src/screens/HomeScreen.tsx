@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, StatusBar } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, StatusBar, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { UserProfile, SearchResultProfile } from '@bandhansetu/shared';
+import { UserProfile, SearchResultProfile, HomeBanner, bannerActionFor } from '@bandhansetu/shared';
 import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
 import { loadActivitySummary } from '../services/activityService';
+import { getActiveBanners } from '../services/bannerService';
 import { getSessionToken, getSessionUser } from '../services/authSession';
 import { EmptyMatchesState, ErrorState, OfflineBanner } from '../components/royal';
 import {
@@ -35,9 +37,11 @@ interface Props {
 }
 
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [dailyMatches, setDailyMatches] = useState<SearchResultProfile[]>([]);
+  const [banners, setBanners] = useState<HomeBanner[]>([]);
   const [loadingMatches, setLoadingMatches] = useState<boolean>(true);
   const [matchesError, setMatchesError] = useState<string | null>(null);
   const [offline, setOffline] = useState<boolean>(false);
@@ -65,10 +69,11 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     setMatchesError(null);
     let networkDown = false;
 
-    const [profileRes, searchRes, activity] = await Promise.allSettled([
+    const [profileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
       getMyProfile(token),
       searchProfiles(token, { limit: 5 }),
       loadActivitySummary(token),
+      getActiveBanners(),
     ]);
 
     // 1. User profile (a missing profile is a normal state for new users)
@@ -76,17 +81,25 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       setProfile(profileRes.value.data);
     } else if (profileRes.status === 'rejected' && isNetworkError(profileRes.reason)) {
       networkDown = true;
+    } else {
+      // Server answered but user has no profile yet: never show previous user's profile
+      setProfile(null);
     }
 
-    // 2. Today's matches
+    // 2. Active admin banners
+    if (bannersRes.status === 'fulfilled') {
+      setBanners(bannersRes.value || []);
+    }
+
+    // 3. Today's matches
     if (searchRes.status === 'fulfilled') {
       setDailyMatches(searchRes.value?.data?.items || []);
     } else {
       if (isNetworkError(searchRes.reason)) networkDown = true;
-      setMatchesError(searchRes.reason?.message || 'Unable to load matches right now.');
+      setMatchesError(searchRes.reason?.message || t('home.unableToLoad'));
     }
 
-    // 3. Real activity counts
+    // 4. Real activity counts
     if (activity.status === 'fulfilled') {
       setStats({
         newInterests: activity.value.pendingInterests,
@@ -99,7 +112,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     setOffline(networkDown);
     setLoadingMatches(false);
     setRefreshing(false);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadAllData();
@@ -117,7 +130,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     profile?.firstName ||
     (sessionUser as any)?.displayName?.split(' ')[0] ||
     (sessionUser as any)?.name?.split(' ')[0] ||
-    'Member';
+    (sessionUser as any)?.email?.split('@')[0] ||
+    t('common.member');
 
   // Real completion value; 0 when the profile has not been created yet
   const completeness = profile?.completenessPercent ?? 0;
@@ -126,8 +140,26 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const openMatch = (match: SearchResultProfile) =>
     navigation.navigate('ProfileDetail', {
       profileId: match.id,
-      name: match.displayName || 'Member',
+      name: match.displayName || t('common.member'),
     });
+
+  const handleBannerPress = (banner: HomeBanner) => {
+    const action = bannerActionFor(banner.linkUrl);
+    if (action.kind === 'external') {
+      Linking.openURL(action.url).catch(() => {});
+    } else if (action.kind === 'screen') {
+      const parent = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+      if (parent) {
+        parent.navigate(action.screen as any);
+      } else {
+        (navigation as any).navigate(action.screen);
+      }
+    } else if (action.kind === 'tab') {
+      navigation.navigate(action.screen as any);
+    } else {
+      navigation.navigate('Matches');
+    }
+  };
 
   return (
     <View style={styles.screenContainer}>
@@ -167,7 +199,11 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           onMatchPress={openMatch}
         />
 
-        <HeroBanner onExplorePress={() => navigation.navigate('Matches')} />
+        <HeroBanner
+          banners={banners}
+          onBannerPress={handleBannerPress}
+          onExplorePress={() => navigation.navigate('Matches')}
+        />
 
         <CompletionCard
           percentage={completeness}
@@ -185,17 +221,17 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Today's Matches (right after the stats) */}
         <SectionHeader
-          title="Today's Matches"
-          actionLabel={`See all (${dailyMatches.length}) →`}
+          title={t('home.todaysMatches')}
+          actionLabel={t('home.seeAll', { count: dailyMatches.length })}
           onActionPress={() => navigation.navigate('Search')}
         />
         {loadingMatches && dailyMatches.length === 0 ? (
           <FeedSkeleton />
         ) : matchesError && dailyMatches.length === 0 ? (
           <ErrorState
-            title="Could not load matches"
+            title={t('home.couldNotLoad')}
             message={matchesError}
-            actionLabel="Try Again"
+            actionLabel={t('common.tryAgain')}
             onAction={() => loadAllData(true)}
           />
         ) : dailyMatches.length > 0 ? (
@@ -209,7 +245,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         <View style={{ height: ds.space.sm }} />
 
         <SearchPill
-          placeholder="Search by name, profile ID, or city..."
+          placeholder={t('home.searchPlaceholder')}
           onPress={() => navigation.navigate('Search')}
         />
 

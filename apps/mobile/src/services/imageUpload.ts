@@ -43,18 +43,30 @@ export interface UploadResult {
   /** Private reference to store/send to the API (private uploads) or public_id (public uploads). */
   fileKey: string;
   publicId?: string;
+  variants?: { avatar?: string; card?: string; hero?: string };
   isPrivate: boolean;
 }
 
 export const MAX_DIMENSION = 1600;
 export const COMPRESS_QUALITY = 0.75;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const IMAGE_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/heif-sequence',
+  'image/heic-sequence',
+];
 const EXT_TO_MIME: Record<string, string> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
   pdf: 'application/pdf',
 };
 
@@ -106,7 +118,9 @@ async function prepareBase64(asset: UploadableAsset, mime: string): Promise<{ ba
     // module not in this native build yet - fall through to picker base64
   }
   if (!asset.base64) throw new UploadError('PROCESSING', 'Could not process the selected image.');
-  return { base64: asset.base64, mime };
+  const finalMime =
+    mime.includes('heic') || mime.includes('heif') || mime === 'image/jpg' ? 'image/jpeg' : mime;
+  return { base64: asset.base64, mime: finalMime };
 }
 
 function xhrUpload(
@@ -209,6 +223,7 @@ export async function uploadAsset(params: {
     url: isPrivate ? undefined : data.secureUrl || data.url,
     fileKey: data.fileKey || data.publicId || intent.fileKey,
     publicId: isPrivate ? undefined : data.publicId,
+    variants: data.variants,
     isPrivate,
   };
 }

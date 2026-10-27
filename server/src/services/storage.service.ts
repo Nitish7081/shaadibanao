@@ -193,14 +193,23 @@ export class StorageService {
     return config.cloudinary.isConfigured;
   }
 
+  /** Names (never values) of the Cloudinary variables that are not set. */
+  static missingCloudinaryVars(): string[] {
+    const missing: string[] = [];
+    if (!config.cloudinary.cloudName) missing.push('CLOUDINARY_CLOUD_NAME');
+    if (!config.cloudinary.apiKey) missing.push('CLOUDINARY_API_KEY');
+    if (!config.cloudinary.apiSecret) missing.push('CLOUDINARY_API_SECRET');
+    return missing;
+  }
+
   /** Logs storage readiness once at startup. Never prints secrets. */
   static logStartupStatus(): void {
     if (config.cloudinary.isConfigured) {
-      console.log(`[Storage] Cloudinary configured (cloud: ${config.cloudinary.cloudName}). All uploads go to Cloudinary.`);
+      console.log(`[Storage] Cloudinary configured (cloud: ${config.cloudinary.cloudName}). All uploads go to Cloudinary. Token auth: ${config.cloudinary.authTokenKey ? 'set' : 'missing (optional)'}.`);
     } else {
       console.error(
-        '[Storage] CLOUDINARY NOT CONFIGURED: set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET. ' +
-          'Image uploads will be rejected with STORAGE_NOT_CONFIGURED (no local-disk fallback).'
+        `[Storage] CLOUDINARY NOT CONFIGURED - missing: ${StorageService.missingCloudinaryVars().join(', ')}. ` +
+          'Image uploads will be rejected with STORAGE_NOT_CONFIGURED (no local-disk fallback). Set them in the server environment and restart.'
       );
     }
   }

@@ -62,5 +62,6 @@ adminRouter.post('/community/:id/moderate', AdminController.moderateCommunityPos
 // 13. Public Matrimonial Banners & Cloudinary Image Uploads
 adminRouter.post('/banners/upload', AdminController.uploadBanner);
 adminRouter.get('/banners', AdminController.getBanners);
+adminRouter.patch('/banners/:id', AdminController.updateBanner);
 adminRouter.delete('/banners/:id', AdminController.deleteBanner);
 

@@ -61,6 +61,7 @@ export const APP_LANGUAGES = [
   { code: 'ta', label: 'Tamil', native: 'தமிழ்' },
   { code: 'te', label: 'Telugu', native: 'తెలుగు' },
   { code: 'pa', label: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+  { code: 'kn', label: 'Kannada', native: 'ಕನ್ನಡ' },
 ] as const;
 export type AppLanguageCode = typeof APP_LANGUAGES[number]['code'];
 

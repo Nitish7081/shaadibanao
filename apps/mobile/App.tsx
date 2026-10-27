@@ -21,6 +21,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { navigationRef, navigateToLogin } from './src/navigation/navigationRef';
 import { onAuthExpired } from './src/services/authSession';
 import { colors } from './src/constants/theme';
+import { initI18n } from './src/i18n';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -35,6 +36,12 @@ export default function App() {
     Inter_700Bold,
   });
 
+  const [i18nReady, setI18nReady] = React.useState(false);
+
+  React.useEffect(() => {
+    initI18n().finally(() => setI18nReady(true));
+  }, []);
+
   React.useEffect(() => {
     // Listen for complete session expiration to navigate safely to Login/OTP screen
     const unsubscribe = onAuthExpired(() => {
@@ -43,7 +50,7 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !i18nReady) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.royalMaroon} />

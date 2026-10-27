@@ -91,12 +91,9 @@ export function setSessionAuth(
     currentRefreshToken = tokensOrAccessToken.refreshToken || currentRefreshToken;
   }
 
-  if (userId !== undefined) {
-    currentUserId = userId;
-  }
-  if (user !== undefined) {
-    currentUser = user;
-  }
+  // Reset currentUserId and currentUser to prevent previous account data bleed
+  currentUserId = userId ?? null;
+  currentUser = user ?? null;
 
   // Persist to AsyncStorage asynchronously
   persistSessionToStorage();
@@ -105,12 +102,25 @@ export function setSessionAuth(
 async function persistSessionToStorage(): Promise<void> {
   try {
     const pairs: [string, string][] = [];
+    const keysToRemove: string[] = [];
+
     if (currentAccessToken) pairs.push([STORAGE_KEY_ACCESS, currentAccessToken]);
+    else keysToRemove.push(STORAGE_KEY_ACCESS);
+
     if (currentRefreshToken) pairs.push([STORAGE_KEY_REFRESH, currentRefreshToken]);
+    else keysToRemove.push(STORAGE_KEY_REFRESH);
+
     if (currentUserId) pairs.push([STORAGE_KEY_USER_ID, currentUserId]);
+    else keysToRemove.push(STORAGE_KEY_USER_ID);
+
     if (currentUser) pairs.push([STORAGE_KEY_USER, JSON.stringify(currentUser)]);
+    else keysToRemove.push(STORAGE_KEY_USER);
+
     if (pairs.length > 0) {
       await AsyncStorage.multiSet(pairs);
+    }
+    if (keysToRemove.length > 0) {
+      await AsyncStorage.multiRemove(keysToRemove);
     }
   } catch {
     // Storage failure non-blocking for in-memory session

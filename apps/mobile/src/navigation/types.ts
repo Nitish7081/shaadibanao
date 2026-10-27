@@ -2,7 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type RootStackParamList = {
   Splash: undefined;
-  LanguageSelection: undefined;
+  LanguageSelection: { fromSettings?: boolean } | undefined;
   Welcome: undefined;
   LoginOtp: undefined;
   ProfileCreation: undefined;

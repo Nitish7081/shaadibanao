@@ -16,6 +16,7 @@ import { panditRouter } from './pandit.routes';
 import { bookingRouter } from './booking.routes';
 import { consultationRouter } from './consultation.routes';
 import { communityRouter } from './community.routes';
+import { bannerRouter } from './banner.routes';
 
 export const apiV1Router = Router();
 
@@ -36,4 +37,5 @@ apiV1Router.use('/pandits', panditRouter);
 apiV1Router.use('/bookings', bookingRouter);
 apiV1Router.use('/consultations', consultationRouter);
 apiV1Router.use('/community', communityRouter);
+apiV1Router.use('/banners', bannerRouter);
 
