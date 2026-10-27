@@ -56,18 +56,31 @@ export async function requestUploadIntent(
 export async function pickImageFromGallery(options?: {
   aspect?: [number, number];
 }): Promise<ImagePicker.ImagePickerAsset | null> {
-  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error('Photo gallery permission is required to select photos.');
+  try {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // On older platforms if permanently denied, warn only if the system picker isn't available
+    if (!permission.granted && !permission.canAskAgain) {
+      // Still attempt system picker, as Android 13+ PhotoPicker does not require READ_EXTERNAL_STORAGE
+    }
+  } catch {
+    // Ignore permission request errors on platforms with built-in system pickers
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    allowsEditing: true,
-    aspect: options?.aspect || [1, 1],
-    quality: 0.8,
-    base64: true,
-  });
+  let result;
+  try {
+    result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: options?.aspect || [1, 1],
+      quality: 0.8,
+      base64: true,
+    });
+  } catch (err: any) {
+    if (err?.message?.toLowerCase().includes('permission')) {
+      throw new Error('Photo gallery permission is required to select photos.');
+    }
+    throw err;
+  }
 
   if (result.canceled || !result.assets || result.assets.length === 0) {
     return null;

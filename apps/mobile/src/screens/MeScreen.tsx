@@ -11,6 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -37,8 +38,9 @@ interface Props {
 }
 
 export const MeScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [membershipTier, setMembershipTier] = useState<string>('Free Tier');
+  const [membershipTier, setMembershipTier] = useState<string>('');
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -59,9 +61,12 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
 
       if (profileRes.status === 'fulfilled' && profileRes.value.data) {
         setProfile(profileRes.value.data);
+      } else if (profileRes.status === 'fulfilled') {
+        // Server answered but this account has no profile: never keep an old one.
+        setProfile(null);
       }
       if (memberRes.status === 'fulfilled' && memberRes.value.data) {
-        setMembershipTier(memberRes.value.data.planName || 'Free Tier');
+        setMembershipTier(memberRes.value.data.planName || '');
       }
     } catch {
       // Non-blocking fallback to cached profile or session user
@@ -86,7 +91,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
   const sessionUser = getSessionUser();
   const displayName = profile
     ? `${profile.firstName} ${profile.lastName || ''}`.trim()
-    : ((sessionUser as any)?.name || 'Member');
+    : ((sessionUser as any)?.name || t('me.memberFallback'));
   const userAge = profile?.age ? `, ${profile.age}` : '';
   const memberId = profile?.id
     ? `SB-${profile.id.slice(-6).toUpperCase()}`
@@ -95,14 +100,14 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
 
   const menuItems = [
     {
-      title: 'Edit Full Matrimonial Profile',
-      subtitle: 'Manage bio, career, family & preferences',
+      title: t('me.menu.editProfile'),
+      subtitle: t('me.menu.editProfileSub'),
       icon: 'create-outline',
       onPress: () => navigation.navigate('ProfileCreation'),
     },
     {
-      title: 'Government ID & Aadhaar Verification',
-      subtitle: 'Masked proof submission for verified trust badge',
+      title: t('me.menu.idVerify'),
+      subtitle: t('me.menu.idVerifySub'),
       icon: 'shield-checkmark-outline',
       onPress: () => {
         const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
@@ -110,8 +115,8 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       },
     },
     {
-      title: 'Ceremony Bookings & Consultations',
-      subtitle: 'View upcoming rituals and join video consultations',
+      title: t('me.menu.bookings'),
+      subtitle: t('me.menu.bookingsSub'),
       icon: 'calendar-outline',
       onPress: () => {
         const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
@@ -119,8 +124,8 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       },
     },
     {
-      title: 'Vedic Kundli & Horoscope',
-      subtitle: 'Birth time, location, rashi & 36 Gunas matching',
+      title: t('me.menu.kundli'),
+      subtitle: t('me.menu.kundliSub'),
       icon: 'planet-outline',
       onPress: () => {
         const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
@@ -128,40 +133,46 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       },
     },
     {
-      title: 'Privacy & Visibility Settings',
-      subtitle: 'Control who sees photos, phone & income',
+      title: t('me.menu.privacy'),
+      subtitle: t('me.menu.privacySub'),
       icon: 'lock-closed-outline',
       onPress: () => navigation.navigate('PrivacySettings'),
     },
     {
-      title: 'Membership & Subscriptions',
-      subtitle: 'View plans, invoice history & entitlements',
+      title: t('me.menu.membership'),
+      subtitle: t('me.menu.membershipSub'),
       icon: 'ribbon-outline',
       onPress: () => navigation.navigate('Membership'),
     },
     {
-      title: 'Notification Preferences',
-      subtitle: 'Configure daily match emails & push alerts',
+      title: t('me.menu.notifications'),
+      subtitle: t('me.menu.notificationsSub'),
       icon: 'notifications-outline',
       onPress: () => navigation.navigate('Notifications'),
     },
     {
-      title: 'Help & Customer Care',
-      subtitle: 'Dedicated matrimonial relationship support',
+      title: t('me.menu.language'),
+      subtitle: t('me.menu.languageSub'),
+      icon: 'language-outline',
+      onPress: () => {
+        const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+        if (parentNav) parentNav.navigate('LanguageSelection', { fromSettings: true });
+      },
+    },
+    {
+      title: t('me.menu.help'),
+      subtitle: t('me.menu.helpSub'),
       icon: 'help-buoy-outline',
       onPress: () =>
-        Alert.alert(
-          'Customer Support',
-          'ShaadiBanao Support is available Monday - Saturday, 9am - 7pm IST at support@shaadibanao.in.'
-        ),
+        Alert.alert(t('me.supportTitle'), t('me.supportBody')),
     },
   ];
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out of ShaadiBanao?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('me.signOut'), t('me.signOutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: t('me.signOut'),
         style: 'destructive',
         onPress: async () => {
           await performLogout();
@@ -181,7 +192,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <Header title="My Account" subtitle={displayName} showStatusBadge={true} variant="royal" />
+      <Header title={t('me.headerTitle')} subtitle={displayName} showStatusBadge={true} variant="royal" />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -217,13 +228,13 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
                 Member ID: {memberId}{locationSub}
               </Text>
               <View style={styles.badgeRow}>
-                {(sessionUser as any)?.approvalStatus === 'approved' && <Badge label="Account Approved" variant="verified" />}
-                {profile?.isVerified && <Badge label="ID Verified" variant="verified" />}
-                {profile?.photoChecked && <Badge label="Photo Checked" variant="verified" />}
+                {(sessionUser as any)?.approvalStatus === 'approved' && <Badge label={t('me.badgeApproved')} variant="verified" />}
+                {profile?.isVerified && <Badge label={t('me.badgeIdVerified')} variant="verified" />}
+                {profile?.photoChecked && <Badge label={t('me.badgePhotoChecked')} variant="verified" />}
                 {((sessionUser as any)?.photoApprovalStatus === 'pending' || (profile as any)?.photoApprovalStatus === 'pending') && (
-                  <Badge label="Photo Under Review" variant="warning" />
+                  <Badge label={t('me.badgePhotoReview')} variant="warning" />
                 )}
-                <Badge label={membershipTier} variant="gold" />
+                <Badge label={membershipTier || t('me.freeTier')} variant="gold" />
               </View>
             </View>
           </View>
@@ -255,7 +266,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
 
         {/* Logout Button */}
         <Button
-          title="Sign Out of ShaadiBanao"
+          title={t('me.signOutButton')}
           onPress={handleSignOut}
           variant="secondary"
           style={styles.logoutBtn}

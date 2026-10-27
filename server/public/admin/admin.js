@@ -1961,10 +1961,7 @@ async function submitBannerUpload() {
   const msgEl = document.getElementById('banner-upload-msg');
   const btn = document.getElementById('btn-submit-banner');
 
-  if (!title) {
-    showToast('Please enter a banner title.', 'error');
-    return;
-  }
+  // Title is optional (the server stores a neutral default and the app shows only the image).
   if (!selectedBannerBase64) {
     showToast('Please select a banner image file.', 'error');
     return;
@@ -2020,7 +2017,7 @@ async function loadBanners() {
   container.innerHTML = '<div class="table-empty">Loading active banners...</div>';
 
   try {
-    const res = await adminFetch('/admin/banners');
+    const res = await adminFetch('/admin/banners?all=true');
     const banners = res.data?.items || [];
 
     if (banners.length === 0) {
@@ -2043,8 +2040,12 @@ async function loadBanners() {
                 Public ID: <code style="word-break: break-all;">${escapeHtml(b.publicId || 'N/A')}</code>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f0f0f0; padding-top: 8px;">
-                <span style="font-size: 11px; color: var(--text-muted);">Priority: ${b.priority || 0}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">Priority: ${b.priority || 0} &middot; <strong style="color: ${b.isActive === false ? '#b91c1c' : '#059669'};">${b.isActive === false ? 'DISABLED' : 'ACTIVE'}</strong></span>
+                <span style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button class="btn-act" onclick="toggleBannerItem('${b._id || b.id}', ${b.isActive === false ? 'true' : 'false'})">${b.isActive === false ? 'Enable' : 'Disable'}</button>
+                  <button class="btn-act" onclick="replaceBannerItem('${b._id || b.id}')">Replace image</button>
                 <button class="btn-act btn-act-reject" onclick="deleteBannerItem('${b._id || b.id}')">✕ Delete</button>
+                </span>
               </div>
             </div>
           </div>
@@ -2054,6 +2055,43 @@ async function loadBanners() {
   } catch (err) {
     container.innerHTML = `<div class="table-empty text-red">${escapeHtml(err.message)}</div>`;
   }
+}
+
+async function toggleBannerItem(bannerId, makeActive) {
+  try {
+    await adminFetch(`/admin/banners/${bannerId}`, { method: 'PATCH', body: JSON.stringify({ isActive: !!makeActive }) });
+    showToast(makeActive ? 'Banner enabled.' : 'Banner disabled.');
+    loadBanners();
+  } catch (err) {
+    showToast(err.message || 'Could not update banner.', 'error');
+  }
+}
+
+function replaceBannerItem(bannerId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/jpeg,image/png,image/webp';
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Banner file size exceeds 5 MB limit.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        showToast('Uploading new image...');
+        await adminFetch(`/admin/banners/${bannerId}`, { method: 'PATCH', body: JSON.stringify({ base64: e.target.result }) });
+        showToast('Banner image replaced.');
+        loadBanners();
+      } catch (err) {
+        showToast(err.message || 'Could not replace image.', 'error');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
 }
 
 async function deleteBannerItem(bannerId) {
@@ -2076,6 +2114,8 @@ window.openCommunityPreviewModal = openCommunityPreviewModal;
 window.closeCommunityPreviewModal = closeCommunityPreviewModal;
 window.loadCommunityPosts = loadCommunityPosts;
 window.loadBanners = loadBanners;
+window.toggleBannerItem = toggleBannerItem;
+window.replaceBannerItem = replaceBannerItem;
 window.deleteBannerItem = deleteBannerItem;
 window.handleBannerFileSelected = handleBannerFileSelected;
 window.handleBannerUploadSubmit = handleBannerUploadSubmit;

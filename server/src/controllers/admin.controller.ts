@@ -5,6 +5,7 @@ import { VerificationService } from '../services/verification.service';
 import { BookingService } from '../services/booking.service';
 import { CommunityService } from '../services/community.service';
 import { ApiResponse } from '@bandhansetu/shared';
+import { BannerService } from '../services/banner.service';
 
 export class AdminController {
   /**
@@ -574,8 +575,20 @@ export class AdminController {
    */
   public static async getBanners(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const banners = await AdminService.getBanners();
+      const banners = req.query.all === 'true' ? await BannerService.listAll() : await AdminService.getBanners();
       res.status(200).json({ success: true, data: { items: banners, total: banners.length } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/banners/:id  (enable/disable, edit title/link/priority, replace image)
+   */
+  public static async updateBanner(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const updated = await BannerService.update(req.params.id, req.user, req.body || {}, req.ip);
+      res.status(200).json({ success: true, message: 'Banner updated successfully.', data: updated });
     } catch (error) {
       next(error);
     }

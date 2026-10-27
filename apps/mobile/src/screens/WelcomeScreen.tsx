@@ -14,30 +14,32 @@ import { colors, typography, spacing, borderRadius, shadows, fonts } from '../co
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
 import { VedicDivider } from '../components/royal/VedicOrnament';
+import { useTranslation } from 'react-i18next';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
     {
-      title: 'Profiles you can trust',
-      description: 'Photo checks, ID badges, and a dedicated moderation team that reviews profiles.',
+      title: t('welcome.slide1Title'),
+      description: t('welcome.slide1Desc'),
       icon: 'shield-checkmark' as const,
-      tag: 'TRUST & SAFETY',
+      tag: t('welcome.slide1Tag'),
     },
     {
-      title: 'Privacy control in your hands',
-      description: 'You control who sees your photos, contact details, and horoscope background.',
+      title: t('welcome.slide2Title'),
+      description: t('welcome.slide2Desc'),
       icon: 'lock-closed' as const,
-      tag: 'PRIVACY BY DEFAULT',
+      tag: t('welcome.slide2Tag'),
     },
     {
-      title: 'Kundli & Vedic Guidance',
-      description: 'Vedic Kundli guidance and Pandit services for sacred muhurats.',
+      title: t('welcome.slide3Title'),
+      description: t('welcome.slide3Desc'),
       icon: 'planet' as const,
-      tag: 'VEDIC GUIDANCE',
+      tag: t('welcome.slide3Tag'),
     },
   ];
 
@@ -45,7 +47,7 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title="ShaadiBanao"
-        subtitle="Rishton ki nayi shuruaat"
+        subtitle={t('welcome.subtitle')}
         onBack={() => navigation.navigate('LanguageSelection')}
         showStatusBadge={true}
         variant="royal"
@@ -84,28 +86,28 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
         <View style={styles.trustStrip}>
           <View style={styles.trustItem}>
             <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>Moderated Profiles</Text>
+            <Text style={styles.trustLabel}>{t('welcome.trust1')}</Text>
           </View>
           <View style={styles.trustItem}>
             <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>Zero Spam Tolerance</Text>
+            <Text style={styles.trustLabel}>{t('welcome.trust2')}</Text>
           </View>
           <View style={styles.trustItem}>
             <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>Strict Privacy Controls</Text>
+            <Text style={styles.trustLabel}>{t('welcome.trust3')}</Text>
           </View>
         </View>
 
         {/* Action Buttons */}
         <View style={styles.actionContainer}>
           <Button
-            title="Create Free Account"
+            title={t('welcome.createAccount')}
             onPress={() => navigation.navigate('LoginOtp')}
             variant="primary"
             style={styles.mainCta}
           />
           <Button
-            title="I already have an account"
+            title={t('welcome.haveAccount')}
             onPress={() => navigation.navigate('LoginOtp')}
             variant="secondary"
             style={styles.secondaryCta}
@@ -114,7 +116,7 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
             onPress={() => navigation.navigate('MainTabs')}
             style={styles.browseButton}
           >
-            <Text style={styles.browseText}>Browse profiles without login →</Text>
+            <Text style={styles.browseText}>{t('welcome.browse')} →</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

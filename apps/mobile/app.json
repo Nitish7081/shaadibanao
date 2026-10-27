@@ -31,7 +31,14 @@
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ShaadiBanao needs access to your photos to let you choose a matrimonial profile picture.",
+          "cameraPermission": "ShaadiBanao needs access to your camera to let you take a matrimonial profile picture."
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"

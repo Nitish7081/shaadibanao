@@ -42,7 +42,7 @@ import {
   captureImageWithCamera,
 } from '../services/storageService';
 import { uploadAsset } from '../services/imageUpload';
-import { cloudinaryUrl } from '../services/cloudinaryUrl';
+import { cloudinaryUrl, photoSrc } from '../services/cloudinaryUrl';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProfileCreation'>;
 
@@ -182,7 +182,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
             setPhotos(p.photos);
             const main = p.photos.find((ph) => ph.isMain) || p.photos[0];
             if (main?.url) {
-              setSelectedPhotoUri(cloudinaryUrl(main.url, 'hero'));
+              setSelectedPhotoUri(photoSrc(main, 'hero'));
               setPhotoApprovalStatus(main.approved ? 'approved' : 'pending');
             }
           }
@@ -262,12 +262,16 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
       const newPhoto: PhotoData = {
         url: uploadResult.url || '',
         publicId: uploadResult.publicId,
+        variants: uploadResult.variants,
         isMain: true,
         privacy: photoPrivacy,
         approved: false, // Per matrimonial rules, pending moderation
       };
 
       setPhotos([newPhoto]);
+      if (uploadResult.url) {
+        setSelectedPhotoUri(uploadResult.url);
+      }
       setPhotoApprovalStatus('pending');
       setPhotoSuccess('✓ Photo secured! Pending administrator review.');
     } catch (err: any) {
@@ -814,7 +818,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
                   {selectedPhotoUri ? (
                     <View style={styles.previewCard}>
                       <Image
-                        source={{ uri: cloudinaryUrl(selectedPhotoUri, 'hero') }}
+                        source={{ uri: photos[0]?.variants?.hero || cloudinaryUrl(selectedPhotoUri, 'hero') }}
                         style={styles.previewImage}
                         resizeMode="cover"
                       />

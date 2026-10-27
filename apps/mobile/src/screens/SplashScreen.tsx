@@ -6,10 +6,14 @@ import { colors, typography, spacing } from '../constants/theme';
 import { loadSessionFromStorage, hasActiveSession, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
 import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
 import { VedicDivider } from '../components/royal/VedicOrnament';
+import { hasChosenLanguage } from '../i18n';
+import { useTranslation } from 'react-i18next';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
 export const SplashScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
+
   useEffect(() => {
     let isMounted = true;
 
@@ -36,7 +40,8 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
             navigation.replace('MainTabs');
           }
         } else {
-          navigation.replace('LanguageSelection');
+          // If the user previously selected a language, advance directly to Welcome
+          navigation.replace(hasChosenLanguage() ? 'Welcome' : 'LanguageSelection');
         }
       }, delay);
     };
@@ -59,7 +64,7 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <Text style={styles.brandTitle}>ShaadiBanao</Text>
-      <Text style={styles.tagline}>Rishton ki nayi shuruaat</Text>
+      <Text style={styles.tagline}>{t('splash.tagline')}</Text>
 
       <VedicDivider color="rgba(212, 175, 55, 0.45)" style={styles.divider} />
 
@@ -71,7 +76,7 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Sacred Sanatan Matrimony & Vedic Services</Text>
+        <Text style={styles.footerText}>{t('splash.subtitle')}</Text>
       </View>
     </View>
   );

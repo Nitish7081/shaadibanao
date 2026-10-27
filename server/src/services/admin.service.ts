@@ -13,6 +13,7 @@ import { PartnerPreferenceModel } from '../models/preference.model';
 import { KundliModel } from '../models/kundli.model';
 import { BannerModel } from '../models/banner.model';
 import { StorageService } from './storage.service';
+import { sanitizeBannerLink } from './banner.service';
 import { presentPhoto, presentPhotoUrl } from './photoPrivacy';
 import { TokenService } from './token.service';
 import { SocketService } from '../socket/socket.service';
@@ -1128,6 +1129,7 @@ export class AdminService {
     payload: { base64?: string; title?: string; linkUrl?: string; priority?: number },
     ipAddress?: string
   ): Promise<any> {
+    const safeLink = sanitizeBannerLink(payload.linkUrl);
     if (!payload.base64) {
       throw new AppError('Banner image payload (base64) is required.', 400, 'VALIDATION_ERROR');
     }
@@ -1160,7 +1162,7 @@ export class AdminService {
         title: payload.title?.trim() || 'ShaadiBanao Matrimonial Banner',
         imageUrl: uploadRes.secureUrl,
         publicId: uploadRes.publicId,
-        linkUrl: payload.linkUrl?.trim() || undefined,
+        linkUrl: safeLink,
         priority: payload.priority || 0,
         isActive: true,
         uploadedBy: adminUser.userId || adminUser.id,
@@ -1186,7 +1188,7 @@ export class AdminService {
         title: payload.title?.trim() || 'ShaadiBanao Matrimonial Banner',
         imageUrl: uploadRes.secureUrl,
         publicId: uploadRes.publicId,
-        linkUrl: payload.linkUrl?.trim(),
+        linkUrl: safeLink,
         priority: payload.priority || 0,
         isActive: true,
         createdAt: new Date().toISOString(),

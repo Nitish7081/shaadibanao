@@ -9,26 +9,75 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
-import { APP_LANGUAGES, AppLanguageCode } from '@bandhansetu/shared';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
+import { setAppLanguage } from '../i18n';
+import { PRIMARY_LANGUAGES, OTHER_LANGUAGES, LanguageOption } from '../i18n/languages';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'LanguageSelection'>;
 
-export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
-  const [selectedLanguage, setSelectedLanguage] = useState<AppLanguageCode>('en');
+export const LanguageSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { t, i18n } = useTranslation();
+  const fromSettings = route.params?.fromSettings === true;
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(i18n.language || 'en');
+  const [showOther, setShowOther] = useState<boolean>(
+    OTHER_LANGUAGES.some((l) => l.code === (i18n.language || 'en')),
+  );
 
-  const handleContinue = () => {
-    navigation.navigate('Welcome');
+  const finish = () => {
+    if (fromSettings && navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Welcome');
+    }
+  };
+
+  // Apply immediately so the whole screen switches language on tap.
+  const choose = async (code: string) => {
+    setSelectedLanguage(code);
+    await setAppLanguage(code);
+  };
+
+  const handleSkip = async () => {
+    await setAppLanguage('en');
+    finish();
+  };
+
+  const renderCard = (lang: LanguageOption) => {
+    const isSelected = selectedLanguage === lang.code;
+    return (
+      <TouchableOpacity
+        key={lang.code}
+        activeOpacity={0.75}
+        onPress={() => choose(lang.code)}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isSelected }}
+        accessibilityLabel={`${lang.native} ${lang.label}`}
+        style={[styles.langCard, isSelected && styles.langCardSelected]}
+      >
+        <Text style={[styles.nativeText, isSelected && styles.nativeTextSelected]}>
+          {lang.native}
+        </Text>
+        <Text style={[styles.labelText, isSelected && styles.labelTextSelected]}>
+          {lang.label}
+        </Text>
+        {isSelected && (
+          <View style={styles.checkCircle}>
+            <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+          </View>
+        )}
+      </TouchableOpacity>
+    );
   };
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
       <Header
         title="ShaadiBanao"
-        subtitle="Where trust meets togetherness"
+        subtitle={t('splash.tagline')}
         showStatusBadge={true}
         variant="royal"
       />
@@ -38,59 +87,58 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Choose your language</Text>
-          <Text style={styles.subtitle}>
-            Select your preferred language. You can change this at any time in settings.
-          </Text>
+          <Text style={styles.title}>{t('language.title')}</Text>
+          <Text style={styles.subtitle}>{t('language.subtitle')}</Text>
         </View>
 
         <View style={styles.grid}>
-          {APP_LANGUAGES.map((lang) => {
-            const isSelected = selectedLanguage === lang.code;
-            return (
-              <TouchableOpacity
-                key={lang.code}
-                activeOpacity={0.75}
-                onPress={() => setSelectedLanguage(lang.code)}
-                style={[styles.langCard, isSelected && styles.langCardSelected]}
-              >
-                <Text style={[styles.nativeText, isSelected && styles.nativeTextSelected]}>
-                  {lang.native}
-                </Text>
-                <Text style={[styles.labelText, isSelected && styles.labelTextSelected]}>
-                  {lang.label}
-                </Text>
-                {isSelected && (
-                  <View style={styles.checkCircle}>
-                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
+          {PRIMARY_LANGUAGES.map(renderCard)}
+          <TouchableOpacity
+            activeOpacity={0.75}
+            onPress={() => setShowOther((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showOther }}
+            style={[styles.langCard, styles.otherCard, showOther && styles.langCardSelected]}
+          >
+            <Text style={[styles.nativeText, showOther && styles.nativeTextSelected]}>
+              {t('language.other')}
+            </Text>
+            <Ionicons
+              name={showOther ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.royalMaroon}
+            />
+            <Text style={styles.labelText}>{t('language.otherHint')}</Text>
+          </TouchableOpacity>
+          {showOther && OTHER_LANGUAGES.map(renderCard)}
         </View>
+
+        {showOther && selectedLanguage !== 'en' && selectedLanguage !== 'hi' && (
+          <Text style={styles.subtitle}>{t('language.partialNote')}</Text>
+        )}
 
         <View style={styles.footer}>
           <Button
-            title="Continue"
-            onPress={handleContinue}
+            title={t('common.continue')}
+            onPress={finish}
             variant="primary"
             style={styles.continueButton}
           />
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Welcome')}
-            style={styles.skipButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.skipText}>Skip for now (English) →</Text>
-          </TouchableOpacity>
+          {!fromSettings && (
+            <TouchableOpacity
+              onPress={handleSkip}
+              style={styles.skipButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.skipText}>{t('language.skip')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -136,6 +184,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     ...shadows.subtle,
+  },
+  otherCard: {
+    width: '100%',
   },
   langCardSelected: {
     borderColor: colors.royalMaroon,
@@ -198,3 +249,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
