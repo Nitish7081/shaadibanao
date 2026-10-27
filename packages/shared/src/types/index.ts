@@ -163,7 +163,7 @@ export interface UserProfile {
   education: string;
   employedIn: string;
   occupation: string;
-  annualIncomeBand: string;
+  annualIncomeBand?: string;
   showIncomeBand: boolean;
   photos: PhotoData[];
   photoPrivacy: 'everyone' | 'after_interest_accepted' | 'blurred';

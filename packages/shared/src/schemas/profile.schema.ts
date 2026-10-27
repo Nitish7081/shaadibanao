@@ -40,7 +40,7 @@ export const upsertProfileSchema = z.object({
   education: z.string().trim().min(2, 'Education level or degree is required'),
   employedIn: z.enum(['private', 'government', 'business', 'self_employed', 'not_working']).default('private'),
   occupation: z.string().trim().min(2, 'Occupation or job title is required'),
-  annualIncomeBand: z.string().trim().default('₹10L - ₹15L'),
+  annualIncomeBand: z.string().trim().optional(),
   showIncomeBand: z.boolean().default(true),
 
   // 6. Photos
