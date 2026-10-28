@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { apiV1Router } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { config } from './config/env';
+import { StorageService } from './services/storage.service';
 import { apiGeneralLimiter, sensitiveEndpointLimiter } from './middleware/rateLimiter';
 
 export const createApp = (): Express => {
@@ -62,6 +63,12 @@ export const createApp = (): Express => {
       healthCheck: '/api/v1/health',
       documentation: '/docs',
     });
+  });
+
+  // Storage health check (root-level alias)
+  app.get('/health/storage', (req: Request, res: Response) => {
+    const health = StorageService.getHealthStatus();
+    res.status(200).json(health);
   });
 
   // Sensitive endpoint rate limiting

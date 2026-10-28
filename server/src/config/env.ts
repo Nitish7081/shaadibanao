@@ -6,6 +6,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
 
+const cleanEnvStr = (val: string | undefined): string =>
+  (val || '').trim().replace(/^["']|["']$/g, '');
+
+const cloudName = cleanEnvStr(process.env.CLOUDINARY_CLOUD_NAME);
+const apiKey = cleanEnvStr(process.env.CLOUDINARY_API_KEY);
+const apiSecret = cleanEnvStr(process.env.CLOUDINARY_API_SECRET);
+const authTokenKey = cleanEnvStr(process.env.CLOUDINARY_AUTH_TOKEN_KEY);
+
 export const config = {
   port: parseInt(process.env.PORT || '5000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -30,17 +38,13 @@ export const config = {
     serviceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH || '',
   },
   cloudinary: {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
-    apiKey: process.env.CLOUDINARY_API_KEY || '',
-    apiSecret: process.env.CLOUDINARY_API_SECRET || '',
+    cloudName,
+    apiKey,
+    apiSecret,
     /** OPTIONAL: Cloudinary token-based-authentication key. When set, signed photo URLs also expire. */
-    authTokenKey: process.env.CLOUDINARY_AUTH_TOKEN_KEY || '',
+    authTokenKey,
     /** Lifetime of expiring photo URLs (only used when authTokenKey is set). */
     signedUrlTtlSeconds: Number(process.env.CLOUDINARY_SIGNED_URL_TTL_SECONDS) || 600,
-    isConfigured: Boolean(
-      process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
-    ),
+    isConfigured: Boolean(cloudName && apiKey && apiSecret),
   },
 };
