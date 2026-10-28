@@ -17,7 +17,6 @@ import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Header } from '../components/common/Header';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import {
   getMessages,
   sendMessage,
@@ -204,10 +203,6 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <StatusNotice
-          milestoneText="Milestone 6 Secure Real-Time Chat Active"
-          subtext="End-to-end verified mutual match access control and Socket.IO real-time delivery."
-        />
 
         {/* Blueprint Safety Warning Banner (Blueprint S-14) */}
         <View style={styles.safetyBanner}>

@@ -16,7 +16,6 @@ import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import {
   getMembershipPlans,
   getMyMembership,
@@ -116,10 +115,6 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
           />
         }
       >
-        <StatusNotice
-          milestoneText="Milestone 7A Membership Plans Active"
-          subtext="Server-enforced plan entitlements. Live payment gateway webhooks are safely unconfigured."
-        />
 
         {/* Current Entitlements Overview Card */}
         {myMembership && (

@@ -20,7 +20,6 @@ import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import {
   searchProfiles,
   addShortlist,
@@ -188,10 +187,6 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
           />
         }
       >
-        <StatusNotice
-          milestoneText="Milestone 5 Search & Matching Active"
-          subtext="Factual preference-alignment rules evaluated against Partner Preferences. Zero arbitrary percentages."
-        />
 
         {/* Filter Chips Horizontal Scroll */}
         <ScrollView

@@ -44,31 +44,54 @@ bookingRouter.get('/pandit', async (req: Request, res: Response, next: NextFunct
 bookingRouter.post('/', requireApproved, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const userId = (req as any).user.id;
-    const { panditId, serviceId, bookingDate, timeSlot, mode, venueAddress, kundliSharedConsent, specialRequests } = req.body;
-
-    if (!panditId || !serviceId || !bookingDate || !timeSlot) {
-      res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'panditId, serviceId, bookingDate, and timeSlot are required.' },
-      });
-      return;
-    }
-
-    const booking = await BookingService.createBooking({
-      userId,
+    const {
       panditId,
       serviceId,
       bookingDate,
       timeSlot,
-      mode: mode || 'in_person',
+      mode,
       venueAddress,
-      kundliSharedConsent: !!kundliSharedConsent,
+      city,
+      state,
+      guestCount,
+      languagePref,
+      budgetRangeInr,
+      kundliSharedConsent,
       specialRequests,
+    } = req.body;
+
+    // serviceId, bookingDate, timeSlot are always required
+    if (!serviceId || !bookingDate || !timeSlot) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'serviceId, bookingDate, and timeSlot are required.' },
+      });
+      return;
+    }
+
+    // Sanitize string inputs
+    const clean = (v: any) => (typeof v === 'string' ? v.trim().slice(0, 500) : undefined);
+
+    const booking = await BookingService.createBooking({
+      userId,
+      panditId: panditId || undefined,
+      serviceId: String(serviceId).trim(),
+      bookingDate: String(bookingDate).trim(),
+      timeSlot: String(timeSlot).trim(),
+      mode: mode || 'in_person',
+      venueAddress: clean(venueAddress),
+      city: clean(city),
+      state: clean(state),
+      guestCount: guestCount ? Number(guestCount) : undefined,
+      languagePref: clean(languagePref),
+      budgetRangeInr: clean(budgetRangeInr),
+      kundliSharedConsent: !!kundliSharedConsent,
+      specialRequests: clean(specialRequests),
     });
 
     const response: ApiResponse = {
       success: true,
-      message: 'Booking request sent successfully to Pandit Ji.',
+      message: 'Booking request sent successfully.',
       data: booking,
     };
     res.status(201).json(response);

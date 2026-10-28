@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { BookingStatus } from '@bandhansetu/shared';
 import { BookingModel, IBooking } from '../models/booking.model';
 import { PanditModel } from '../models/pandit.model';
 import { UserModel } from '../models/user.model';
@@ -7,12 +8,17 @@ import { AuditLogModel } from '../models/audit-log.model';
 
 export interface CreateBookingInput {
   userId: string;
-  panditId: string;
+  panditId?: string;   // optional: undefined = any available pandit
   serviceId: string;
   bookingDate: string; // YYYY-MM-DD
   timeSlot: string;    // e.g. "10:00 AM - 01:00 PM"
   mode: 'in_person' | 'online';
   venueAddress?: string;
+  city?: string;
+  state?: string;
+  guestCount?: number;
+  languagePref?: string;
+  budgetRangeInr?: string;
   kundliSharedConsent?: boolean;
   specialRequests?: string;
 }
@@ -25,30 +31,43 @@ export class BookingService {
     const user = await UserModel.findById(input.userId);
     if (!user) throw new Error('User not found.');
 
-    const pandit = await PanditModel.findById(input.panditId);
-    if (!pandit) throw new Error('Pandit not found.');
-    if (pandit.verificationStatus !== 'verified') {
-      throw new Error('This Pandit profile is currently pending verification and cannot accept bookings.');
-    }
+    let panditDoc: any = null;
+    let serviceName = input.serviceId; // fallback label
+    let priceInr = 0;
+    let ceremonyType: any = 'other_puja';
 
-    // Find the requested service
-    const service = (pandit.services as any[]).find((s: any) => s.serviceId === input.serviceId);
-    if (!service) {
-      throw new Error('Requested service not offered by this Pandit.');
-    }
+    if (input.panditId) {
+      // Specific pandit selected — validate and look up service
+      const pandit = await PanditModel.findById(input.panditId);
+      if (!pandit) throw new Error('Pandit not found.');
+      if (pandit.verificationStatus !== 'verified') {
+        throw new Error('This Pandit profile is currently pending verification and cannot accept bookings.');
+      }
+      const service = (pandit.services as any[]).find((s: any) => s.serviceId === input.serviceId);
+      if (!service) {
+        throw new Error('Requested service not offered by this Pandit.');
+      }
 
-    // 1. Conflict Prevention: Check if Pandit is already booked in that slot
-    const existingConflict = await BookingModel.findOne({
-      panditId: pandit._id,
-      bookingDate: input.bookingDate,
-      timeSlot: input.timeSlot,
-      status: { $in: ['accepted', 'requested'] },
-    });
-
-    if (existingConflict) {
-      throw new Error(
-        `Pandit Ji is already booked or has a pending request on ${input.bookingDate} during slot (${input.timeSlot}). Please choose another time slot.`
-      );
+      // Conflict Prevention: Check if Pandit is already booked in that slot
+      const existingConflict = await BookingModel.findOne({
+        panditId: pandit._id,
+        bookingDate: input.bookingDate,
+        timeSlot: input.timeSlot,
+        status: { $in: ['accepted', 'requested'] },
+      });
+      if (existingConflict) {
+        throw new Error(
+          `Pandit Ji is already booked or has a pending request on ${input.bookingDate} during slot (${input.timeSlot}). Please choose another time slot.`
+        );
+      }
+      panditDoc = pandit;
+      serviceName = service.name;
+      priceInr = service.priceInr;
+      ceremonyType = service.ceremonyType || 'other_puja';
+    } else {
+      // "Any available pandit" request — service name comes from serviceId label
+      serviceName = input.serviceId;
+      priceInr = 0;
     }
 
     // Generate unique booking reference (e.g. SB-2026-7842)
@@ -63,16 +82,20 @@ export class BookingService {
       userId: user._id,
       userName: user.displayName || 'Devotee',
       userMobile: user.mobile,
-      panditId: pandit._id,
-      panditName: pandit.name,
-      serviceId: service.serviceId,
-      serviceName: service.name,
-      ceremonyType: service.ceremonyType || 'other_puja',
+      ...(panditDoc ? { panditId: panditDoc._id, panditName: panditDoc.name } : {}),
+      serviceId: input.serviceId,
+      serviceName,
+      ceremonyType,
       bookingDate: input.bookingDate,
       timeSlot: input.timeSlot,
       mode: input.mode,
       venueAddress: input.venueAddress,
-      priceInr: service.priceInr,
+      city: input.city,
+      state: input.state,
+      guestCount: input.guestCount,
+      languagePref: input.languagePref,
+      budgetRangeInr: input.budgetRangeInr,
+      priceInr,
       status: 'requested',
       statusHistory: [
         {
@@ -223,16 +246,21 @@ export class BookingService {
       items: items.map((b: any) => ({
         id: b._id.toString(),
         bookingReference: b.bookingReference,
-        userId: b.userId.toString(),
+        userId: b.userId?.toString(),
         userName: b.userName,
         userMobile: b.userMobile,
-        panditId: b.panditId.toString(),
+        panditId: b.panditId ? b.panditId.toString() : undefined,
         panditName: b.panditName,
         serviceName: b.serviceName,
         ceremonyType: b.ceremonyType,
         bookingDate: b.bookingDate,
         timeSlot: b.timeSlot,
         mode: b.mode,
+        city: b.city,
+        state: b.state,
+        guestCount: b.guestCount,
+        languagePref: b.languagePref,
+        budgetRangeInr: b.budgetRangeInr,
         priceInr: b.priceInr,
         status: b.status,
         venueAddress: b.venueAddress,
@@ -245,5 +273,63 @@ export class BookingService {
         totalPages: Math.ceil(totalCount / limit) || 1,
       },
     };
+  }
+
+  /**
+   * Admin: Get single booking details
+   */
+  static async getBookingById(bookingId: string) {
+    const booking = await BookingModel.findById(bookingId).lean();
+    if (!booking) throw new Error('Booking not found.');
+    return booking;
+  }
+
+  /**
+   * Admin: Assign a Pandit to a booking request and confirm it
+   */
+  static async assignPandit(bookingId: string, panditId: string, adminId: string) {
+    const booking = await BookingModel.findById(bookingId);
+    if (!booking) throw new Error('Booking not found.');
+
+    const pandit = await PanditModel.findById(panditId);
+    if (!pandit) throw new Error('Pandit not found.');
+
+    booking.panditId = pandit._id;
+    booking.panditName = pandit.name;
+    booking.status = 'confirmed';
+    booking.statusHistory.push({
+      status: 'confirmed',
+      changedBy: new mongoose.Types.ObjectId(adminId),
+      reason: `Assigned to Pandit ${pandit.name} by Admin`,
+      timestamp: new Date(),
+    });
+    await booking.save();
+    return booking;
+  }
+
+  /**
+   * Admin: Update booking status
+   */
+  static async adminUpdateStatus(
+    bookingId: string,
+    newStatus: BookingStatus,
+    adminId: string,
+    reason?: string
+  ) {
+    const booking = await BookingModel.findById(bookingId);
+    if (!booking) throw new Error('Booking not found.');
+
+    booking.status = newStatus;
+    if (reason && newStatus === 'cancelled') {
+      booking.cancellationReason = reason;
+    }
+    booking.statusHistory.push({
+      status: newStatus,
+      changedBy: new mongoose.Types.ObjectId(adminId),
+      reason,
+      timestamp: new Date(),
+    });
+    await booking.save();
+    return booking;
   }
 }

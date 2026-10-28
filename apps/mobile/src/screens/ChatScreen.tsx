@@ -15,7 +15,6 @@ import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import { getConversations, getSessionToken } from '../services';
 import { ConversationItem } from '@bandhansetu/shared';
 
@@ -95,10 +94,6 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
           />
         }
       >
-        <StatusNotice
-          milestoneText="Milestone 6 Secure Real-Time Chat Active"
-          subtext="Messaging permitted only between verified mutual matches. Contact numbers remain locked until mutual consent."
-        />
 
         {/* Loading State */}
         {loading && !refreshing && (

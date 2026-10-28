@@ -20,7 +20,6 @@ import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import {
   getReceivedInterests,
   getSentInterests,
@@ -181,10 +180,6 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
           />
         }
       >
-        <StatusNotice
-          milestoneText="Milestone 5 Interest Workflow Active"
-          subtext="Recipient-only acceptance and withdrawal rules strictly enforced by the backend."
-        />
 
         {/* Tab Switcher */}
         <View style={styles.tabsRow}>

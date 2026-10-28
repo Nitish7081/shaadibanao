@@ -185,7 +185,10 @@ export async function uploadAsset(params: {
       throw new UploadError('NETWORK', 'Network error. Please check your internet.');
     }
     if (/STORAGE_NOT_CONFIGURED|not configured/i.test(msg)) {
-      throw new UploadError('STORAGE_NOT_CONFIGURED', 'Image storage is not available right now. Please try later.');
+      throw new UploadError(
+        'STORAGE_NOT_CONFIGURED',
+        'Server storage is not configured. Please contact support or try again later.'
+      );
     }
     throw new UploadError('SERVER', msg || 'Could not start upload.');
   }
@@ -211,7 +214,22 @@ export async function uploadAsset(params: {
   }
 
   if (res.status === 503) {
-    throw new UploadError('STORAGE_NOT_CONFIGURED', 'Image storage is not available right now. Please try later.');
+    throw new UploadError(
+      'STORAGE_NOT_CONFIGURED',
+      'Server storage is not configured. Please contact support or try again later.'
+    );
+  }
+  if (res.status === 413) {
+    throw new UploadError('TOO_LARGE', 'File is too large for upload. Please choose a photo under 5 MB.');
+  }
+  if (res.status === 415 || res.json?.error?.code === 'INVALID_FILE_TYPE') {
+    throw new UploadError(
+      'INVALID_TYPE',
+      res.json?.error?.message || 'Unsupported file type. Please upload a JPG, PNG or WEBP photo.'
+    );
+  }
+  if (res.status === 400 && res.json?.error?.code === 'FILE_TOO_LARGE') {
+    throw new UploadError('TOO_LARGE', res.json?.error?.message || 'File is too large. Please choose a smaller photo.');
   }
   if (res.status < 200 || res.status >= 300 || !res.json?.success) {
     throw new UploadError('SERVER', res.json?.error?.message || res.json?.message || 'Upload failed. Please try again.');

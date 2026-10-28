@@ -26,13 +26,13 @@ const StatTile: React.FC<TileProps> = ({ icon, tint, tintSoft, value, label, emp
       <Ionicons name={icon} size={18} color={tint} />
     </View>
     {value > 0 ? (
-      <Text style={[styles.value, { color: tint }]}>{value}</Text>
+      <Text style={[styles.value, { color: tint }]} maxFontSizeMultiplier={1.2}>{value}</Text>
     ) : (
-      <Text style={styles.hint} numberOfLines={2}>
+      <Text style={styles.hint} numberOfLines={2} maxFontSizeMultiplier={1.2}>
         {emptyHint}
       </Text>
     )}
-    <Text style={styles.label} numberOfLines={1}>
+    <Text style={styles.label} numberOfLines={1} maxFontSizeMultiplier={1.2}>
       {label}
     </Text>
   </PressableScale>

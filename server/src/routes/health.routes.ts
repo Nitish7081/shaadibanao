@@ -25,7 +25,11 @@ healthRouter.get('/', (req: Request, res: Response) => {
     message: isDegraded
       ? 'BandhanSetu API running with degraded database connectivity'
       : 'BandhanSetu API is healthy and operational',
-    data: { ...healthData, storage: config.cloudinary.isConfigured ? 'configured' : 'missing' } as HealthCheckResponse,
+    data: {
+      ...healthData,
+      storage: config.cloudinary.isConfigured ? 'configured' : 'missing',
+      cloudinary: config.cloudinary.isConfigured ? 'configured' : 'not configured',
+    } as any,
     meta: {
       timestamp: new Date().toISOString(),
     },

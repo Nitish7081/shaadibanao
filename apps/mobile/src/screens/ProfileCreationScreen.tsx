@@ -32,7 +32,6 @@ import {
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
-import { StatusNotice } from '../components/common/StatusNotice';
 import { getMyProfile, upsertMyProfile } from '../services/profileService';
 import { getMyPreferences, upsertMyPreferences } from '../services/preferenceService';
 import { getMyKundli, upsertMyKundli } from '../services/astrologyService';
@@ -591,11 +590,6 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <StatusNotice
-            milestoneText="Verified Profile Architecture Active"
-            subtext="Data validated and saved securely to /api/v1/profiles/me with zero data loss on step changes."
-          />
-
           <View style={styles.card}>
             {/* STEP 1: BASICS */}
             {currentStep === 1 && (
@@ -810,7 +804,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
               <>
                 <Text style={styles.stepHeading}>Photos & Privacy Rules</Text>
                 <Text style={styles.stepSub}>
-                  A verified face photo increases serious matrimonial responses by over 400%.
+                  A clear face photo helps you get more responses from serious matches.
                 </Text>
 
                 {/* Photo Preview & Upload Box */}

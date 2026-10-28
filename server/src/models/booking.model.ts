@@ -13,7 +13,7 @@ export interface IBooking extends Document {
   userId: mongoose.Types.ObjectId;
   userName?: string;
   userMobile?: string;
-  panditId: mongoose.Types.ObjectId;
+  panditId?: mongoose.Types.ObjectId;    // optional: undefined = "any available pandit"
   panditName?: string;
   serviceId: string;
   serviceName: string;
@@ -22,6 +22,11 @@ export interface IBooking extends Document {
   timeSlot: string;    // "10:00 AM - 01:00 PM"
   mode: 'in_person' | 'online';
   venueAddress?: string;
+  city?: string;
+  state?: string;
+  guestCount?: number;
+  languagePref?: string;
+  budgetRangeInr?: string;
   priceInr: number;
   status: BookingStatus;
   statusHistory: IBookingStatusChange[];
@@ -64,7 +69,7 @@ const BookingSchema = new Schema<IBooking>(
     panditId: {
       type: Schema.Types.ObjectId,
       ref: 'Pandit',
-      required: true,
+      required: false,   // optional: null = 'any available pandit'
       index: true,
     },
     panditName: { type: String, trim: true },
@@ -83,6 +88,11 @@ const BookingSchema = new Schema<IBooking>(
       default: 'in_person',
     },
     venueAddress: { type: String, trim: true },
+    city: { type: String, trim: true },
+    state: { type: String, trim: true },
+    guestCount: { type: Number, min: 1 },
+    languagePref: { type: String, trim: true },
+    budgetRangeInr: { type: String, trim: true },
     priceInr: { type: Number, required: true, min: 0 },
     status: {
       type: String,

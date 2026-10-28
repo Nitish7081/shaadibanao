@@ -64,8 +64,8 @@ export const PrivacySettingsScreen: React.FC<Props> = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <StatusNotice
-          milestoneText="Consent & Data Protection: Milestone 4"
-          subtext="Server-side consent tracking and audit logs will be connected in Milestone 4."
+          milestoneText="Privacy & Visibility"
+          subtext="Control who can view your profile photo and contact details. Your preferences are saved securely."
         />
 
         {/* Profile Visibility Toggles */}

@@ -18,7 +18,6 @@ import { Header } from '../components/common/Header';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { StatusNotice } from '../components/common/StatusNotice';
 import {
   getPublicProfile,
   sendInterest,
@@ -130,10 +129,6 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <StatusNotice
-          milestoneText="Profile & Privacy Rules: Milestone 5"
-          subtext="Contact info is locked behind mutual interest. Identity verification badges strictly follow Blueprint S-11."
-        />
 
         {loading && (
           <View style={styles.centerBox}>

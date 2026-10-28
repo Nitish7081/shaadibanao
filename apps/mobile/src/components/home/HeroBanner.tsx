@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: ds.radius.xl,
     overflow: 'hidden',
-    minHeight: 195,
+    height: 200,
     marginBottom: ds.space.lg,
     position: 'relative',
     ...ds.shadow.lift,

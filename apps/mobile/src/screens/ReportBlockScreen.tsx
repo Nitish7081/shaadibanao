@@ -60,8 +60,8 @@ export const ReportBlockScreen: React.FC<Props> = ({ route, navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <StatusNotice
-          milestoneText="Safety & Moderation: Milestone 6"
-          subtext="Admin operations dashboard (S-A01/S-A03) and auto-hide threshold review will be linked in Milestone 6."
+          milestoneText="Confidential Report"
+          subtext="Your report is completely confidential and helps maintain a safe community for everyone."
         />
 
         <Card style={styles.card}>

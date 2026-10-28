@@ -19,7 +19,6 @@ import { PROFILE_CREATED_FOR, ProfileCreatedFor } from '@bandhansetu/shared';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
-import { StatusNotice } from '../components/common/StatusNotice';
 import { requestOtp, verifyOtp, registerUser, loginWithFirebase } from '../services/authService';
 import { setSessionAuth } from '../services/authSession';
 import {
@@ -313,10 +312,6 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <StatusNotice
-            milestoneText="Firebase Phone & Google Auth Enabled"
-            subtext="Integrated with Firebase project saadibaano. Verification verified cryptographically on server."
-          />
 
           {authNotice.isExpoGo && (
             <View style={styles.clientNoticeBox}>
