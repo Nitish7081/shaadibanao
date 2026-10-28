@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getDbStatus } from '../config/database';
 import { config } from '../config/env';
+import { StorageService } from '../services/storage.service';
 import { ApiResponse, HealthCheckResponse } from '@bandhansetu/shared';
 
 export const healthRouter = Router();
@@ -36,4 +37,15 @@ healthRouter.get('/', (req: Request, res: Response) => {
   };
 
   res.status(200).json(response);
+});
+
+/**
+ * Storage Health Check: GET /api/v1/health/storage
+ * Returns strictly:
+ * { cloudinaryConfigured: true/false, reasonCode: "OK" | "MISSING_CLOUD_NAME" | "MISSING_API_KEY" | "MISSING_API_SECRET" | "INIT_FAILED" }
+ * Never leaks any secret values or internal details.
+ */
+healthRouter.get('/storage', (req: Request, res: Response) => {
+  const health = StorageService.getHealthStatus();
+  res.status(200).json(health);
 });

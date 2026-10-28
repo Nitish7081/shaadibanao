@@ -202,13 +202,38 @@ export class StorageService {
     return missing;
   }
 
+  static getHealthStatus(): {
+    cloudinaryConfigured: boolean;
+    reasonCode: 'OK' | 'MISSING_CLOUD_NAME' | 'MISSING_API_KEY' | 'MISSING_API_SECRET' | 'INIT_FAILED';
+  } {
+    if (!config.cloudinary.cloudName) {
+      return { cloudinaryConfigured: false, reasonCode: 'MISSING_CLOUD_NAME' };
+    }
+    if (!config.cloudinary.apiKey) {
+      return { cloudinaryConfigured: false, reasonCode: 'MISSING_API_KEY' };
+    }
+    if (!config.cloudinary.apiSecret) {
+      return { cloudinaryConfigured: false, reasonCode: 'MISSING_API_SECRET' };
+    }
+    if (!config.cloudinary.isConfigured) {
+      return { cloudinaryConfigured: false, reasonCode: 'INIT_FAILED' };
+    }
+    return { cloudinaryConfigured: true, reasonCode: 'OK' };
+  }
+
   /** Logs storage readiness once at startup. Never prints secrets. */
   static logStartupStatus(): void {
-    if (config.cloudinary.isConfigured) {
-      console.log(`[Storage] Cloudinary configured (cloud: ${config.cloudinary.cloudName}). All uploads go to Cloudinary. Token auth: ${config.cloudinary.authTokenKey ? 'set' : 'missing (optional)'}.`);
+    const health = StorageService.getHealthStatus();
+    console.log(
+      `[Storage] Startup check: cloudinaryConfigured=${health.cloudinaryConfigured}, reasonCode="${health.reasonCode}".`
+    );
+    if (health.cloudinaryConfigured) {
+      console.log(
+        `[Storage] Cloudinary configured (cloud name: set). All uploads go to Cloudinary. Token auth: ${config.cloudinary.authTokenKey ? 'set' : 'missing (optional)'}.`
+      );
     } else {
       console.error(
-        `[Storage] CLOUDINARY NOT CONFIGURED - missing: ${StorageService.missingCloudinaryVars().join(', ')}. ` +
+        `[Storage] CLOUDINARY NOT CONFIGURED (reasonCode="${health.reasonCode}", missing: ${StorageService.missingCloudinaryVars().join(', ')}). ` +
           'Image uploads will be rejected with STORAGE_NOT_CONFIGURED (no local-disk fallback). Set them in the server environment and restart.'
       );
     }

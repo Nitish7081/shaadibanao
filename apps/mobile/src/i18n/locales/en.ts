@@ -152,6 +152,10 @@ export const en = {
     cameraPermission:
       'Camera access is needed to take a picture. Please allow it in your phone settings.',
     uploadFailed: 'Photo upload failed. Please try again.',
+    storageNotConfigured: 'Server storage is not configured. Please contact support or try again later.',
+    networkError: 'Network error. Please check your internet connection.',
+    fileTooLarge: 'File is too large for upload. Please choose a photo under 5 MB.',
+    unsupportedType: 'Unsupported file type. Please upload a JPG, PNG or WEBP photo.',
   },
 };
 

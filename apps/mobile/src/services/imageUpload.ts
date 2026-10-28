@@ -5,6 +5,7 @@
  *  - reports progress, throws friendly typed errors, retries once on network failure
  *  - public uploads return a Cloudinary secure_url; private uploads return ONLY a fileKey
  */
+import i18n from '../i18n';
 import { getApiBaseUrl } from './apiClient';
 import { requestUploadIntent, UploadIntentInput } from './storageService';
 
@@ -18,13 +19,57 @@ export type UploadErrorCode =
   | 'SERVER'
   | 'PROCESSING';
 
+export const UPLOAD_ERROR_MESSAGES: Record<
+  'en' | 'hi',
+  Record<UploadErrorCode, string>
+> = {
+  en: {
+    STORAGE_NOT_CONFIGURED: 'Server storage is not configured. Please contact support or try again later.',
+    NETWORK: 'Network error. Please check your internet connection and try again.',
+    TOO_LARGE: 'File is too large for upload. Please choose a photo under 5 MB.',
+    INVALID_TYPE: 'Unsupported file type. Please upload a JPG, PNG or WEBP photo.',
+    PROCESSING: 'Could not process the selected image. Please try another photo.',
+    SERVER: 'Upload failed. Please try again.',
+  },
+  hi: {
+    STORAGE_NOT_CONFIGURED: 'इमेज स्टोरेज सेवा अभी उपलब्ध नहीं है। कृपया सहायता टीम से संपर्क करें या कुछ समय बाद प्रयास करें।',
+    NETWORK: 'नेटवर्क में समस्या है। कृपया अपना इंटरनेट कनेक्शन जाँचें और पुनः प्रयास करें।',
+    TOO_LARGE: 'फ़ाइल का साइज़ बहुत बड़ा है। कृपया 5 MB से छोटी फ़ोटो चुनें।',
+    INVALID_TYPE: 'यह फ़ाइल फ़ॉर्मेट समर्थित नहीं है। कृपया JPG, PNG या WEBP फ़ोटो अपलोड करें।',
+    PROCESSING: 'चुनी गई तस्वीर को प्रोसेस नहीं किया जा सका। कृपया दूसरी फ़ोटो चुनें।',
+    SERVER: 'फ़ोटो अपलोड नहीं हो सकी। कृपया पुनः प्रयास करें।',
+  },
+};
+
 export class UploadError extends Error {
   code: UploadErrorCode;
-  constructor(code: UploadErrorCode, message: string) {
-    super(message);
+  messageEn: string;
+  messageHi: string;
+
+  constructor(code: UploadErrorCode, customMessage?: string) {
+    const defaultEn = UPLOAD_ERROR_MESSAGES.en[code] || UPLOAD_ERROR_MESSAGES.en.SERVER;
+    const defaultHi = UPLOAD_ERROR_MESSAGES.hi[code] || UPLOAD_ERROR_MESSAGES.hi.SERVER;
+
+    // Detect if current active app language is Hindi
+    const currentLang = typeof i18n !== 'undefined' && i18n?.language ? i18n.language : 'en';
+    const isHindi = currentLang.startsWith('hi');
+    const localizedMessage = customMessage || (isHindi ? defaultHi : defaultEn);
+
+    super(localizedMessage);
     this.name = 'UploadError';
     this.code = code;
+    this.messageEn = customMessage || defaultEn;
+    this.messageHi = defaultHi;
   }
+}
+
+/** Helper to get specific localized error message in the requested language */
+export function getUploadErrorMessage(err: unknown, lang?: string): string {
+  if (err instanceof UploadError) {
+    const currentLang = lang || (typeof i18n !== 'undefined' && i18n?.language ? i18n.language : 'en');
+    return currentLang.startsWith('hi') ? err.messageHi : err.messageEn;
+  }
+  return err instanceof Error ? err.message : 'Upload failed. Please try again.';
 }
 
 export interface UploadableAsset {
@@ -81,15 +126,10 @@ export function validateAsset(asset: UploadableAsset, allowPdf = false): string 
   const mime = resolveMime(asset);
   const ok = IMAGE_TYPES.includes(mime) || (allowPdf && mime === 'application/pdf');
   if (!ok) {
-    throw new UploadError(
-      'INVALID_TYPE',
-      allowPdf
-        ? 'Only JPG, PNG, WEBP or PDF files are allowed.'
-        : 'Only JPG, PNG or WEBP photos are allowed.'
-    );
+    throw new UploadError('INVALID_TYPE');
   }
   if (asset.fileSize && asset.fileSize > MAX_IMAGE_BYTES) {
-    throw new UploadError('TOO_LARGE', 'File is larger than 5MB. Please choose a smaller one.');
+    throw new UploadError('TOO_LARGE');
   }
   return mime;
 }
@@ -97,7 +137,7 @@ export function validateAsset(asset: UploadableAsset, allowPdf = false): string 
 /** Resize + compress. Falls back to the picker's own (already compressed) base64. */
 async function prepareBase64(asset: UploadableAsset, mime: string): Promise<{ base64: string; mime: string }> {
   if (mime === 'application/pdf') {
-    if (!asset.base64) throw new UploadError('PROCESSING', 'Could not read the selected file.');
+    if (!asset.base64) throw new UploadError('PROCESSING');
     return { base64: asset.base64, mime };
   }
   try {
@@ -117,7 +157,7 @@ async function prepareBase64(asset: UploadableAsset, mime: string): Promise<{ ba
   } catch {
     // module not in this native build yet - fall through to picker base64
   }
-  if (!asset.base64) throw new UploadError('PROCESSING', 'Could not process the selected image.');
+  if (!asset.base64) throw new UploadError('PROCESSING');
   const finalMime =
     mime.includes('heic') || mime.includes('heif') || mime === 'image/jpg' ? 'image/jpeg' : mime;
   return { base64: asset.base64, mime: finalMime };
@@ -149,8 +189,8 @@ function xhrUpload(
       }
       resolve({ status: xhr.status, json });
     };
-    xhr.onerror = () => reject(new UploadError('NETWORK', 'Network error. Please check your internet.'));
-    xhr.ontimeout = () => reject(new UploadError('NETWORK', 'Upload timed out. Please try again.'));
+    xhr.onerror = () => reject(new UploadError('NETWORK'));
+    xhr.ontimeout = () => reject(new UploadError('NETWORK'));
     xhr.send(body);
   });
 }
@@ -182,15 +222,18 @@ export async function uploadAsset(params: {
     if (e instanceof UploadError) throw e;
     const msg = String(e?.message || '');
     if (/network request failed|failed to fetch/i.test(msg)) {
-      throw new UploadError('NETWORK', 'Network error. Please check your internet.');
+      throw new UploadError('NETWORK');
     }
     if (/STORAGE_NOT_CONFIGURED|not configured/i.test(msg)) {
-      throw new UploadError(
-        'STORAGE_NOT_CONFIGURED',
-        'Server storage is not configured. Please contact support or try again later.'
-      );
+      throw new UploadError('STORAGE_NOT_CONFIGURED');
     }
-    throw new UploadError('SERVER', msg || 'Could not start upload.');
+    if (/exceeds limit|too large/i.test(msg)) {
+      throw new UploadError('TOO_LARGE');
+    }
+    if (/invalid file type|unsupported/i.test(msg)) {
+      throw new UploadError('INVALID_TYPE');
+    }
+    throw new UploadError('SERVER', msg || undefined);
   }
 
   let uploadUrl = intent.uploadUrl;
@@ -213,26 +256,17 @@ export async function uploadAsset(params: {
     }
   }
 
-  if (res.status === 503) {
-    throw new UploadError(
-      'STORAGE_NOT_CONFIGURED',
-      'Server storage is not configured. Please contact support or try again later.'
-    );
+  if (res.status === 503 || res.json?.error?.code === 'STORAGE_NOT_CONFIGURED') {
+    throw new UploadError('STORAGE_NOT_CONFIGURED');
   }
-  if (res.status === 413) {
-    throw new UploadError('TOO_LARGE', 'File is too large for upload. Please choose a photo under 5 MB.');
+  if (res.status === 413 || res.json?.error?.code === 'FILE_TOO_LARGE') {
+    throw new UploadError('TOO_LARGE');
   }
   if (res.status === 415 || res.json?.error?.code === 'INVALID_FILE_TYPE') {
-    throw new UploadError(
-      'INVALID_TYPE',
-      res.json?.error?.message || 'Unsupported file type. Please upload a JPG, PNG or WEBP photo.'
-    );
-  }
-  if (res.status === 400 && res.json?.error?.code === 'FILE_TOO_LARGE') {
-    throw new UploadError('TOO_LARGE', res.json?.error?.message || 'File is too large. Please choose a smaller photo.');
+    throw new UploadError('INVALID_TYPE');
   }
   if (res.status < 200 || res.status >= 300 || !res.json?.success) {
-    throw new UploadError('SERVER', res.json?.error?.message || res.json?.message || 'Upload failed. Please try again.');
+    throw new UploadError('SERVER', res.json?.error?.message || res.json?.message || undefined);
   }
 
   const data = res.json.data || {};

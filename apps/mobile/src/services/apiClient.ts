@@ -40,28 +40,32 @@ const getHostFromRuntime = (): string | null => {
   return null;
 };
 
+const PRODUCTION_FALLBACK_URL = 'https://shaadibanao.onrender.com/api/v1';
+
 // Determine optimal default base URL based on platform and dynamic Metro host
 const resolveBaseUrl = (): string => {
-  const runtimeHost = getHostFromRuntime();
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+  const runtimeHost = isDev ? getHostFromRuntime() : null;
 
   if (process.env.EXPO_PUBLIC_API_URL) {
     const envUrl = process.env.EXPO_PUBLIC_API_URL;
-    // If runtime host IP from Metro is detected and differs from a stale 192.168.x.x IP in .env, adapt dynamically
-    if (runtimeHost && envUrl.includes('192.168.') && !envUrl.includes(runtimeHost)) {
+    // In local dev, if runtime host IP from Metro is detected and differs from a stale 192.168.x.x IP in .env, adapt dynamically
+    if (isDev && runtimeHost && envUrl.includes('192.168.') && !envUrl.includes(runtimeHost)) {
       return envUrl.replace(/https?:\/\/[^:/]+/, `http://${runtimeHost}`);
     }
     return envUrl;
   }
 
-  if (runtimeHost) {
+  if (isDev && runtimeHost) {
     return `http://${runtimeHost}:5000/api/v1`;
   }
 
-  if (Platform.OS === 'android') {
-    return 'http://192.168.1.13:5000/api/v1';
+  if (isDev) {
+    return Platform.OS === 'android' ? 'http://10.0.2.2:5000/api/v1' : 'http://localhost:5000/api/v1';
   }
 
-  return 'http://192.168.1.13:5000/api/v1';
+  // Built app must never default to localhost or a LAN IP
+  return PRODUCTION_FALLBACK_URL;
 };
 
 const BASE_URL = resolveBaseUrl();
