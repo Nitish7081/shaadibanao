@@ -169,6 +169,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
       />
 
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={

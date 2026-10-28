@@ -54,6 +54,7 @@ export const createApp = (): Express => {
   // Body Parsing Middleware
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(express.raw({ type: ['image/*', 'application/pdf', 'application/octet-stream'], limit: '15mb' }));
 
   // Root welcome route
   app.get('/', (req: Request, res: Response) => {

@@ -218,6 +218,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
         <ActivityIndicator size="large" color={colors.royalMaroon} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
+          style={{ flex: 1 }}
           data={posts}
           keyExtractor={(p) => p.id}
           renderItem={renderPostItem}
@@ -319,7 +320,7 @@ const styles = StyleSheet.create({
   },
   feedContent: {
     padding: 14,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   postCard: {
     backgroundColor: '#FFFFFF',

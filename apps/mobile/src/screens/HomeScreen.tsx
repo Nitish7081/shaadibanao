@@ -176,7 +176,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       />
 
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 96 }]}
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 96 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

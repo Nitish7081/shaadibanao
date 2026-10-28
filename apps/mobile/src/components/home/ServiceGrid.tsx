@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { PressableScale, SectionHeader, ds } from '../../design';
@@ -20,7 +20,7 @@ const MODULE_ICON: Record<ServiceModuleId, IconName> = {
   my_profile: 'person-circle-outline',
 };
 
-/** Max multiplier for card text – prevents large system font from breaking the 2-col grid. */
+/** Max multiplier for card text – prevents large accessibility font scale from overflowing card boundaries. */
 const TEXT_MAX_SCALE = 1.2;
 
 interface CardProps {
@@ -39,7 +39,8 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
       accessibilityRole="button"
       accessibilityLabel={m.accessibilityLabel}
       accessibilityHint={`Navigates to ${m.title}`}
-      style={[styles.card, { width: cardWidth }]}
+      containerStyle={[styles.cardContainer, { width: cardWidth }]}
+      style={styles.card}
     >
       <View style={styles.cardTop}>
         <LinearGradient
@@ -55,6 +56,7 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
             <Text
               style={[styles.badgeText, { color: m.badgeColor }]}
               numberOfLines={1}
+              ellipsizeMode="tail"
               maxFontSizeMultiplier={TEXT_MAX_SCALE}
             >
               {shownBadge}
@@ -65,6 +67,7 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
       <Text
         style={styles.title}
         numberOfLines={1}
+        ellipsizeMode="tail"
         maxFontSizeMultiplier={TEXT_MAX_SCALE}
       >
         {m.title}
@@ -84,7 +87,7 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
   );
 };
 
-/** Explore Services: all 8 modules, exactly 2 equal-width columns, no horizontal overflow. */
+/** Explore Services: all 8 modules, exactly 2 equal-width columns, equal heights per row, no horizontal overflow. */
 export const ServiceGrid: React.FC<ExploreServicesGridProps> = ({
   onFindMatchPress,
   onKundliMilanPress,
@@ -99,10 +102,10 @@ export const ServiceGrid: React.FC<ExploreServicesGridProps> = ({
   profileCompletionPercent = 0,
   isIdentityVerified = false,
 }) => {
-  // Compute exact card width so 2 cards + 1 gap exactly fill the parent.
+  // Compute exact card width so 2 cards + 1 gap exactly fill the available parent width.
   // Parent ScrollView has paddingHorizontal = ds.space.lg (16) on each side.
   const { width: screenWidth } = useWindowDimensions();
-  const parentPad = ds.space.lg * 2; // 16 left + 16 right
+  const parentPad = ds.space.lg * 2; // 16 left + 16 right = 32
   const gap = ds.space.md;           // 12px gap between the 2 cards
   const cardWidth = Math.floor((screenWidth - parentPad - gap) / 2);
 
@@ -151,40 +154,69 @@ export const ServiceGrid: React.FC<ExploreServicesGridProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginBottom: ds.space.xl,
-    // Prevent any child from overflowing horizontally
-    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
     gap: ds.space.md,
     marginBottom: ds.space.md,
-    // Never allow children to stretch beyond this row
-    overflow: 'hidden',
+    alignItems: 'stretch',
+  },
+  cardContainer: {
+    flex: 1,
   },
   card: {
-    // width is set dynamically via cardWidth prop — do NOT use flex:1 here
-    // because flex:1 can produce unequal widths when combined with gap on Android.
-    minHeight: 150,
+    flex: 1,
+    minHeight: 146,
     backgroundColor: ds.color.surface,
     borderRadius: ds.radius.lg,
-    padding: ds.space.md + 2,
+    padding: ds.space.md,
     borderWidth: 1,
     borderColor: ds.color.border,
     ...ds.shadow.soft,
+    justifyContent: 'flex-start',
   },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  iconCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: ds.radius.pill, maxWidth: '55%' },
-  badgeText: { fontFamily: ds.font.bodySemiBold, fontSize: 12, lineHeight: 16 },
-  title: { ...ds.type.h3, marginTop: ds.space.md },
-  desc: { ...ds.type.body, fontSize: 13, lineHeight: 18, marginTop: 2, paddingRight: 26 },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: ds.radius.pill,
+    maxWidth: '52%',
+  },
+  badgeText: {
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  title: {
+    ...ds.type.h3,
+    marginTop: ds.space.md,
+  },
+  desc: {
+    ...ds.type.body,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+    paddingRight: 24,
+    marginBottom: 4,
+  },
   arrow: {
     position: 'absolute',
     right: ds.space.md,
     bottom: ds.space.md,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -3,6 +3,7 @@ import { Animated, Pressable, PressableProps, StyleProp, ViewStyle } from 'react
 
 interface Props extends Omit<PressableProps, 'style' | 'children'> {
   style?: StyleProp<ViewStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
   scaleTo?: number;
   children?: React.ReactNode;
 }
@@ -10,6 +11,7 @@ interface Props extends Omit<PressableProps, 'style' | 'children'> {
 /** Pressable that gently scales down while pressed (native-driven spring). */
 export const PressableScale: React.FC<Props> = ({
   style,
+  containerStyle,
   scaleTo = 0.96,
   children,
   onPressIn,
@@ -23,6 +25,7 @@ export const PressableScale: React.FC<Props> = ({
   return (
     <Pressable
       {...rest}
+      style={containerStyle}
       onPressIn={(e) => {
         animate(scaleTo);
         onPressIn?.(e);

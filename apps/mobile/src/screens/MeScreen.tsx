@@ -195,6 +195,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       <Header title={t('me.headerTitle')} subtitle={displayName} showStatusBadge={true} variant="royal" />
 
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
