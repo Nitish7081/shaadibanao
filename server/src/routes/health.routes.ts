@@ -1,3 +1,4 @@
+import { isFirebaseServiceAccountConfigured } from '../config/firebase';
 import { Router, Request, Response } from 'express';
 import { getDbStatus } from '../config/database';
 import { config } from '../config/env';
@@ -30,6 +31,7 @@ healthRouter.get('/', (req: Request, res: Response) => {
       ...healthData,
       storage: config.cloudinary.isConfigured ? 'configured' : 'missing',
       cloudinary: config.cloudinary.isConfigured ? 'configured' : 'not configured',
+      firebaseAdmin: isFirebaseServiceAccountConfigured() ? 'configured' : 'missing',
     } as any,
     meta: {
       timestamp: new Date().toISOString(),

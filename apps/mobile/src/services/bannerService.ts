@@ -1,13 +1,24 @@
 import { apiClient } from './apiClient';
 import { HomeBanner } from '@bandhansetu/shared';
 
-/** Active admin banners for the Home hero. Never throws: no banners => built-in artwork. */
-export async function getActiveBanners(): Promise<HomeBanner[]> {
+let cachedBanners: HomeBanner[] | null = null;
+let lastFetchedAt = 0;
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds short-lived cache
+
+/** Active admin banners for the Home hero. Short cache keeps it fresh without app rebuild. */
+export async function getActiveBanners(forceRefresh = false): Promise<HomeBanner[]> {
+  const now = Date.now();
+  if (!forceRefresh && cachedBanners && now - lastFetchedAt < CACHE_TTL_MS) {
+    return cachedBanners;
+  }
   try {
     const res = await apiClient<{ success: boolean; data?: { items?: HomeBanner[] } }>('/banners', { method: 'GET' });
     const items = res?.data?.items;
-    return Array.isArray(items) ? items.filter((b) => !!b && typeof b.imageUrl === 'string' && b.imageUrl) : [];
+    const valid = Array.isArray(items) ? items.filter((b) => !!b && typeof b.imageUrl === 'string' && b.imageUrl) : [];
+    cachedBanners = valid;
+    lastFetchedAt = now;
+    return valid;
   } catch {
-    return [];
+    return cachedBanners || [];
   }
 }

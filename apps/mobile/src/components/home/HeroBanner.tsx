@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   LayoutChangeEvent,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,14 +20,16 @@ import { HeroArt } from './HeroArt';
 
 interface Props {
   banners?: HomeBanner[];
+  loading?: boolean;
   onBannerPress?: (banner: HomeBanner) => void;
   onExplorePress: () => void;
 }
 
-export const HeroBanner: React.FC<Props> = ({ banners, onBannerPress, onExplorePress }) => {
+export const HeroBanner: React.FC<Props> = ({ banners, loading = false, onBannerPress, onExplorePress }) => {
   const { t } = useTranslation();
   const [cardWidth, setCardWidth] = useState<number>(0);
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const activeBanners = Array.isArray(banners)
     ? banners.filter((b) => !!b && typeof b.imageUrl === 'string' && b.imageUrl)
@@ -48,7 +51,38 @@ export const HeroBanner: React.FC<Props> = ({ banners, onBannerPress, onExploreP
     }
   };
 
-  // Fallback: Built-in Vedic Sanatan artwork
+  // Auto-rotating timer (5-second interval) for multiple banners
+  useEffect(() => {
+    if (activeBanners.length <= 1 || cardWidth <= 0) return;
+    const interval = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % activeBanners.length;
+        scrollRef.current?.scrollTo({ x: next * cardWidth, animated: true });
+        return next;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [activeBanners.length, cardWidth]);
+
+  // Loading Skeleton State
+  if (loading && activeBanners.length === 0) {
+    return (
+      <View style={[styles.card, styles.skeletonCard]}>
+        <LinearGradient
+          colors={['#2A0E18', '#3D1524', '#2A0E18']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.skeletonContent}>
+          <ActivityIndicator size="small" color="#F9D976" style={{ marginBottom: 8 }} />
+          <Text style={styles.skeletonText}>{t('home.hero.kicker') || 'Loading special offers...'}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Fallback: Built-in Vedic Sanatan artwork when 0 active banners exist
   if (activeBanners.length === 0) {
     return (
       <LinearGradient
@@ -128,10 +162,11 @@ export const HeroBanner: React.FC<Props> = ({ banners, onBannerPress, onExploreP
     );
   }
 
-  // Multiple admin banners: Carousel
+  // Multiple admin banners: Auto-rotating Carousel with Dots
   return (
     <View style={styles.card} onLayout={handleLayout}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
@@ -205,6 +240,21 @@ const styles = StyleSheet.create({
     marginBottom: ds.space.lg,
     position: 'relative',
     ...ds.shadow.lift,
+  },
+  skeletonCard: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#2A0E18',
+  },
+  skeletonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: ds.space.lg,
+  },
+  skeletonText: {
+    fontFamily: ds.font.bodyMedium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
   },
   art: { position: 'absolute', right: -24, bottom: -14, opacity: 0.95 },
   content: { padding: ds.space.xl, maxWidth: '80%' },

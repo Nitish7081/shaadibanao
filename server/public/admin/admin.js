@@ -99,10 +99,46 @@ async function adminFetch(endpoint, options = {}) {
         throw new Error(data.message || 'Unauthorized');
       }
     }
-    throw new Error(data.message || `Request failed with status ${response.status}`);
+    const err = new Error(data.message || data.error?.message || `Request failed with status ${response.status}`);
+    err.status = response.status;
+    err.requestId = data.error?.requestId || data.meta?.requestId || response.headers.get('x-request-id');
+    throw err;
   }
 
   return data;
+}
+
+// Reusable UI Table Error & Retry State Helper
+function renderTableError(tbody, colSpan, message, retryFnName, requestId) {
+  if (!tbody) return;
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="${colSpan}" class="table-empty text-red" style="padding: 28px 16px; text-align: center;">
+        <div style="font-size: 14px; font-weight: 700; color: #dc2626; margin-bottom: 6px;">
+          ⚠️ ${escapeHtml(message || 'An unexpected error occurred while loading data.')}
+        </div>
+        ${requestId ? `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Request ID: <code>${escapeHtml(requestId)}</code></div>` : ''}
+        <button type="button" class="btn-primary" style="padding: 6px 18px; font-size: 12px; margin: 8px auto 0; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="${retryFnName}()">
+          <span>↻ Retry</span>
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
+function renderContainerError(container, message, retryFnName, requestId) {
+  if (!container) return;
+  container.innerHTML = `
+    <div class="table-empty text-red" style="padding: 28px 16px; text-align: center;">
+      <div style="font-size: 14px; font-weight: 700; color: #dc2626; margin-bottom: 6px;">
+        ⚠️ ${escapeHtml(message || 'An unexpected error occurred while loading data.')}
+      </div>
+      ${requestId ? `<div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Request ID: <code>${escapeHtml(requestId)}</code></div>` : ''}
+      <button type="button" class="btn-primary" style="padding: 6px 18px; font-size: 12px; margin: 8px auto 0; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;" onclick="${retryFnName}()">
+        <span>↻ Retry</span>
+      </button>
+    </div>
+  `;
 }
 
 // Setup Login Form
@@ -513,7 +549,7 @@ async function loadApprovals() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty text-red">Error: ${err.message}</td></tr>`;
+    renderTableError(tbody, 6, err.message, 'loadApprovals', err.requestId);
   }
 }
 
@@ -972,7 +1008,7 @@ async function loadUsers() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="7" class="table-empty text-red">Error: ${err.message}</td></tr>`;
+    renderTableError(tbody, 7, err.message, 'loadUsers', err.requestId);
   }
 }
 
@@ -1080,7 +1116,7 @@ async function loadProfiles() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty text-red">Error: ${err.message}</td></tr>`;
+    renderTableError(tbody, 6, err.message, 'loadProfiles', err.requestId);
   }
 }
 
@@ -1158,7 +1194,7 @@ async function loadReports() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty text-red">Error: ${err.message}</td></tr>`;
+    renderTableError(tbody, 6, err.message, 'loadReports', err.requestId);
   }
 }
 
@@ -1225,7 +1261,7 @@ async function loadAuditLogs() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="table-empty text-red">Error: ${err.message}</td></tr>`;
+    renderTableError(tbody, 6, err.message, 'loadAuditLogs', err.requestId);
   }
 }
 
@@ -1503,7 +1539,7 @@ async function loadPandits() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-red">${escapeHtml(err.message)}</td></tr>`;
+    renderTableError(tbody, 8, err.message, 'loadVerifications', err.requestId);
   }
 }
 
@@ -1602,7 +1638,7 @@ async function loadVerifications() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-red">${escapeHtml(err.message)}</td></tr>`;
+    renderTableError(tbody, 8, err.message, 'loadPandits', err.requestId);
   }
 }
 
@@ -1704,7 +1740,7 @@ async function loadBookings() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-red">${escapeHtml(err.message)}</td></tr>`;
+    renderTableError(tbody, 8, err.message, 'loadBookings', err.requestId);
   }
 }
 
@@ -1791,7 +1827,7 @@ async function loadCommunityPosts() {
       })
       .join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" class="table-empty text-red">${escapeHtml(err.message)}</td></tr>`;
+    renderTableError(tbody, 8, err.message, 'loadCommunityPosts', err.requestId);
   }
 }
 
@@ -2053,7 +2089,7 @@ async function loadBanners() {
       </div>
     `;
   } catch (err) {
-    container.innerHTML = `<div class="table-empty text-red">${escapeHtml(err.message)}</div>`;
+    renderContainerError(container, err.message, 'loadBanners', err.requestId);
   }
 }
 

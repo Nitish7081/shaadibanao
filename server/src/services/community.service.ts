@@ -91,7 +91,7 @@ export class CommunityService {
     return {
       items: items.map((p: any) => ({
         id: p._id.toString(),
-        userId: p.userId.toString(),
+        userId: p.userId ? p.userId.toString() : '',
         authorName: p.authorName,
         authorAvatar: p.authorAvatar,
         mediaUrl: p.mediaUrl,
@@ -168,7 +168,7 @@ export class CommunityService {
     return {
       items: items.map((p: any) => ({
         id: p._id.toString(),
-        userId: p.userId.toString(),
+        userId: p.userId ? p.userId.toString() : '',
         authorName: p.authorName,
         mediaUrl: p.mediaUrl,
         publicId: p.publicId,
@@ -213,7 +213,7 @@ export class CommunityService {
     await AuditLogModel.create({
       adminId,
       action: action === 'approve' ? 'APPROVE_COMMUNITY_POST' : 'REJECT_COMMUNITY_POST',
-      targetUserId: post.userId.toString(),
+      targetUserId: post.userId ? post.userId.toString() : '',
       details: { postId: post._id.toString(), action, reason },
       ipAddress,
     });

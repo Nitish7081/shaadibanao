@@ -34,8 +34,8 @@ export class ConsultationTokenService {
     if (!pandit) throw new Error('Pandit record not found.');
 
     // Determine authorization and role
-    const isClient = booking.userId.toString() === requestUserId;
-    const isHost = pandit.userId.toString() === requestUserId;
+    const isClient = booking.userId ? booking.userId.toString() === requestUserId : false;
+    const isHost = pandit.userId ? pandit.userId.toString() === requestUserId : false;
 
     if (!isClient && !isHost) {
       throw new Error('Access denied: You are not a participant in this consultation.');

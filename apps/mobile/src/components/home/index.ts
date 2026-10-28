@@ -6,5 +6,6 @@ export { StatTiles } from './StatTiles';
 export { SearchPill } from './SearchPill';
 export { ServiceGrid } from './ServiceGrid';
 export { FeedMatchCard } from './FeedMatchCard';
+export { CompactMatchCard } from './CompactMatchCard';
 export { FeedSkeleton } from './FeedSkeleton';
 export { VipBanner } from './VipBanner';

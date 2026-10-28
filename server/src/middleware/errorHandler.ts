@@ -96,18 +96,25 @@ export const errorHandler = (
   }
 
   // Unexpected internal server errors
-  console.error('[Unhandled Server Error]', err);
+  const reqId = (req as any).requestId || (req.headers['x-request-id'] as string) || 'unknown';
+  console.error(`[Unhandled Server Error] [reqId=${reqId}] [${req.method} ${req.originalUrl}] ${err.name || 'Error'}: ${err.message}`);
+  if (!config.isProduction && err.stack) {
+    console.error(err.stack);
+  }
+
   res.status(500).json({
     success: false,
     message: config.isProduction
-      ? 'An unexpected internal error occurred'
+      ? `An unexpected internal error occurred (Request ID: ${reqId}). Please retry.`
       : err.message || 'Internal Server Error',
     error: {
       code: 'INTERNAL_SERVER_ERROR',
+      requestId: reqId,
       ...(config.isProduction ? {} : { stack: err.stack }),
     },
     meta: {
       timestamp: new Date().toISOString(),
+      requestId: reqId,
     },
   });
 };

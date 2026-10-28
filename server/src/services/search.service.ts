@@ -73,10 +73,10 @@ export class SearchService {
 
       const excludedIds = new Set<string>();
       reports.forEach((r: any) => {
-        if (r.reporterId.toString() === requestingUserId.toString()) {
-          excludedIds.add(r.reportedUserId.toString());
+        if (r.reporterId && r.reporterId.toString() === requestingUserId.toString()) {
+          if (r.reportedUserId) excludedIds.add(r.reportedUserId.toString());
         } else {
-          excludedIds.add(r.reporterId.toString());
+          if (r.reporterId) excludedIds.add(r.reporterId.toString());
         }
       });
 
@@ -120,10 +120,10 @@ export class SearchService {
       }
 
       // Sorting
-      let sort: any = { createdAt: -1 };
-      if (sortBy === 'newest') sort = { createdAt: -1 };
-      if (sortBy === 'age_asc') sort = { dateOfBirth: -1 }; // youngest first
-      if (sortBy === 'age_desc') sort = { dateOfBirth: 1 }; // oldest first
+      let sort: any = { createdAt: -1, _id: -1 };
+      if (sortBy === 'newest') sort = { createdAt: -1, _id: -1 };
+      if (sortBy === 'age_asc') sort = { dateOfBirth: -1, _id: -1 }; // youngest first
+      if (sortBy === 'age_desc') sort = { dateOfBirth: 1, _id: -1 }; // oldest first
 
       totalCount = await ProfileModel.countDocuments(query);
       candidateProfiles = await ProfileModel.find(query)

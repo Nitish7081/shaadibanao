@@ -318,7 +318,11 @@ export class VerificationService {
 
     const userIds = users.map((u) => u._id);
     const profiles = await ProfileModel.find({ userId: { $in: userIds } }).lean();
-    const profileMap = new Map(profiles.map((p) => [p.userId.toString(), p]));
+    const profileMap = new Map(
+      profiles
+        .filter((p: any) => p && p.userId)
+        .map((p: any) => [p.userId.toString(), p])
+    );
 
     const items = users.map((u: any) => {
       const prof = profileMap.get(u._id.toString());

@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, StatusBar, Linking } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  StatusBar,
+  Linking,
+  FlatList,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -21,7 +30,7 @@ import {
   StatTiles,
   SearchPill,
   ServiceGrid,
-  FeedMatchCard,
+  CompactMatchCard,
   FeedSkeleton,
   VipBanner,
 } from '../components/home';
@@ -39,10 +48,14 @@ interface Props {
 export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const matchCardWidth = Math.min(290, Math.max(240, Math.round(screenWidth * 0.68)));
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [dailyMatches, setDailyMatches] = useState<SearchResultProfile[]>([]);
   const [banners, setBanners] = useState<HomeBanner[]>([]);
   const [loadingMatches, setLoadingMatches] = useState<boolean>(true);
+  const [loadingBanners, setLoadingBanners] = useState<boolean>(true);
   const [matchesError, setMatchesError] = useState<string | null>(null);
   const [offline, setOffline] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -61,19 +74,21 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
     if (!token) {
       setLoadingMatches(false);
+      setLoadingBanners(false);
       setRefreshing(false);
       return;
     }
 
     setLoadingMatches(true);
+    setLoadingBanners(true);
     setMatchesError(null);
     let networkDown = false;
 
     const [profileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
       getMyProfile(token),
-      searchProfiles(token, { limit: 5 }),
+      searchProfiles(token, { limit: 8 }),
       loadActivitySummary(token),
-      getActiveBanners(),
+      getActiveBanners(isRefresh),
     ]);
 
     // 1. User profile (a missing profile is a normal state for new users)
@@ -90,8 +105,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     if (bannersRes.status === 'fulfilled') {
       setBanners(bannersRes.value || []);
     }
+    setLoadingBanners(false);
 
-    // 3. Today's matches
+    // 3. Today's matches (limited to 8 server-side for speed)
     if (searchRes.status === 'fulfilled') {
       setDailyMatches(searchRes.value?.data?.items || []);
     } else {
@@ -202,6 +218,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
         <HeroBanner
           banners={banners}
+          loading={loadingBanners && banners.length === 0}
           onBannerPress={handleBannerPress}
           onExplorePress={() => navigation.navigate('Matches')}
         />
@@ -220,7 +237,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           onMessagesPress={() => navigation.navigate('Chat')}
         />
 
-        {/* Today's Matches (right after the stats) */}
+        {/* Today's Matches (compact horizontal snap carousel, at most 8) */}
         <SectionHeader
           title={t('home.todaysMatches')}
           actionLabel={t('home.seeAll', { count: dailyMatches.length })}
@@ -236,9 +253,22 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             onAction={() => loadAllData(true)}
           />
         ) : dailyMatches.length > 0 ? (
-          dailyMatches.map((match) => (
-            <FeedMatchCard key={match.id} match={match} onPress={() => openMatch(match)} />
-          ))
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={dailyMatches.slice(0, 8)}
+            keyExtractor={(item) => item.id}
+            snapToInterval={matchCardWidth + 12}
+            decelerationRate="fast"
+            contentContainerStyle={styles.horizontalMatchesContent}
+            renderItem={({ item }) => (
+              <CompactMatchCard
+                match={item}
+                width={matchCardWidth}
+                onPress={() => openMatch(item)}
+              />
+            )}
+          />
         ) : (
           <EmptyMatchesState onSearchPress={() => navigation.navigate('Search')} />
         )}
@@ -269,6 +299,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           )}
         />
 
+        <View style={{ height: ds.space.md }} />
+
         <VipBanner onUpgradePress={() => navigation.navigate('Membership')} />
       </ScrollView>
     </View>
@@ -283,5 +315,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: ds.space.lg,
     paddingTop: ds.space.sm,
+  },
+  horizontalMatchesContent: {
+    paddingVertical: ds.space.xs,
+    paddingRight: ds.space.sm,
   },
 });

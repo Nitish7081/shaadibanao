@@ -19,6 +19,8 @@ describe('Server Health and Basic Routing Suite', () => {
       expect(['connected', 'disconnected', 'connecting', 'unconfigured']).toContain(
         response.body.data.database.status
       );
+      expect(response.body.data).toHaveProperty('firebaseAdmin');
+      expect(['configured', 'missing']).toContain(response.body.data.firebaseAdmin);
     });
   });
 

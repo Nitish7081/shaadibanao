@@ -201,10 +201,16 @@ export class AdminService {
       ]),
     ]);
 
-    const membershipPlans: Record<string, number> = { free: 0, silver: 0, gold: 0, platinum: 0 };
+    const membershipPlans: Record<string, number> = { free: 0, silver: 0, gold: 0, platinum: 0, plus: 0, premium: 0 };
     for (const item of membershipAgg) {
-      if (item._id && item._id in membershipPlans) {
+      if (item._id) {
         membershipPlans[item._id] = item.count;
+        if (item._id === 'plus') {
+          membershipPlans.silver = (membershipPlans.silver || 0) + item.count;
+        } else if (item._id === 'premium') {
+          membershipPlans.gold = (membershipPlans.gold || 0) + item.count;
+          membershipPlans.platinum = (membershipPlans.platinum || 0) + item.count;
+        }
       }
     }
 
@@ -289,12 +295,20 @@ export class AdminService {
     // Attach profile and membership information
     const userIds = users.map((u) => u._id);
     const [profiles, memberships] = await Promise.all([
-      ProfileModel.find({ userId: { $in: userIds } }).select('firstName lastName isVerified gender city state'),
-      MembershipModel.find({ userId: { $in: userIds }, status: 'active' }).select('planId expiresAt'),
+      ProfileModel.find({ userId: { $in: userIds } }).select('userId firstName lastName isVerified gender city state'),
+      MembershipModel.find({ userId: { $in: userIds }, status: 'active' }).select('userId planId expiresAt'),
     ]);
 
-    const profileMap = new Map(profiles.map((p) => [p.userId.toString(), p]));
-    const membershipMap = new Map(memberships.map((m) => [m.userId.toString(), m]));
+    const profileMap = new Map(
+      profiles
+        .filter((p) => p && p.userId)
+        .map((p) => [p.userId.toString(), p])
+    );
+    const membershipMap = new Map(
+      memberships
+        .filter((m) => m && m.userId)
+        .map((m) => [m.userId.toString(), m])
+    );
 
     const enrichedUsers = users.map((u) => {
       const idStr = u._id.toString();
@@ -417,9 +431,21 @@ export class AdminService {
       KundliModel.find({ userId: { $in: userIds } }).lean(),
     ]);
 
-    const profileMap = new Map(profiles.map((p: any) => [p.userId.toString(), p]));
-    const prefMap = new Map(preferences.map((pr: any) => [pr.userId.toString(), pr]));
-    const kundliMap = new Map(kundlis.map((k: any) => [k.userId.toString(), k]));
+    const profileMap = new Map(
+      profiles
+        .filter((p: any) => p && p.userId)
+        .map((p: any) => [p.userId.toString(), p])
+    );
+    const prefMap = new Map(
+      preferences
+        .filter((pr: any) => pr && pr.userId)
+        .map((pr: any) => [pr.userId.toString(), pr])
+    );
+    const kundliMap = new Map(
+      kundlis
+        .filter((k: any) => k && k.userId)
+        .map((k: any) => [k.userId.toString(), k])
+    );
 
     const items: PendingApprovalItem[] = users.map((u) => {
       const p: any = profileMap.get(u._id.toString());
@@ -982,15 +1008,21 @@ export class AdminService {
    */
   public static async updateUserMembership(
     userId: string,
-    planId: 'free' | 'silver' | 'gold' | 'platinum',
+    planId: string,
     durationDays = 30,
     adminUser?: any,
     ipAddress?: string
   ): Promise<any> {
     const isDbConnected = mongoose.connection.readyState === 1;
 
+    // Normalize plan tier to valid DB enum ('free' | 'plus' | 'premium')
+    const normalizedPlanId =
+      planId === 'silver' ? 'plus' :
+      planId === 'gold' || planId === 'platinum' ? 'premium' :
+      ['free', 'plus', 'premium'].includes(planId) ? planId : 'free';
+
     if (!isDbConnected) {
-      return { userId, planId, status: 'active', durationDays };
+      return { userId, planId: normalizedPlanId, status: 'active', durationDays };
     }
 
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
@@ -999,7 +1031,7 @@ export class AdminService {
       { userId },
       {
         $set: {
-          planId,
+          planId: normalizedPlanId,
           status: 'active',
           startDate: new Date(),
           expiresAt,

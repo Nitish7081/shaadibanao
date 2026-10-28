@@ -144,7 +144,7 @@ export class PanditService {
     return {
       items: items.map((p: any) => ({
         id: p._id.toString(),
-        userId: p.userId.toString(),
+        userId: p.userId ? p.userId.toString() : '',
         name: p.name,
         profilePhoto: p.profilePhoto,
         bio: p.bio,
@@ -266,7 +266,7 @@ export class PanditService {
     return {
       items: items.map((p: any) => ({
         id: p._id.toString(),
-        userId: p.userId.toString(),
+        userId: p.userId ? p.userId.toString() : '',
         name: p.name,
         profilePhoto: p.profilePhoto,
         phone: p.phone,
@@ -306,7 +306,7 @@ export class PanditService {
     await AuditLogModel.create({
       adminId,
       action: 'VERIFY_PANDIT',
-      targetUserId: pandit.userId.toString(),
+      targetUserId: pandit.userId ? pandit.userId.toString() : '',
       targetUserEmail: pandit.email,
       targetUserMobile: pandit.phone,
       details: { panditId, name: pandit.name },
@@ -333,7 +333,7 @@ export class PanditService {
     await AuditLogModel.create({
       adminId,
       action: 'REJECT_PANDIT',
-      targetUserId: pandit.userId.toString(),
+      targetUserId: pandit.userId ? pandit.userId.toString() : '',
       targetUserEmail: pandit.email,
       targetUserMobile: pandit.phone,
       details: { panditId, name: pandit.name, reason },

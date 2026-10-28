@@ -9,11 +9,14 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  FlatList,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { Header } from '../components/common/Header';
@@ -27,6 +30,7 @@ import {
   getSessionToken,
 } from '../services';
 import { SearchResultProfile, SearchFilterInput } from '@bandhansetu/shared';
+import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
 type SearchNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Search'>,
@@ -41,6 +45,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [results, setResults] = useState<SearchResultProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -80,6 +85,8 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     async (chipId: string, pageNum = 1, isRefresh = false) => {
       if (isRefresh) {
         setRefreshing(true);
+      } else if (pageNum > 1) {
+        setLoadingMore(true);
       } else {
         setLoading(true);
       }
@@ -95,7 +102,11 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
           if (pageNum === 1) {
             setResults(items);
           } else {
-            setResults((prev) => [...prev, ...items]);
+            setResults((prev) => {
+              const existingIds = new Set(prev.map((p) => p.id));
+              const newItems = items.filter((p) => !existingIds.has(p.id));
+              return [...prev, ...newItems];
+            });
           }
           setTotalPages(res.data.pagination.totalPages);
           setTotalItems(res.data.pagination.totalCount);
@@ -105,6 +116,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         setError(err.message || 'Unable to fetch profiles. Please try again.');
       } finally {
         setLoading(false);
+        setLoadingMore(false);
         setRefreshing(false);
       }
     },
@@ -124,7 +136,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleLoadMore = () => {
-    if (page < totalPages && !loading) {
+    if (page < totalPages && !loading && !loadingMore) {
       fetchProfiles(selectedFilter, page + 1);
     }
   };
@@ -158,12 +170,188 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const formatHeight = (cm?: number) => {
-    if (!cm) return '';
-    const totalInches = Math.round(cm / 2.54);
-    const feet = Math.floor(totalInches / 12);
-    const inches = totalInches % 12;
-    return `${feet}'${inches}"`;
+  const renderHeader = () => (
+    <View style={styles.headerArea}>
+      {/* Filter Chips Horizontal Scroll */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipsScroll}
+      >
+        {filterChips.map((chip) => {
+          const isSelected = selectedFilter === chip.id;
+          return (
+            <TouchableOpacity
+              key={chip.id}
+              onPress={() => handleFilterSelect(chip.id)}
+              style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+            >
+              <Text
+                style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}
+              >
+                {chip.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Sort & Count Header */}
+      <View style={styles.resultsMeta}>
+        <Text style={styles.countText}>
+          Showing {results.length} of {totalItems} profiles
+        </Text>
+        <Text style={styles.sortText}>Sort: Best Match ▾</Text>
+      </View>
+    </View>
+  );
+
+  const renderItem = ({ item }: { item: SearchResultProfile }) => {
+    const isActing = actionLoadingId === item.id;
+    const matchLabel = item.matchAlignment
+      ? item.matchAlignment.scoreText
+      : 'Evaluating preferences...';
+
+    const photo = getSafeMatchPhoto(item, 'card');
+    const heightStr = formatHeight(item.heightCm);
+
+    return (
+      <Card style={styles.resultCard}>
+        <TouchableOpacity
+          onPress={() =>
+            navigation.navigate('ProfileDetail', {
+              profileId: item.id,
+              name: item.displayName,
+            })
+          }
+          activeOpacity={0.85}
+          style={styles.cardHeader}
+        >
+          {/* Real Photo / Blurred Photo / Initials Fallback */}
+          <View style={styles.photoContainer}>
+            {photo ? (
+              <Image
+                source={{ uri: photo.uri }}
+                style={styles.photoImage}
+                blurRadius={photo.blurred ? 22 : 0}
+                resizeMode="cover"
+              />
+            ) : (
+              <LinearGradient
+                colors={['#FFF1D6', '#FBE3E9']}
+                style={styles.photoInitialsGradient}
+              >
+                <Text style={styles.photoInitials}>{getInitials(item.displayName)}</Text>
+              </LinearGradient>
+            )}
+
+            {item.isVerified && (
+              <View style={styles.verifiedDot}>
+                <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+              </View>
+            )}
+
+            {photo?.blurred && (
+              <View style={styles.lockedPhotoBadge}>
+                <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.profileTextInfo}>
+            <Text style={styles.profileName}>
+              {item.displayName}, {item.age}
+            </Text>
+            <Text style={styles.profileMeta}>
+              {[heightStr, item.city].filter(Boolean).join(' • ')}
+            </Text>
+            <Text style={styles.profileEducation}>
+              {[item.education, item.occupation].filter(Boolean).join(' • ')}
+            </Text>
+
+            <View style={styles.badgeRow}>
+              {item.isVerified && <Badge label="ID Verified" variant="verified" />}
+              {item.photoChecked && <Badge label="Photo Checked" variant="photoChecked" />}
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Factual Match Explanation */}
+        <View style={styles.matchReasonContainer}>
+          <Badge label={matchLabel} variant="match" icon="🎯" />
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionsRow}>
+          <Button
+            title={isActing ? 'Processing...' : 'Send Interest'}
+            onPress={() => handleSendInterest(item)}
+            variant="primary"
+            loading={isActing}
+            style={styles.actionBtn}
+          />
+          <Button
+            title="Shortlist"
+            onPress={() => handleShortlist(item)}
+            variant="secondary"
+            disabled={isActing}
+            style={styles.actionBtn}
+          />
+        </View>
+      </Card>
+    );
+  };
+
+  const renderFooter = () => {
+    if (!loadingMore) return <View style={{ height: 24 }} />;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color={colors.royalMaroon} />
+        <Text style={styles.footerLoaderText}>Loading more matches...</Text>
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.royalMaroon} />
+          <Text style={styles.loadingText}>Finding compatible matches...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <Card style={styles.errorCard}>
+          <Text style={styles.errorTitle}>Unable to load matches</Text>
+          <Text style={styles.errorSub}>{error}</Text>
+          <Button
+            title="Try Again"
+            onPress={() => fetchProfiles(selectedFilter, 1)}
+            variant="secondary"
+            style={{ marginTop: spacing.md }}
+          />
+        </Card>
+      );
+    }
+
+    return (
+      <Card style={styles.emptyCard}>
+        <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
+        <Text style={styles.emptyTitle}>No matching profiles found</Text>
+        <Text style={styles.emptySub}>
+          Try broadening your filter criteria or checking back soon as new members register daily.
+        </Text>
+        <Button
+          title="Reset Filters"
+          onPress={() => setSelectedFilter('all')}
+          variant="secondary"
+          style={{ marginTop: spacing.md }}
+        />
+      </Card>
+    );
   };
 
   return (
@@ -175,8 +363,16 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         showStatusBadge={true}
       />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+      <FlatList
+        data={results}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.4}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -186,161 +382,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
             colors={[colors.royalMaroon]}
           />
         }
-      >
-
-        {/* Filter Chips Horizontal Scroll */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsScroll}
-        >
-          {filterChips.map((chip) => {
-            const isSelected = selectedFilter === chip.id;
-            return (
-              <TouchableOpacity
-                key={chip.id}
-                onPress={() => handleFilterSelect(chip.id)}
-                style={[styles.filterChip, isSelected && styles.filterChipSelected]}
-              >
-                <Text
-                  style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}
-                >
-                  {chip.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Sort & Count Header */}
-        <View style={styles.resultsMeta}>
-          <Text style={styles.countText}>
-            Showing {results.length} of {totalItems} profiles
-          </Text>
-          <Text style={styles.sortText}>Sort: Best Match ▾</Text>
-        </View>
-
-        {/* Error State */}
-        {error && (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Unable to load matches</Text>
-            <Text style={styles.errorSub}>{error}</Text>
-            <Button
-              title="Try Again"
-              onPress={() => fetchProfiles(selectedFilter, 1)}
-              variant="secondary"
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Loading Indicator */}
-        {loading && results.length === 0 && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.royalMaroon} />
-            <Text style={styles.loadingText}>Finding compatible matches...</Text>
-          </View>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && results.length === 0 && (
-          <Card style={styles.emptyCard}>
-            <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-            <Text style={styles.emptyTitle}>No matching profiles found</Text>
-            <Text style={styles.emptySub}>
-              Try broadening your filter criteria or checking back soon as new members register daily.
-            </Text>
-            <Button
-              title="Reset Filters"
-              onPress={() => setSelectedFilter('all')}
-              variant="secondary"
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Results List */}
-        {results.map((item) => {
-          const isActing = actionLoadingId === item.id;
-          const matchLabel = item.matchAlignment
-            ? item.matchAlignment.scoreText
-            : 'Evaluating preferences...';
-
-          return (
-            <Card key={item.id} style={styles.resultCard}>
-              <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate('ProfileDetail', {
-                    profileId: item.id,
-                    name: item.displayName,
-                  })
-                }
-                activeOpacity={0.85}
-                style={styles.cardHeader}
-              >
-                <View style={styles.photoContainer}>
-                  <Ionicons name="person" size={30} color={colors.royalMaroon} />
-                  {item.isVerified && (
-                    <View style={styles.verifiedDot}>
-                      <Ionicons name="checkmark" size={11} color="#FFFFFF" />
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.profileTextInfo}>
-                  <Text style={styles.profileName}>
-                    {item.displayName}, {item.age}
-                  </Text>
-                  <Text style={styles.profileMeta}>
-                    {formatHeight(item.heightCm)} • {item.city}
-                  </Text>
-                  <Text style={styles.profileEducation}>
-                    {item.education} • {item.occupation}
-                  </Text>
-
-                  <View style={styles.badgeRow}>
-                    {item.isVerified && <Badge label="ID Verified" variant="verified" />}
-                    {item.photoChecked && <Badge label="Photo Checked" variant="photoChecked" />}
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              {/* Factual Match Explanation */}
-              <View style={styles.matchReasonContainer}>
-                <Badge label={matchLabel} variant="match" icon="🎯" />
-              </View>
-
-              {/* Action Buttons */}
-              <View style={styles.actionsRow}>
-                <Button
-                  title={isActing ? 'Processing...' : 'Send Interest'}
-                  onPress={() => handleSendInterest(item)}
-                  variant="primary"
-                  loading={isActing}
-                  style={styles.actionBtn}
-                />
-                <Button
-                  title="Shortlist"
-                  onPress={() => handleShortlist(item)}
-                  variant="secondary"
-                  disabled={isActing}
-                  style={styles.actionBtn}
-                />
-              </View>
-            </Card>
-          );
-        })}
-
-        {/* Pagination: Load More */}
-        {!loading && page < totalPages && (
-          <Button
-            title="Load More Matches"
-            onPress={handleLoadMore}
-            variant="secondary"
-            style={styles.loadMoreBtn}
-          />
-        )}
-      </ScrollView>
+      />
     </SafeAreaView>
   );
 };
@@ -350,9 +392,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
+  listContent: {
     padding: spacing.base,
     paddingBottom: 110,
+  },
+  headerArea: {
+    marginBottom: spacing.xs,
   },
   chipsScroll: {
     paddingBottom: spacing.sm,
@@ -412,9 +457,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
-  photoPlaceholder: {
-    fontSize: 34,
+  photoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoInitialsGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoInitials: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.royalMaroon,
   },
   verifiedDot: {
     position: 'absolute',
@@ -429,10 +487,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  verifiedCheck: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '800',
+  lockedPhotoBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileTextInfo: {
     flex: 1,
@@ -488,7 +552,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   emptyIcon: {
-    fontSize: 36,
     marginBottom: spacing.sm,
   },
   emptyTitle: {
@@ -522,7 +585,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
   },
-  loadMoreBtn: {
-    marginVertical: spacing.md,
+  footerLoader: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerLoaderText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
 });

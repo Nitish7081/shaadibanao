@@ -13,6 +13,11 @@ const startServer = async (): Promise<void> => {
   // Report whether Cloudinary is configured (uploads are rejected, never saved locally, if not)
   StorageService.logStartupStatus();
 
+  // Report Firebase Admin SDK configuration status (no secret keys printed)
+  const { initializeFirebaseAdmin, isFirebaseServiceAccountConfigured } = require('./config/firebase');
+  initializeFirebaseAdmin();
+  console.log(`[Firebase] Startup check: firebaseAdmin=${isFirebaseServiceAccountConfigured() ? 'configured' : 'missing'}`);
+
   // Initialize Socket.IO with WebSocket and JWT handshake
   SocketService.init(httpServer);
 

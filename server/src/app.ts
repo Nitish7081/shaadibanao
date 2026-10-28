@@ -15,6 +15,17 @@ export const createApp = (): Express => {
   // Production reverse-proxy support (Nginx, Cloudflare, AWS ALB)
   app.set('trust proxy', 1);
 
+  // Request ID tracking for observability and error correlation
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const rawReqId = req.headers['x-request-id'];
+    const reqId = (typeof rawReqId === 'string' && rawReqId.trim())
+      ? rawReqId.trim().slice(0, 64)
+      : `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+    (req as any).requestId = reqId;
+    res.setHeader('X-Request-Id', reqId);
+    next();
+  });
+
   // Security Middleware with custom CSP to permit Cloudinary media, Google Fonts, and Admin interactions
   app.use(
     helmet({
