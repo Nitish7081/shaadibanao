@@ -25,6 +25,7 @@ import { KundliFormScreen } from '../screens/KundliFormScreen';
 import { IdentityVerificationScreen } from '../screens/IdentityVerificationScreen';
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import { SearchScreen } from '../screens/SearchScreen';
+import { MuhuratFinderScreen } from '../screens/MuhuratFinderScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -61,6 +62,7 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="CreatePost" component={CreatePostScreen} />
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
+      <Stack.Screen name="MuhuratFinder" component={MuhuratFinderScreen} />
     </Stack.Navigator>
   );
 };

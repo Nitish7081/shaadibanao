@@ -285,7 +285,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           onKundliMilanPress={() => navigation.navigate('Astrology', { initialTab: 'matching' })}
           onBookPanditPress={() => navigation.navigate('PanditServices')}
           onMuhuratFinderPress={() =>
-            navigation.navigate('PanditServices', { ceremonyType: 'wedding' })
+            (navigation as any).navigate('MuhuratFinder', { ceremonyType: 'wedding' })
           }
           onAstrologyPress={() => navigation.navigate('Astrology', { initialTab: 'kundli' })}
           onCommunityPress={() => navigation.navigate('Community')}

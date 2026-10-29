@@ -25,6 +25,7 @@ export type RootStackParamList = {
   CreatePost: undefined;
   Search: undefined;
   Chat: undefined;
+  MuhuratFinder: { ceremonyType?: string } | undefined;
 };
 
 export type MainTabParamList = {
@@ -39,4 +40,3 @@ export type MainTabParamList = {
   Chat?: undefined;
   Me?: undefined;
 };
-
