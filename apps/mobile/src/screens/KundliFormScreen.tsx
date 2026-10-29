@@ -4,21 +4,27 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { RASHI_LIST, NAKSHATRA_LIST } from '@bandhansetu/shared';
 import { DatePickerField } from '../components/common/DatePickerField';
 import { TimePickerField } from '../components/common/TimePickerField';
 import { getDobDateLimits, isValidDob } from '../utils/dateTimeHelpers';
-import { API_BASE } from '../services/authSession';
-import { getAuthHeader } from '../services/authSession';
+import { ds, PressableScale } from '../design';
+import { API_BASE, getAuthHeader } from '../services/authSession';
 
 export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const dobLimits = getDobDateLimits();
   const [dateOfBirth, setDateOfBirth] = useState('1998-05-15');
   const [timeOfBirth, setTimeOfBirth] = useState('14:30');
@@ -28,9 +34,26 @@ export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
   const [rashi, setRashi] = useState<string>(RASHI_LIST[0]);
   const [nakshatra, setNakshatra] = useState<string>(NAKSHATRA_LIST[0]);
   const [charan, setCharan] = useState('1');
-  const [manglikStatus, setManglikStatus] = useState<'non_manglik' | 'manglik' | 'anshik_manglik' | 'dont_know'>('dont_know');
-  const [visibility, setVisibility] = useState<'matches_only' | 'private' | 'shared_with_pandit'>('matches_only');
+  const [manglikStatus, setManglikStatus] = useState<
+    'non_manglik' | 'manglik' | 'anshik_manglik' | 'dont_know'
+  >('dont_know');
+  const [visibility, setVisibility] = useState<
+    'matches_only' | 'private' | 'shared_with_pandit'
+  >('matches_only');
   const [submitting, setSubmitting] = useState(false);
+
+  const manglikOptions = [
+    { key: 'non_manglik', label: 'Non-Manglik' },
+    { key: 'manglik', label: 'Manglik' },
+    { key: 'anshik_manglik', label: 'Anshik (Partial)' },
+    { key: 'dont_know', label: "Don't Know" },
+  ];
+
+  const visibilityOptions = [
+    { key: 'matches_only', label: 'Accepted Matches Only' },
+    { key: 'shared_with_pandit', label: 'Matches & Consulting Pandits' },
+    { key: 'private', label: 'Strictly Private' },
+  ];
 
   const handleSubmit = async () => {
     if (!dateOfBirth || !timeOfBirth || !cityName.trim()) {
@@ -92,275 +115,416 @@ export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Vedic Kundli Profile</Text>
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Top Bar */}
+      <View style={styles.topNav}>
+        <PressableScale
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
+        </PressableScale>
+        <Text
+          maxFontSizeMultiplier={1.2}
+          style={styles.navTitle}
+        >
+          Create Vedic Kundli
+        </Text>
+        <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionTitle}>Birth Information</Text>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 40, 60) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Birth Information Section */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Ionicons name="calendar-outline" size={17} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.cardTitle}>
+              Birth Information
+            </Text>
+          </View>
 
-        <DatePickerField
-          label="Date of Birth"
-          value={dateOfBirth}
-          onChange={setDateOfBirth}
-          minDate={dobLimits.minDate}
-          maxDate={dobLimits.maxDate}
-          defaultDate={dobLimits.defaultInitialDate}
-          required
-        />
-
-        <TimePickerField
-          label="Time of Birth"
-          value={timeOfBirth}
-          onChange={setTimeOfBirth}
-          required
-        />
-
-        <TouchableOpacity
-          style={styles.checkboxRow}
-          onPress={() => setIsApproximate(!isApproximate)}
-        >
-          <Ionicons
-            name={isApproximate ? 'checkbox' : 'square-outline'}
-            size={20}
-            color={colors.royalMaroon}
+          <DatePickerField
+            label="Date of Birth"
+            value={dateOfBirth}
+            onChange={setDateOfBirth}
+            minDate={dobLimits.minDate}
+            maxDate={dobLimits.maxDate}
+            defaultDate={dobLimits.defaultInitialDate}
+            required
           />
-          <Text style={styles.checkboxLabel}>Birth time is approximate (not exact)</Text>
-        </TouchableOpacity>
 
-        <Text style={styles.label}>Birth City</Text>
-        <TextInput
-          style={styles.textInput}
-          value={cityName}
-          onChangeText={setCityName}
-          placeholder="e.g. Lucknow, Varanasi, Delhi"
-        />
+          <TimePickerField
+            label="Time of Birth"
+            value={timeOfBirth}
+            onChange={setTimeOfBirth}
+            required
+          />
 
-        <Text style={styles.label}>Birth State / Region</Text>
-        <TextInput
-          style={styles.textInput}
-          value={stateName}
-          onChangeText={setStateName}
-          placeholder="e.g. Uttar Pradesh"
-        />
+          <PressableScale
+            style={styles.checkboxRow}
+            onPress={() => setIsApproximate(!isApproximate)}
+          >
+            <Ionicons
+              name={isApproximate ? 'checkbox' : 'square-outline'}
+              size={19}
+              color={ds.color.maroon}
+            />
+            <Text maxFontSizeMultiplier={1.2} style={styles.checkboxLabel}>
+              Birth time is approximate (not exact)
+            </Text>
+          </PressableScale>
 
-        <Text style={styles.sectionTitle}>Astrological Planetary Signs</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            Birth City
+          </Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.textInput}
+              value={cityName}
+              onChangeText={setCityName}
+              placeholder="e.g. Lucknow, Varanasi, Delhi"
+              placeholderTextColor={ds.color.textMuted}
+            />
+          </View>
 
-        <Text style={styles.label}>Moon Sign (Rashi)</Text>
-        <View style={styles.selectorBox}>
-          <Text style={styles.selectorText}>{rashi}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            Birth State / Region
+          </Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.textInput}
+              value={stateName}
+              onChangeText={setStateName}
+              placeholder="e.g. Uttar Pradesh"
+              placeholderTextColor={ds.color.textMuted}
+            />
+          </View>
         </View>
 
-        <Text style={styles.label}>Birth Nakshatra</Text>
-        <View style={styles.selectorBox}>
-          <Text style={styles.selectorText}>{nakshatra}</Text>
-        </View>
+        {/* Astrological Parameters */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Ionicons name="planet-outline" size={17} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.cardTitle}>
+              Astrological Parameters
+            </Text>
+          </View>
 
-        <Text style={styles.label}>Nakshatra Charan (Pada 1 to 4)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={charan}
-          onChangeText={setCharan}
-          keyboardType="number-pad"
-          maxLength={1}
-        />
-
-        <Text style={styles.label}>Manglik Status</Text>
-        <View style={styles.optionsRow}>
-          {[
-            { key: 'non_manglik', label: 'Non-Manglik' },
-            { key: 'manglik', label: 'Manglik' },
-            { key: 'anshik_manglik', label: 'Anshik' },
-            { key: 'dont_know', label: 'Not Sure' },
-          ].map((m) => {
-            const isSelected = manglikStatus === m.key;
-            return (
-              <TouchableOpacity
-                key={m.key}
-                style={[styles.pillBtn, isSelected && styles.pillBtnActive]}
-                onPress={() => setManglikStatus(m.key as any)}
-                activeOpacity={0.75}
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            Moon Sign (Rashi)
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+            {RASHI_LIST.map((r) => (
+              <PressableScale
+                key={r}
+                style={[styles.chipItem, rashi === r && styles.chipItemActive]}
+                onPress={() => setRashi(r)}
               >
-                {isSelected && (
-                  <Ionicons name="checkmark-circle" size={13} color={colors.royalMaroon} style={{ marginRight: 4 }} />
-                )}
-                <Text style={[styles.pillBtnText, isSelected && styles.pillBtnTextActive]}>
-                  {m.label}
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={[styles.chipText, rashi === r && styles.chipTextActive]}
+                >
+                  {r}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              </PressableScale>
+            ))}
+          </ScrollView>
 
-        <Text style={styles.label}>Privacy & Visibility</Text>
-        <View style={styles.optionsRow}>
-          {[
-            { key: 'matches_only', label: 'Matches Only' },
-            { key: 'shared_with_pandit', label: 'Pandit Only' },
-            { key: 'private', label: 'Private' },
-          ].map((v) => {
-            const isSelected = visibility === v.key;
-            return (
-              <TouchableOpacity
-                key={v.key}
-                style={[styles.pillBtn, isSelected && styles.pillBtnActive]}
-                onPress={() => setVisibility(v.key as any)}
-                activeOpacity={0.75}
+          <Text maxFontSizeMultiplier={1.2} style={[styles.fieldLabel, { marginTop: 10 }]}>
+            Nakshatra
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+            {NAKSHATRA_LIST.map((n) => (
+              <PressableScale
+                key={n}
+                style={[styles.chipItem, nakshatra === n && styles.chipItemActive]}
+                onPress={() => setNakshatra(n)}
               >
-                {isSelected && (
-                  <Ionicons name="checkmark-circle" size={13} color={colors.royalMaroon} style={{ marginRight: 4 }} />
-                )}
-                <Text style={[styles.pillBtnText, isSelected && styles.pillBtnTextActive]}>
-                  {v.label}
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={[styles.chipText, nakshatra === n && styles.chipTextActive]}
+                >
+                  {n}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
+              </PressableScale>
+            ))}
+          </ScrollView>
+
+          <Text maxFontSizeMultiplier={1.2} style={[styles.fieldLabel, { marginTop: 10 }]}>
+            Manglik Status
+          </Text>
+          <View style={styles.wrapGrid}>
+            {manglikOptions.map((opt) => (
+              <PressableScale
+                key={opt.key}
+                style={[
+                  styles.optionPill,
+                  manglikStatus === opt.key && styles.optionPillActive,
+                ]}
+                onPress={() => setManglikStatus(opt.key as any)}
+              >
+                <Text
+                  maxFontSizeMultiplier={1.2}
+                  style={[
+                    styles.optionPillText,
+                    manglikStatus === opt.key && styles.optionPillTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </PressableScale>
+            ))}
+          </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.saveBtn}
+        {/* Privacy & Visibility */}
+        <View style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Ionicons name="lock-closed-outline" size={17} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.cardTitle}>
+              Kundli Visibility
+            </Text>
+          </View>
+
+          {visibilityOptions.map((v) => (
+            <PressableScale
+              key={v.key}
+              style={[
+                styles.visibilityRow,
+                visibility === v.key && styles.visibilityRowActive,
+              ]}
+              onPress={() => setVisibility(v.key as any)}
+            >
+              <Ionicons
+                name={visibility === v.key ? 'radio-button-on' : 'radio-button-off'}
+                size={18}
+                color={visibility === v.key ? ds.color.maroon : ds.color.textMuted}
+              />
+              <Text
+                maxFontSizeMultiplier={1.2}
+                style={[
+                  styles.visibilityText,
+                  visibility === v.key && styles.visibilityTextActive,
+                ]}
+              >
+                {v.label}
+              </Text>
+            </PressableScale>
+          ))}
+        </View>
+
+        {/* Save Button */}
+        <PressableScale
+          style={[styles.saveBtn, submitting && styles.saveBtnDisabled]}
           onPress={handleSubmit}
           disabled={submitting}
         >
-          {submitting ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.saveBtnText}>Save Kundli Horoscope</Text>
-          )}
-        </TouchableOpacity>
+          <LinearGradient
+            colors={['#7A1528', '#9B1D36']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.saveBtnGradient}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.saveBtnText}>
+                  Save Vedic Kundli
+                </Text>
+              </>
+            )}
+          </LinearGradient>
+        </PressableScale>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenBg: {
     flex: 1,
-    backgroundColor: '#F8F5EE',
+    backgroundColor: ds.color.bg,
   },
-  header: {
-    backgroundColor: colors.royalMaroon,
-    paddingTop: 48,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+  topNav: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
+    backgroundColor: ds.color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginLeft: 14,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontFamily: fonts.headingSemiBold,
-    fontWeight: '700',
-    color: colors.royalMaroon,
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    fontWeight: '600',
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  textInput: {
-    backgroundColor: '#FFFFFF',
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E8E2D8',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 13,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    marginBottom: 6,
+    borderColor: ds.color.border,
+  },
+  navTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: ds.color.text,
+  },
+  scrollContent: {
+    padding: ds.space.md,
+  },
+  card: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.md,
+    ...ds.shadow.soft,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: ds.space.sm,
+    paddingBottom: ds.space.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: ds.color.text,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 6,
+    gap: 8,
+    marginVertical: 10,
   },
   checkboxLabel: {
-    fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    marginLeft: 8,
-  },
-  selectorBox: {
-    backgroundColor: '#FAF8F4',
-    borderWidth: 1,
-    borderColor: '#E8E2D8',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 6,
-  },
-  selectorText: {
     fontSize: 13,
-    fontFamily: fonts.headingSemiBold,
-    color: colors.charcoal,
+    color: ds.color.textBody,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ds.color.text,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  inputWrap: {
+    backgroundColor: ds.color.surfaceWarm,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  textInput: {
+    fontSize: 14,
+    color: ds.color.text,
+  },
+  chipScroll: {
+    paddingVertical: 4,
+  },
+  chipItem: {
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginRight: 6,
+  },
+  chipItemActive: {
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
+  },
+  chipText: {
+    fontSize: 12,
+    color: ds.color.text,
     fontWeight: '600',
   },
-  optionsRow: {
+  chipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  wrapGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 10,
+    marginTop: 4,
   },
-  pillBtn: {
+  optionPill: {
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  optionPillActive: {
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
+  },
+  optionPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ds.color.text,
+  },
+  optionPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  visibilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
-    borderColor: '#E8E2D8',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    gap: 8,
   },
-  pillBtnActive: {
-    backgroundColor: '#FFF0F4',
-    borderColor: colors.royalMaroon,
-    borderWidth: 1.5,
+  visibilityRowActive: {
+    backgroundColor: ds.color.surfaceWarm,
   },
-  pillBtnText: {
-    fontSize: 11,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    fontWeight: '500',
+  visibilityText: {
+    fontSize: 13,
+    color: ds.color.textMuted,
   },
-  pillBtnTextActive: {
-    color: colors.royalMaroon,
-    fontFamily: fonts.bodySemiBold,
+  visibilityTextActive: {
+    color: ds.color.maroon,
     fontWeight: '700',
   },
   saveBtn: {
-    backgroundColor: colors.royalMaroon,
-    paddingVertical: 14,
-    minHeight: 50,
-    borderRadius: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: ds.space.xs,
+    ...ds.shadow.soft,
+  },
+  saveBtnDisabled: {
+    opacity: 0.7,
+  },
+  saveBtnGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
-    ...shadows.card,
+    paddingVertical: 14,
+    gap: 8,
   },
   saveBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: fonts.headingBold,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

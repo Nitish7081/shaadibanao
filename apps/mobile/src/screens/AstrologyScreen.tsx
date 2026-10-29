@@ -4,18 +4,25 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { RASHI_LIST, NAKSHATRA_LIST, KundliMatchingResult } from '@bandhansetu/shared';
+import { ds, PressableScale, Skeleton } from '../design';
 import { API_BASE } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
 
 export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [activeTab, setActiveTab] = useState<'kundli' | 'matching'>(
     route?.params?.initialTab || 'kundli'
   );
@@ -27,6 +34,7 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
   }, [route?.params?.initialTab]);
 
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [kundli, setKundli] = useState<any>(null);
 
   // Matchmaking State
@@ -43,8 +51,10 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
     fetchMyKundli();
   }, []);
 
-  const fetchMyKundli = async () => {
-    setLoading(true);
+  const fetchMyKundli = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
     try {
       const headers = await getAuthHeader();
       const res = await fetch(`${API_BASE}/astrology/kundli/me`, { headers });
@@ -56,6 +66,7 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
       // offline / mock fallback
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -78,219 +89,426 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
       if (json.success && json.data) {
         setMatchingResult(json.data);
       } else {
-        Alert.alert('Error', json.error?.message || 'Could not calculate compatibility');
+        Alert.alert('Notice', json.error?.message || 'Could not calculate compatibility');
       }
     } catch {
-      Alert.alert('Network Error', 'Please check your connection.');
+      Alert.alert('Network Error', 'Please check your connection and retry.');
     } finally {
       setCalculating(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Vedic Astrology & Kundli</Text>
-        <Text style={styles.headerSubtitle}>Authentic 36 Guna Milan & Vedic Guidance</Text>
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Top Header */}
+      <View style={styles.headerBlock}>
+        <View style={styles.headerTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={styles.screenHeading}
+            >
+              {t('astrologyScreen.headerTitle')}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={styles.screenSubheading}
+            >
+              {t('astrologyScreen.headerSubtitle')}
+            </Text>
+          </View>
+        </View>
 
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'kundli' && styles.tabButtonActive]}
+        {/* Tab Switcher */}
+        <View style={styles.segmentedContainer}>
+          <PressableScale
+            style={[styles.segmentTab, activeTab === 'kundli' && styles.segmentTabActive]}
             onPress={() => setActiveTab('kundli')}
           >
-            <Text style={[styles.tabText, activeTab === 'kundli' && styles.tabTextActive]}>My Kundli</Text>
-          </TouchableOpacity>
+            <Ionicons
+              name="planet-outline"
+              size={15}
+              color={activeTab === 'kundli' ? ds.color.maroon : ds.color.textMuted}
+            />
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.segmentLabel,
+                activeTab === 'kundli' && styles.segmentLabelActive,
+              ]}
+            >
+              {t('astrologyScreen.tabMyKundli')}
+            </Text>
+          </PressableScale>
 
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'matching' && styles.tabButtonActive]}
+          <PressableScale
+            style={[styles.segmentTab, activeTab === 'matching' && styles.segmentTabActive]}
             onPress={() => setActiveTab('matching')}
           >
-            <Text style={[styles.tabText, activeTab === 'matching' && styles.tabTextActive]}>Kundli Milan (36 Gunas)</Text>
-          </TouchableOpacity>
+            <Ionicons
+              name="sparkles-outline"
+              size={15}
+              color={activeTab === 'matching' ? ds.color.maroon : ds.color.textMuted}
+            />
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.segmentLabel,
+                activeTab === 'matching' && styles.segmentLabelActive,
+              ]}
+            >
+              {t('astrologyScreen.tabKundliMilan')}
+            </Text>
+          </PressableScale>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 110) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => fetchMyKundli(true)}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
+          />
+        }
+      >
         {activeTab === 'kundli' ? (
           <View>
-            {loading ? (
-              <ActivityIndicator size="large" color={colors.royalMaroon} style={{ marginTop: 40 }} />
+            {loading && !refreshing ? (
+              <View style={styles.skeletonContainer}>
+                <Skeleton width="100%" height={260} radius={20} style={{ marginBottom: 14 }} />
+                <Skeleton width="100%" height={120} radius={20} />
+              </View>
             ) : kundli ? (
-              <View style={styles.card}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardTitle}>Vedic Birth Chart</Text>
-                  <View style={styles.badgeTag}>
-                    <Text style={styles.badgeTagText}>{kundli.visibility?.replace('_', ' ').toUpperCase()}</Text>
+              <>
+                {/* Birth Chart Card */}
+                <View style={styles.card}>
+                  <View style={styles.cardHeaderRow}>
+                    <View style={styles.chartTitleRow}>
+                      <Ionicons name="planet" size={18} color={ds.color.maroon} />
+                      <Text maxFontSizeMultiplier={1.2} style={styles.cardTitle}>
+                        {t('astrologyScreen.birthChartTitle')}
+                      </Text>
+                    </View>
+                    <View style={styles.visibilityTag}>
+                      <Text maxFontSizeMultiplier={1.2} style={styles.visibilityTagText}>
+                        {(kundli.visibility || 'Matches Only').replace('_', ' ')}
+                      </Text>
+                    </View>
                   </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.dobLabel')}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaVal}>
+                      {new Date(kundli.dateOfBirth).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.timeLabel')}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaVal}>
+                      {kundli.timeOfBirth}{' '}
+                      {kundli.isApproximateTime ? '(Approx)' : '(Exact)'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.placeLabel')}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaVal}>
+                      {kundli.birthPlace?.name || 'Delhi NCR'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.rashiLabel')}
+                    </Text>
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={[styles.metaVal, { fontWeight: '700', color: ds.color.maroon }]}
+                    >
+                      {kundli.rashi}
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.nakshatraLabel')}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaVal}>
+                      {kundli.nakshatra} (Charan {kundli.charan || 1})
+                    </Text>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.metaLabel}>
+                      {t('astrologyScreen.manglikLabel')}
+                    </Text>
+                    <View
+                      style={[
+                        styles.manglikPill,
+                        kundli.manglikStatus === 'manglik'
+                          ? styles.manglikPillAlert
+                          : styles.manglikPillSuccess,
+                      ]}
+                    >
+                      <Text
+                        maxFontSizeMultiplier={1.2}
+                        style={[
+                          styles.manglikPillText,
+                          kundli.manglikStatus === 'manglik'
+                            ? styles.manglikTextAlert
+                            : styles.manglikTextSuccess,
+                        ]}
+                      >
+                        {(kundli.manglikStatus || 'non_manglik').replace('_', ' ').toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <PressableScale
+                    style={styles.editBtn}
+                    onPress={() => navigation.navigate('KundliForm')}
+                  >
+                    <Ionicons name="create-outline" size={15} color={ds.color.maroon} />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.editBtnText}>
+                      {t('astrologyScreen.editKundliBtn')}
+                    </Text>
+                  </PressableScale>
                 </View>
 
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Date of Birth:</Text>
-                  <Text style={styles.metaVal}>{new Date(kundli.dateOfBirth).toLocaleDateString('en-IN')}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Birth Time:</Text>
-                  <Text style={styles.metaVal}>{kundli.timeOfBirth} {kundli.isApproximateTime ? '(Approx)' : '(Exact)'}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Birth Place:</Text>
-                  <Text style={styles.metaVal}>{kundli.birthPlace?.name || 'Delhi NCR'}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Moon Sign (Rashi):</Text>
-                  <Text style={[styles.metaVal, { fontWeight: '700', color: colors.royalMaroon }]}>{kundli.rashi}</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Nakshatra:</Text>
-                  <Text style={styles.metaVal}>{kundli.nakshatra} (Charan {kundli.charan || 1})</Text>
-                </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Manglik Status:</Text>
-                  <Text style={[styles.metaVal, { color: kundli.manglikStatus === 'manglik' ? colors.alertRed : colors.verifiedGreen }]}>
-                    {kundli.manglikStatus?.replace('_', ' ').toUpperCase()}
+                {/* Consult Pandit Guidance Card */}
+                <View style={styles.guidanceCard}>
+                  <View style={styles.guidanceHeader}>
+                    <Ionicons name="sparkles" size={18} color="#92400E" />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.guidanceTitle}>
+                      {t('astrologyScreen.consultPanditTitle')}
+                    </Text>
+                  </View>
+                  <Text maxFontSizeMultiplier={1.2} style={styles.guidanceBody}>
+                    {t('astrologyScreen.consultPanditBody')}
                   </Text>
+                  <PressableScale
+                    style={styles.consultPanditBtn}
+                    onPress={() => navigation.navigate('PanditServices')}
+                  >
+                    <Text maxFontSizeMultiplier={1.2} style={styles.consultPanditBtnText}>
+                      {t('astrologyScreen.bookPanditConsult')}
+                    </Text>
+                    <Ionicons name="arrow-forward" size={14} color="#FFFFFF" />
+                  </PressableScale>
                 </View>
-              </View>
+              </>
             ) : (
-              <View style={styles.emptyCard}>
-                <Ionicons name="planet-outline" size={54} color={colors.softGold} />
-                <Text style={styles.emptyTitle}>Kundli Profile Not Created</Text>
-                <Text style={styles.emptyDesc}>Enter your exact birth time, place, and rashi to generate your Vedic horoscope and unlock authentic matchmaking.</Text>
-                <TouchableOpacity
-                  style={styles.primaryBtn}
+              <View style={styles.emptyContainer}>
+                <LinearGradient
+                  colors={['#FFF6E8', '#FFEECF']}
+                  style={styles.emptyIconCircle}
+                >
+                  <Ionicons name="planet-outline" size={36} color={ds.color.maroon} />
+                </LinearGradient>
+                <Text maxFontSizeMultiplier={1.2} style={styles.emptyTitle}>
+                  {t('astrologyScreen.noKundliTitle')}
+                </Text>
+                <Text maxFontSizeMultiplier={1.2} style={styles.emptySubtitle}>
+                  {t('astrologyScreen.noKundliSub')}
+                </Text>
+                <PressableScale
+                  style={styles.createKundliBtn}
                   onPress={() => navigation.navigate('KundliForm')}
                 >
-                  <Text style={styles.primaryBtnText}>+ Create Kundli Profile</Text>
-                </TouchableOpacity>
+                  <Ionicons name="add-circle" size={16} color="#FFFFFF" />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.createKundliBtnText}>
+                    {t('astrologyScreen.createKundliBtn')}
+                  </Text>
+                </PressableScale>
               </View>
             )}
-
-            {/* Pandit Consultation Card */}
-            <View style={[styles.card, { marginTop: 16, backgroundColor: '#FAF6ED', borderColor: colors.softGold }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <Ionicons name="sparkles" size={20} color={colors.softGold} />
-                <Text style={[styles.cardTitle, { marginLeft: 8, color: colors.royalMaroon }]}>Talk to Verified Vedic Pandit</Text>
-              </View>
-              <Text style={{ fontSize: 13, color: colors.charcoal, lineHeight: 19, marginBottom: 12 }}>
-                Get an auspicious date (Shubh Muhurat), Kundli dosha remedies, or complete marriage matchmaking guidance from certified Pandits.
-              </Text>
-              <TouchableOpacity
-                style={[styles.primaryBtn, { backgroundColor: colors.royalMaroon }]}
-                onPress={() => navigation.navigate('PanditServices')}
-              >
-                <Text style={styles.primaryBtnText}>Book Pandit Consultation →</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         ) : (
           <View>
-            {/* Matchmaking Form */}
+            {/* Groom Details Card */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Ashta Koota Match Calculator</Text>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 14 }}>
-                Computes authentic Vedic points (Varna, Vashya, Tara, Yoni, Graha Maitri, Gana, Bhakoot, Nadi) out of 36.
+              <View style={styles.partyHeaderRow}>
+                <Ionicons name="male" size={16} color={ds.color.maroon} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.partyHeading}>
+                  {t('astrologyScreen.boyDetails')}
+                </Text>
+              </View>
+
+              <Text maxFontSizeMultiplier={1.2} style={styles.selectLabel}>
+                Rashi (Moon Sign)
               </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+                {RASHI_LIST.slice(0, 8).map((r) => (
+                  <PressableScale
+                    key={r}
+                    style={[styles.smallChip, boyRashi === r && styles.smallChipActive]}
+                    onPress={() => setBoyRashi(r)}
+                  >
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={[styles.smallChipText, boyRashi === r && styles.smallChipTextActive]}
+                    >
+                      {r}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
 
-              {/* Groom's details */}
-              <Text style={styles.sectionHeader}>Groom's Vedic Details</Text>
-              <Text style={styles.inputLabel}>Moon Sign (Rashi)</Text>
-              <View style={styles.selectorRow}>
-                <Text style={styles.selectorVal}>{boyRashi}</Text>
+              <Text maxFontSizeMultiplier={1.2} style={[styles.selectLabel, { marginTop: 10 }]}>
+                Nakshatra
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+                {NAKSHATRA_LIST.slice(0, 8).map((n) => (
+                  <PressableScale
+                    key={n}
+                    style={[styles.smallChip, boyNakshatra === n && styles.smallChipActive]}
+                    onPress={() => setBoyNakshatra(n)}
+                  >
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={[styles.smallChipText, boyNakshatra === n && styles.smallChipTextActive]}
+                    >
+                      {n}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Bride Details Card */}
+            <View style={styles.card}>
+              <View style={styles.partyHeaderRow}>
+                <Ionicons name="female" size={16} color={ds.color.maroon} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.partyHeading}>
+                  {t('astrologyScreen.girlDetails')}
+                </Text>
               </View>
 
-              <Text style={styles.inputLabel}>Nakshatra</Text>
-              <View style={styles.selectorRow}>
-                <Text style={styles.selectorVal}>{boyNakshatra}</Text>
-              </View>
+              <Text maxFontSizeMultiplier={1.2} style={styles.selectLabel}>
+                Rashi (Moon Sign)
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+                {RASHI_LIST.slice(0, 8).map((r) => (
+                  <PressableScale
+                    key={r}
+                    style={[styles.smallChip, girlRashi === r && styles.smallChipActive]}
+                    onPress={() => setGirlRashi(r)}
+                  >
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={[styles.smallChipText, girlRashi === r && styles.smallChipTextActive]}
+                    >
+                      {r}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
 
-              <TouchableOpacity
-                style={styles.checkboxRow}
-                onPress={() => setBoyManglik(!boyManglik)}
-              >
-                <Ionicons
-                  name={boyManglik ? 'checkbox' : 'square-outline'}
-                  size={20}
-                  color={colors.royalMaroon}
-                />
-                <Text style={styles.checkboxLabel}>Groom has Manglik influence</Text>
-              </TouchableOpacity>
+              <Text maxFontSizeMultiplier={1.2} style={[styles.selectLabel, { marginTop: 10 }]}>
+                Nakshatra
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+                {NAKSHATRA_LIST.slice(0, 8).map((n) => (
+                  <PressableScale
+                    key={n}
+                    style={[styles.smallChip, girlNakshatra === n && styles.smallChipActive]}
+                    onPress={() => setGirlNakshatra(n)}
+                  >
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={[styles.smallChipText, girlNakshatra === n && styles.smallChipTextActive]}
+                    >
+                      {n}
+                    </Text>
+                  </PressableScale>
+                ))}
+              </ScrollView>
+            </View>
 
-              <View style={styles.divider} />
-
-              {/* Bride's details */}
-              <Text style={styles.sectionHeader}>Bride's Vedic Details</Text>
-              <Text style={styles.inputLabel}>Moon Sign (Rashi)</Text>
-              <View style={styles.selectorRow}>
-                <Text style={styles.selectorVal}>{girlRashi}</Text>
-              </View>
-
-              <Text style={styles.inputLabel}>Nakshatra</Text>
-              <View style={styles.selectorRow}>
-                <Text style={styles.selectorVal}>{girlNakshatra}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.checkboxRow}
-                onPress={() => setGirlManglik(!girlManglik)}
-              >
-                <Ionicons
-                  name={girlManglik ? 'checkbox' : 'square-outline'}
-                  size={20}
-                  color={colors.royalMaroon}
-                />
-                <Text style={styles.checkboxLabel}>Bride has Manglik influence</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.primaryBtn, { marginTop: 16 }]}
-                onPress={handleCalculateMatch}
-                disabled={calculating}
+            {/* Calculate Button */}
+            <PressableScale
+              style={[styles.calculateBtn, calculating && styles.calculateBtnDisabled]}
+              onPress={handleCalculateMatch}
+              disabled={calculating}
+            >
+              <LinearGradient
+                colors={['#7A1528', '#9B1D36']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.calcGradient}
               >
                 {calculating ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>Calculate 36 Gunas Compatibility</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Results Section */}
-            {matchingResult && (
-              <View style={[styles.card, { marginTop: 16 }]}>
-                <View style={styles.scoreHeader}>
-                  <View>
-                    <Text style={styles.scoreText}>
-                      {matchingResult.totalScore} / 36
+                  <>
+                    <Ionicons name="sparkles" size={16} color="#FFFFFF" />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.calcBtnText}>
+                      {t('astrologyScreen.calculateMatchBtn')}
                     </Text>
-                    <Text style={styles.scoreSub}>Total Gunas Matched</Text>
-                  </View>
-                  <View style={[
-                    styles.verdictBadge,
-                    matchingResult.totalScore >= 18 ? styles.verdictGreen : styles.verdictAmber
-                  ]}>
-                    <Text style={styles.verdictText}>{matchingResult.compatibilityVerdict}</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </PressableScale>
+
+            {/* Results Display */}
+            {matchingResult && (
+              <View style={[styles.card, { marginTop: ds.space.md }]}>
+                <View style={styles.scoreRow}>
+                  <Text maxFontSizeMultiplier={1.2} style={styles.scoreHeadline}>
+                    {t('astrologyScreen.scoreTitle', { score: matchingResult.totalScore })}
+                  </Text>
+                  <View
+                    style={[
+                      styles.verdictChip,
+                      matchingResult.totalScore >= 18
+                        ? styles.verdictChipGood
+                        : styles.verdictChipLow,
+                    ]}
+                  >
+                    <Text maxFontSizeMultiplier={1.2} style={styles.verdictChipText}>
+                      {matchingResult.compatibilityVerdict || (matchingResult.totalScore >= 18 ? 'Compatible Match' : 'Remedies Needed')}
+                    </Text>
                   </View>
                 </View>
 
-                {/* Manglik Analysis */}
-                <View style={styles.manglikBox}>
-                  <Text style={styles.manglikTitle}>Manglik Compatibility</Text>
-                  <Text style={styles.manglikDesc}>{matchingResult.manglikAnalysis.summary}</Text>
-                </View>
+                {matchingResult.manglikAnalysis?.summary ? (
+                  <View style={styles.manglikSummaryBox}>
+                    <Ionicons name="shield-outline" size={14} color="#92400E" />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.manglikSummaryText}>
+                      {matchingResult.manglikAnalysis.summary}
+                    </Text>
+                  </View>
+                ) : null}
 
-                {/* 8 Kootas Breakdown */}
-                <Text style={[styles.sectionHeader, { marginTop: 14 }]}>Ashta Koota Scorecard</Text>
-                {matchingResult.breakdown.map((item, idx) => (
-                  <View key={idx} style={styles.kootaRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.kootaName}>
-                        {item.kootaName} ({item.sanskritName})
-                      </Text>
-                      <Text style={styles.kootaDesc}>{item.description}</Text>
-                    </View>
-                    <Text style={styles.kootaScore}>
-                      {item.obtainedPoints} / {item.maxPoints}
+                {/* Ashta Koota Breakdown */}
+                <Text maxFontSizeMultiplier={1.2} style={styles.breakdownHeader}>
+                  {t('astrologyScreen.breakdownTitle')}
+                </Text>
+                {matchingResult.breakdown?.map((k, idx) => (
+                  <View key={k.kootaName || idx} style={styles.kootaRow}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.kootaName}>
+                      {k.kootaName} ({k.sanskritName})
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.kootaScore}>
+                      {k.obtainedPoints} / {k.maxPoints}
                     </Text>
                   </View>
                 ))}
@@ -299,268 +517,373 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
           </View>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.ivory,
+    backgroundColor: ds.color.bg,
   },
-  header: {
-    backgroundColor: colors.royalMaroon,
-    paddingTop: 48,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderBottomWidth: 1.5,
-    borderBottomColor: colors.royalGold,
+  headerBlock: {
+    paddingHorizontal: ds.space.md,
+    paddingTop: ds.space.sm,
+    paddingBottom: ds.space.md,
   },
-  headerTitle: {
+  headerTopRow: {
+    marginBottom: ds.space.md,
+  },
+  screenHeading: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
+    color: ds.color.maroon,
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
+  screenSubheading: {
     fontSize: 13,
-    color: colors.lightGold,
+    color: ds.color.textMuted,
     marginTop: 2,
-    marginBottom: 12,
   },
-  tabBar: {
+  segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 8,
-    padding: 3,
+    backgroundColor: ds.color.surfaceWarm,
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: ds.color.border,
   },
-  tabButton: {
+  segmentTab: {
     flex: 1,
-    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 6,
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 10,
+    gap: 6,
   },
-  tabButtonActive: {
-    backgroundColor: '#FFFFFF',
+  segmentTabActive: {
+    backgroundColor: ds.color.surface,
+    ...ds.shadow.soft,
   },
-  tabText: {
-    fontSize: 12,
+  segmentLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
+    color: ds.color.textMuted,
   },
-  tabTextActive: {
-    color: colors.royalMaroon,
+  segmentLabelActive: {
+    color: ds.color.maroon,
+    fontWeight: '700',
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 110,
+    paddingHorizontal: ds.space.md,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: ds.color.surface,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E8E2D8',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.md,
+    ...ds.shadow.soft,
   },
   cardHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    justifyContent: 'space-between',
+    paddingBottom: ds.space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0ECE4',
-    paddingBottom: 8,
+    borderBottomColor: ds.color.border,
+    marginBottom: ds.space.sm,
+  },
+  chartTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: colors.charcoal,
+    color: ds.color.text,
   },
-  badgeTag: {
-    backgroundColor: '#E8F5E9',
+  visibilityTag: {
+    backgroundColor: ds.color.surfaceWarm,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 4,
+    borderRadius: 999,
   },
-  badgeTagText: {
+  visibilityTagText: {
     fontSize: 10,
     fontWeight: '700',
-    color: colors.verifiedGreen,
+    color: ds.color.maroon,
+    textTransform: 'uppercase',
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: 7,
     borderBottomWidth: 1,
-    borderBottomColor: '#F8F6F0',
+    borderBottomColor: '#F7EFE4',
   },
   metaLabel: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: ds.color.textMuted,
   },
   metaVal: {
     fontSize: 13,
-    color: colors.charcoal,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: ds.color.text,
   },
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 24,
+  manglikPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  manglikPillSuccess: {
+    backgroundColor: '#DCFCE7',
+  },
+  manglikPillAlert: {
+    backgroundColor: '#FEE2E2',
+  },
+  manglikPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  manglikTextSuccess: {
+    color: '#166534',
+  },
+  manglikTextAlert: {
+    color: '#DC2626',
+  },
+  editBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.color.surfaceWarm,
     borderWidth: 1,
-    borderColor: '#E8E2D8',
-    marginTop: 20,
+    borderColor: ds.color.border,
+    borderRadius: 12,
+    paddingVertical: 9,
+    marginTop: ds.space.md,
+    gap: 6,
+  },
+  editBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: ds.color.maroon,
+  },
+  guidanceCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: ds.space.md,
+    marginBottom: ds.space.md,
+  },
+  guidanceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  guidanceTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  guidanceBody: {
+    fontSize: 13,
+    color: '#78350F',
+    lineHeight: 19,
+    marginBottom: ds.space.md,
+  },
+  consultPanditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D97706',
+    borderRadius: 12,
+    paddingVertical: 9,
+    gap: 6,
+  },
+  consultPanditBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  emptyContainer: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.xl,
+    alignItems: 'center',
+    marginTop: ds.space.lg,
+    ...ds.shadow.soft,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ds.space.md,
   },
   emptyTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: colors.charcoal,
-    marginTop: 12,
+    color: ds.color.text,
+    marginBottom: 6,
   },
-  emptyDesc: {
+  emptySubtitle: {
     fontSize: 13,
-    color: colors.textSecondary,
+    color: ds.color.textMuted,
     textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 20,
-    lineHeight: 18,
+    lineHeight: 19,
+    marginBottom: ds.space.lg,
+    paddingHorizontal: ds.space.md,
   },
-  primaryBtn: {
-    backgroundColor: colors.royalMaroon,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+  createKundliBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 11,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 14,
+    gap: 6,
   },
-  primaryBtnText: {
+  createKundliBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  sectionHeader: {
+  partyHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  partyHeading: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.royalMaroon,
-    marginTop: 8,
-    marginBottom: 8,
+    color: ds.color.maroon,
   },
-  inputLabel: {
+  selectLabel: {
     fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 6,
+    color: ds.color.textMuted,
+    marginBottom: 6,
+  },
+  chipsScroll: {
     marginBottom: 4,
   },
-  selectorRow: {
-    backgroundColor: '#FAF8F4',
+  smallChip: {
+    backgroundColor: ds.color.surfaceWarm,
     borderWidth: 1,
-    borderColor: '#E8E2D8',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
-  },
-  selectorVal: {
-    fontSize: 13,
-    color: colors.charcoal,
-    fontWeight: '600',
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  checkboxLabel: {
-    fontSize: 12,
-    color: colors.charcoal,
-    marginLeft: 8,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E8E2D8',
-    marginVertical: 10,
-  },
-  scoreHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8E2D8',
-    paddingBottom: 12,
-  },
-  scoreText: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.royalMaroon,
-  },
-  scoreSub: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  verdictBadge: {
+    borderColor: ds.color.border,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 999,
+    marginRight: 6,
   },
-  verdictGreen: {
-    backgroundColor: '#E8F5E9',
+  smallChipActive: {
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
   },
-  verdictAmber: {
-    backgroundColor: '#FFF8E1',
+  smallChipText: {
+    fontSize: 12,
+    color: ds.color.text,
+    fontWeight: '600',
   },
-  verdictText: {
+  smallChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  calculateBtn: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
+  },
+  calculateBtnDisabled: {
+    opacity: 0.7,
+  },
+  calcGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    gap: 8,
+  },
+  calcBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: ds.space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+    marginBottom: ds.space.sm,
+  },
+  scoreHeadline: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: ds.color.maroon,
+  },
+  verdictChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  verdictChipGood: {
+    backgroundColor: '#DCFCE7',
+  },
+  verdictChipLow: {
+    backgroundColor: '#FEF3C7',
+  },
+  verdictChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  breakdownHeader: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.charcoal,
+    color: ds.color.text,
+    marginBottom: 8,
   },
-  manglikBox: {
-    backgroundColor: '#FAF6ED',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.softGold,
+  manglikSummaryBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 8,
+    borderRadius: 10,
+    gap: 6,
+    marginBottom: 10,
   },
-  manglikTitle: {
+  manglikSummaryText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.royalMaroon,
-    marginBottom: 2,
-  },
-  manglikDesc: {
-    fontSize: 12,
-    color: colors.charcoal,
-    lineHeight: 16,
+    color: '#92400E',
+    flex: 1,
   },
   kootaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F2EB',
+    paddingVertical: 4,
   },
   kootaName: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.charcoal,
-  },
-  kootaDesc: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
+    color: ds.color.textMuted,
   },
   kootaScore: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.royalMaroon,
-    marginLeft: 12,
+    color: ds.color.text,
+  },
+  skeletonContainer: {
+    paddingTop: ds.space.sm,
   },
 });
