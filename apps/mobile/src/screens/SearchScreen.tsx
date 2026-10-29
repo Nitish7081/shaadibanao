@@ -1,28 +1,26 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
   ActivityIndicator,
   RefreshControl,
   FlatList,
   Image,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
-import { Header } from '../components/common/Header';
-import { Badge } from '../components/common/Badge';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
+import { ds, PressableScale, Chip, Skeleton } from '../design';
+import { colors } from '../constants/theme';
 import {
   searchProfiles,
   addShortlist,
@@ -42,6 +40,11 @@ interface Props {
 }
 
 export const SearchScreen: React.FC<Props> = ({ navigation }) => {
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language === 'hi';
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [results, setResults] = useState<SearchResultProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -54,11 +57,11 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const filterChips = [
-    { id: 'all', label: 'All Matches' },
-    { id: 'verified', label: '✓ Verified Only' },
-    { id: 'delhi', label: 'Delhi NCR' },
-    { id: 'age24_28', label: 'Age 24-28' },
-    { id: 'engineer', label: 'Tech & Engineers' },
+    { id: 'all', label: isHindi ? 'सभी मैच' : 'All Matches', icon: 'sparkles' as const },
+    { id: 'verified', label: isHindi ? '✓ केवल सत्यापित' : '✓ Verified Only', icon: 'shield-checkmark' as const },
+    { id: 'delhi', label: 'Delhi NCR', icon: 'location' as const },
+    { id: 'age24_28', label: isHindi ? 'आयु 24-28' : 'Age 24-28', icon: 'calendar' as const },
+    { id: 'engineer', label: isHindi ? 'तकनीकी व इंजीनियर' : 'Tech & Engineers', icon: 'briefcase' as const },
   ];
 
   const buildFilterParams = useCallback((chipId: string, pageNum: number): Partial<SearchFilterInput> => {
@@ -113,14 +116,14 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
           setPage(pageNum);
         }
       } catch (err: any) {
-        setError(err.message || 'Unable to fetch profiles. Please try again.');
+        setError(err.message || (isHindi ? 'मैच लोड नहीं हो सके। कृपया पुनः प्रयास करें।' : 'Unable to fetch profiles. Please try again.'));
       } finally {
         setLoading(false);
         setLoadingMore(false);
         setRefreshing(false);
       }
     },
-    [buildFilterParams]
+    [buildFilterParams, isHindi]
   );
 
   useEffect(() => {
@@ -147,11 +150,14 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
       const token = getSessionToken();
       const res = await sendInterest(token, item.id);
       Alert.alert(
-        'Interest Sent',
-        res.message || `Interest expressed to ${item.displayName}. You will be notified when accepted.`
+        isHindi ? 'रुचि भेजी गई! 💌' : 'Interest Sent! 💌',
+        res.message || (isHindi ? `${item.displayName} को रुचि भेजी गई। स्वीकार होने पर आपको सूचित किया जाएगा।` : `Interest expressed to ${item.displayName}. You will be notified when accepted.`)
       );
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message || 'Could not send interest. Please try again.');
+      Alert.alert(
+        isHindi ? 'प्रक्रिया विफल' : 'Action Failed',
+        err.message || (isHindi ? 'रुचि नहीं भेजी जा सकी।' : 'Could not send interest. Please try again.')
+      );
     } finally {
       setActionLoadingId(null);
     }
@@ -162,16 +168,41 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const token = getSessionToken();
       const res = await addShortlist(token, item.id);
-      Alert.alert('Shortlisted', res.message || `${item.displayName} added to your shortlist.`);
+      Alert.alert(
+        isHindi ? 'शॉर्टलिस्टेड ⭐' : 'Shortlisted ⭐',
+        res.message || (isHindi ? `${item.displayName} को आपकी शॉर्टलिस्ट में जोड़ा गया।` : `${item.displayName} added to your shortlist.`)
+      );
     } catch (err: any) {
-      Alert.alert('Shortlist Failed', err.message || 'Could not shortlist profile.');
+      Alert.alert(
+        isHindi ? 'शॉर्टलिस्ट विफल' : 'Shortlist Failed',
+        err.message || 'Could not shortlist profile.'
+      );
     } finally {
       setActionLoadingId(null);
     }
   };
 
   const renderHeader = () => (
-    <View style={styles.headerArea}>
+    <View style={styles.headerSection}>
+      {/* Title & Subtitle */}
+      <View style={styles.titleRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.screenHeading} maxFontSizeMultiplier={1.2}>
+            {isHindi ? 'जीवनसाथी खोजें' : 'Discover Matches'}
+          </Text>
+          <Text style={styles.screenSub} maxFontSizeMultiplier={1.2}>
+            {isHindi ? 'वैदिक अनुकूलता और 100% सत्यापित प्रोफाइल' : 'Vedic compatibility & verified recommendations'}
+          </Text>
+        </View>
+        <PressableScale
+          onPress={() => navigation.navigate('Search')}
+          style={styles.headerIconBtn}
+          accessibilityLabel="Search Filters"
+        >
+          <Ionicons name="options-outline" size={20} color={ds.color.maroon} />
+        </PressableScale>
+      </View>
+
       {/* Filter Chips Horizontal Scroll */}
       <ScrollView
         horizontal
@@ -181,133 +212,195 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         {filterChips.map((chip) => {
           const isSelected = selectedFilter === chip.id;
           return (
-            <TouchableOpacity
+            <PressableScale
               key={chip.id}
               onPress={() => handleFilterSelect(chip.id)}
               style={[styles.filterChip, isSelected && styles.filterChipSelected]}
+              accessibilityRole="button"
             >
+              <Ionicons
+                name={chip.icon}
+                size={14}
+                color={isSelected ? '#FFFFFF' : ds.color.maroon}
+                style={{ marginRight: 5 }}
+              />
               <Text
                 style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}
+                maxFontSizeMultiplier={1.2}
               >
                 {chip.label}
               </Text>
-            </TouchableOpacity>
+            </PressableScale>
           );
         })}
       </ScrollView>
 
-      {/* Sort & Count Header */}
+      {/* Meta Bar */}
       <View style={styles.resultsMeta}>
-        <Text style={styles.countText}>
-          Showing {results.length} of {totalItems} profiles
+        <Text style={styles.countText} maxFontSizeMultiplier={1.2}>
+          {isHindi ? `${totalItems} प्रोफाइल उपलब्ध` : `Showing ${results.length} of ${totalItems} profiles`}
         </Text>
-        <Text style={styles.sortText}>Sort: Best Match ▾</Text>
+        <View style={styles.sortPill}>
+          <Ionicons name="sparkles-outline" size={13} color={ds.color.goldDeep} />
+          <Text style={styles.sortText} maxFontSizeMultiplier={1.2}>
+            {isHindi ? 'शुभ मिलान' : 'Best Match'}
+          </Text>
+        </View>
       </View>
     </View>
   );
 
   const renderItem = ({ item }: { item: SearchResultProfile }) => {
     const isActing = actionLoadingId === item.id;
-    const matchLabel = item.matchAlignment
-      ? item.matchAlignment.scoreText
-      : 'Evaluating preferences...';
-
+    const matchLabel = item.matchAlignment ? item.matchAlignment.scoreText : (isHindi ? 'अनुकूलता का विश्लेषण...' : 'Evaluating compatibility...');
     const photo = getSafeMatchPhoto(item, 'card');
     const heightStr = formatHeight(item.heightCm);
 
     return (
-      <Card style={styles.resultCard}>
-        <TouchableOpacity
+      <View style={styles.cardContainer}>
+        {/* Main Card Tap to Profile Detail */}
+        <PressableScale
           onPress={() =>
             navigation.navigate('ProfileDetail', {
               profileId: item.id,
               name: item.displayName,
             })
           }
-          activeOpacity={0.85}
-          style={styles.cardHeader}
+          style={styles.cardSurface}
         >
-          {/* Real Photo / Blurred Photo / Initials Fallback */}
+          {/* Card Top: Photo Media with gradient scrim */}
           <View style={styles.photoContainer}>
             {photo ? (
               <Image
                 source={{ uri: photo.uri }}
                 style={styles.photoImage}
-                blurRadius={photo.blurred ? 22 : 0}
+                blurRadius={photo.blurred ? 24 : 0}
                 resizeMode="cover"
               />
             ) : (
               <LinearGradient
-                colors={['#FFF1D6', '#FBE3E9']}
+                colors={['#FFF3E0', '#FFE0B2', '#FFCC80']}
                 style={styles.photoInitialsGradient}
               >
                 <Text style={styles.photoInitials}>{getInitials(item.displayName)}</Text>
               </LinearGradient>
             )}
 
-            {item.isVerified && (
-              <View style={styles.verifiedDot}>
-                <Ionicons name="checkmark" size={11} color="#FFFFFF" />
+            {/* Gradient scrim at bottom of photo for text contrast */}
+            <LinearGradient
+              colors={['transparent', 'rgba(30, 10, 15, 0.75)']}
+              style={styles.photoScrim}
+            />
+
+            {/* Top Badges: Verified & Locked */}
+            <View style={styles.photoTopBadges}>
+              {item.isVerified ? (
+                <View style={styles.verifiedTag}>
+                  <Ionicons name="shield-checkmark" size={12} color="#FFFFFF" />
+                  <Text style={styles.verifiedTagText}>
+                    {isHindi ? 'सत्यापित' : 'VERIFIED'}
+                  </Text>
+                </View>
+              ) : <View />}
+
+              {photo?.blurred && (
+                <View style={styles.privacyTag}>
+                  <Ionicons name="lock-closed" size={11} color="#FFFFFF" />
+                  <Text style={styles.privacyTagText}>
+                    {isHindi ? 'गोपनीय' : 'PRIVATE'}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Bottom Scrim Content: Name, Age, Location */}
+            <View style={styles.photoBottomMeta}>
+              <View style={styles.nameRow}>
+                <Text style={styles.cardName} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                  {item.displayName}, {item.age}
+                </Text>
+                {item.isVerified && (
+                  <Ionicons name="checkmark-circle" size={18} color={ds.color.gold} style={{ marginLeft: 6 }} />
+                )}
               </View>
-            )}
-
-            {photo?.blurred && (
-              <View style={styles.lockedPhotoBadge}>
-                <Ionicons name="lock-closed" size={10} color="#FFFFFF" />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.profileTextInfo}>
-            <Text style={styles.profileName}>
-              {item.displayName}, {item.age}
-            </Text>
-            <Text style={styles.profileMeta}>
-              {[heightStr, item.city].filter(Boolean).join(' • ')}
-            </Text>
-            <Text style={styles.profileEducation}>
-              {[item.education, item.occupation].filter(Boolean).join(' • ')}
-            </Text>
-
-            <View style={styles.badgeRow}>
-              {item.isVerified && <Badge label="ID Verified" variant="verified" />}
-              {item.photoChecked && <Badge label="Photo Checked" variant="photoChecked" />}
+              <Text style={styles.cardSubText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                {[heightStr, item.city].filter(Boolean).join(' • ')}
+              </Text>
             </View>
           </View>
-        </TouchableOpacity>
 
-        {/* Factual Match Explanation */}
-        <View style={styles.matchReasonContainer}>
-          <Badge label={matchLabel} variant="match" icon="🎯" />
-        </View>
+          {/* Card Body: Details & Match Chip */}
+          <View style={styles.cardDetails}>
+            {/* Profession & Education */}
+            <View style={styles.detailRow}>
+              <Ionicons name="briefcase-outline" size={15} color={ds.color.textMuted} />
+              <Text style={styles.detailText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                {[item.occupation, item.education].filter(Boolean).join(' • ') || (isHindi ? 'विवरण उपलब्ध नहीं' : 'Details not specified')}
+              </Text>
+            </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionsRow}>
-          <Button
-            title={isActing ? 'Processing...' : 'Send Interest'}
-            onPress={() => handleSendInterest(item)}
-            variant="primary"
-            loading={isActing}
-            style={styles.actionBtn}
-          />
-          <Button
-            title="Shortlist"
-            onPress={() => handleShortlist(item)}
-            variant="secondary"
-            disabled={isActing}
-            style={styles.actionBtn}
-          />
-        </View>
-      </Card>
+            {/* Religion & Mother Tongue */}
+            <View style={styles.detailRow}>
+              <Ionicons name="people-outline" size={15} color={ds.color.textMuted} />
+              <Text style={styles.detailText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                {[item.religion, item.motherTongue].filter(Boolean).join(' • ') || (isHindi ? 'हिंदू' : 'Hindu')}
+              </Text>
+            </View>
+
+            {/* Match Compatibility Chip */}
+            <View style={styles.matchPillWrap}>
+              <View style={styles.matchBadge}>
+                <Ionicons name="sparkles" size={13} color={ds.color.goldDeep} />
+                <Text style={styles.matchBadgeText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                  {matchLabel}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Action Row: Shortlist & Connect Button */}
+          <View style={styles.cardActions}>
+            <PressableScale
+              onPress={() => handleShortlist(item)}
+              style={styles.shortlistBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isHindi ? 'शॉर्टलिस्ट' : 'Shortlist'}
+            >
+              <Ionicons name="heart-outline" size={20} color={ds.color.maroon} />
+            </PressableScale>
+
+            <PressableScale
+              onPress={() => handleSendInterest(item)}
+              style={styles.connectBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isHindi ? 'रुचि भेजें' : 'Connect'}
+              disabled={isActing}
+            >
+              {isActing ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="paper-plane" size={16} color="#FFFFFF" />
+                  <Text style={styles.connectBtnText} maxFontSizeMultiplier={1.2}>
+                    {isHindi ? 'रुचि भेजें' : 'Connect'}
+                  </Text>
+                </>
+              )}
+            </PressableScale>
+          </View>
+        </PressableScale>
+      </View>
     );
   };
 
   const renderFooter = () => {
-    if (!loadingMore) return <View style={{ height: 24 }} />;
+    if (!loadingMore) return <View style={{ height: 30 }} />;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={colors.royalMaroon} />
-        <Text style={styles.footerLoaderText}>Loading more matches...</Text>
+        <ActivityIndicator size="small" color={ds.color.maroon} />
+        <Text style={styles.footerLoaderText} maxFontSizeMultiplier={1.2}>
+          {isHindi ? 'और मैच लोड हो रहे हैं...' : 'Loading more matches...'}
+        </Text>
       </View>
     );
   };
@@ -315,73 +408,94 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const renderEmpty = () => {
     if (loading) {
       return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.royalMaroon} />
-          <Text style={styles.loadingText}>Finding compatible matches...</Text>
+        <View style={styles.skeletonContainer}>
+          {[1, 2, 3].map((k) => (
+            <View key={k} style={styles.skeletonCard}>
+              <Skeleton width="100%" height={220} radius={ds.radius.lg} />
+              <View style={{ marginTop: 12, paddingHorizontal: 12 }}>
+                <Skeleton width="60%" height={20} radius={6} />
+                <View style={{ height: 8 }} />
+                <Skeleton width="40%" height={14} radius={4} />
+              </View>
+            </View>
+          ))}
         </View>
       );
     }
 
     if (error) {
       return (
-        <Card style={styles.errorCard}>
-          <Text style={styles.errorTitle}>Unable to load matches</Text>
-          <Text style={styles.errorSub}>{error}</Text>
-          <Button
-            title="Try Again"
+        <View style={styles.centerState}>
+          <View style={styles.errorIconCircle}>
+            <Ionicons name="cloud-offline-outline" size={36} color={ds.color.maroon} />
+          </View>
+          <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.2}>
+            {isHindi ? 'लोड करने में समस्या हुई' : 'Unable to Load Matches'}
+          </Text>
+          <Text style={styles.emptySub} maxFontSizeMultiplier={1.2}>
+            {error}
+          </Text>
+          <PressableScale
             onPress={() => fetchProfiles(selectedFilter, 1)}
-            variant="secondary"
-            style={{ marginTop: spacing.md }}
-          />
-        </Card>
+            style={styles.primaryActionBtn}
+          >
+            <Text style={styles.primaryActionBtnText} maxFontSizeMultiplier={1.2}>
+              {isHindi ? 'पुनः प्रयास करें' : 'Try Again'}
+            </Text>
+          </PressableScale>
+        </View>
       );
     }
 
     return (
-      <Card style={styles.emptyCard}>
-        <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-        <Text style={styles.emptyTitle}>No matching profiles found</Text>
-        <Text style={styles.emptySub}>
-          Try broadening your filter criteria or checking back soon as new members register daily.
+      <View style={styles.centerState}>
+        <View style={styles.emptyIconCircle}>
+          <Ionicons name="heart-dislike-outline" size={40} color={ds.color.goldDeep} />
+        </View>
+        <Text style={styles.emptyTitle} maxFontSizeMultiplier={1.2}>
+          {isHindi ? 'कोई मैचिंग प्रोफाइल नहीं मिली' : 'No Matching Profiles Found'}
         </Text>
-        <Button
-          title="Reset Filters"
+        <Text style={styles.emptySub} maxFontSizeMultiplier={1.2}>
+          {isHindi
+            ? 'अधिक प्रोफाइल खोजने के लिए फ़िल्टर बदलकर देखें।'
+            : 'Try adjusting your search filters to discover more compatible partner profiles.'}
+        </Text>
+        <PressableScale
           onPress={() => setSelectedFilter('all')}
-          variant="secondary"
-          style={{ marginTop: spacing.md }}
-        />
-      </Card>
+          style={styles.primaryActionBtn}
+        >
+          <Text style={styles.primaryActionBtnText} maxFontSizeMultiplier={1.2}>
+            {isHindi ? 'सभी मैच देखें' : 'View All Matches'}
+          </Text>
+        </PressableScale>
+      </View>
     );
   };
 
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <Header
-        title="Search & Discover"
-        onBack={() => navigation.goBack()}
-        subtitle={loading ? 'Searching profiles...' : `${totalItems} Profiles Found`}
-        showStatusBadge={true}
-      />
-
       <FlatList
-        data={results}
+        data={loading ? [] : results}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={renderEmpty}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.4}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 90 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={colors.royalMaroon}
-            colors={[colors.royalMaroon]}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
           />
         }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.3}
       />
     </SafeAreaView>
   );
@@ -390,74 +504,114 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
   },
   listContent: {
-    padding: spacing.base,
-    paddingBottom: 110,
+    paddingHorizontal: ds.space.lg,
+    paddingTop: ds.space.sm,
   },
-  headerArea: {
-    marginBottom: spacing.xs,
+  headerSection: {
+    marginBottom: ds.space.md,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: ds.space.sm,
+  },
+  screenHeading: {
+    fontFamily: ds.font.headingBold,
+    fontSize: 22,
+    lineHeight: 28,
+    color: colors.charcoal,
+  },
+  screenSub: {
+    fontFamily: ds.font.bodyRegular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: ds.color.textMuted,
+    marginTop: 2,
+  },
+  headerIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: ds.radius.pill,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: ds.color.border,
   },
   chipsScroll: {
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    paddingVertical: ds.space.sm,
+    gap: 8,
   },
   filterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
-    borderRadius: borderRadius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: ds.radius.pill,
     borderWidth: 1,
-    borderColor: colors.borderDefault,
-    backgroundColor: colors.surface,
-    marginRight: spacing.xs,
+    borderColor: ds.color.border,
   },
   filterChipSelected: {
-    backgroundColor: colors.royalMaroon,
-    borderColor: colors.royalMaroon,
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
   },
   filterChipText: {
-    fontSize: typography.fontSizes.xs,
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 13,
     color: colors.charcoal,
-    fontWeight: '500',
   },
   filterChipTextSelected: {
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   resultsMeta: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: spacing.sm,
+    justifyContent: 'space-between',
+    marginTop: ds.space.xs,
+    paddingHorizontal: 2,
   },
   countText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
+    fontFamily: ds.font.bodyMedium,
+    fontSize: 13,
+    color: ds.color.textMuted,
+  },
+  sortPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: ds.color.surfaceWarm,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: ds.radius.pill,
+    borderWidth: 1,
+    borderColor: ds.color.border,
   },
   sortText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.royalMaroon,
-    fontWeight: '600',
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 12,
+    color: ds.color.goldDeep,
   },
-  resultCard: {
-    marginBottom: spacing.md,
-    padding: spacing.md,
+  cardContainer: {
+    marginBottom: ds.space.lg,
   },
-  cardHeader: {
-    flexDirection: 'row',
+  cardSurface: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: ds.radius.lg,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
   },
   photoContainer: {
-    width: 80,
-    height: 100,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: '100%',
+    height: 260,
     position: 'relative',
-    overflow: 'hidden',
+    backgroundColor: '#F5ECE1',
   },
   photoImage: {
     width: '100%',
@@ -470,129 +624,226 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   photoInitials: {
-    fontSize: 22,
+    fontSize: 48,
     fontWeight: '700',
-    color: colors.royalMaroon,
+    color: ds.color.maroon,
+    letterSpacing: 2,
   },
-  verifiedDot: {
+  photoScrim: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
-    backgroundColor: colors.verifiedGreen,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 110,
+  },
+  photoTopBadges: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
   },
-  lockedPhotoBadge: {
-    position: 'absolute',
-    bottom: 4,
-    left: 4,
+  verifiedTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: ds.color.maroon,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  verifiedTagText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  privacyTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  profileTextInfo: {
-    flex: 1,
-    marginLeft: spacing.md,
-    justifyContent: 'center',
-  },
-  profileName: {
-    fontSize: typography.fontSizes.base,
+  privacyTagText: {
+    color: '#FFFFFF',
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.charcoal,
   },
-  profileMeta: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
+  photoBottomMeta: {
+    position: 'absolute',
+    bottom: 12,
+    left: 14,
+    right: 14,
   },
-  profileEducation: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  badgeRow: {
+  nameRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  matchReasonContainer: {
-    marginVertical: spacing.sm,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  actionBtn: {
-    flex: 1,
-    minHeight: 40,
-    paddingVertical: spacing.sm,
-  },
-  loadingContainer: {
-    padding: spacing['2xl'],
     alignItems: 'center',
   },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
+  cardName: {
+    fontFamily: ds.font.headingBold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
-  emptyCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    marginTop: spacing.md,
-  },
-  emptyIcon: {
-    marginBottom: spacing.sm,
-  },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.charcoal,
-  },
-  emptySub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
+  cardSubText: {
+    fontFamily: ds.font.bodyMedium,
+    fontSize: 13,
     lineHeight: 18,
-    marginTop: spacing.xs,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 2,
   },
-  errorCard: {
+  cardDetails: {
+    padding: 14,
+    backgroundColor: '#FFFFFF',
+    gap: 8,
+  },
+  detailRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.errorBg,
-    borderColor: colors.errorBorder,
+    gap: 8,
+  },
+  detailText: {
+    fontFamily: ds.font.bodyRegular,
+    fontSize: 13,
+    color: ds.color.textBody,
+    flex: 1,
+  },
+  matchPillWrap: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  matchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: ds.color.surfaceWarm,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: ds.radius.pill,
     borderWidth: 1,
-    marginBottom: spacing.md,
+    borderColor: '#F3E5D0',
   },
-  errorTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.alertRed,
+  matchBadgeText: {
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 12,
+    color: ds.color.goldDeep,
   },
-  errorSub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
-    textAlign: 'center',
-    marginTop: spacing.xs,
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  shortlistBtn: {
+    width: 46,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  connectBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: ds.color.maroon,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    ...ds.shadow.soft,
+  },
+  connectBtnText: {
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 14,
+    color: '#FFFFFF',
   },
   footerLoader: {
-    paddingVertical: spacing.md,
+    paddingVertical: 16,
     alignItems: 'center',
+    flexDirection: 'row',
     justifyContent: 'center',
+    gap: 8,
   },
   footerLoaderText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    marginTop: 4,
+    fontFamily: ds.font.bodyMedium,
+    fontSize: 13,
+    color: ds.color.textMuted,
+  },
+  skeletonContainer: {
+    paddingTop: 10,
+    gap: 16,
+  },
+  skeletonCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: ds.radius.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  centerState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  errorIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#FFEBEE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontFamily: ds.font.headingBold,
+    fontSize: 18,
+    color: colors.charcoal,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  emptySub: {
+    fontFamily: ds.font.bodyRegular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: ds.color.textMuted,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  primaryActionBtn: {
+    backgroundColor: ds.color.maroon,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 10,
+    ...ds.shadow.soft,
+  },
+  primaryActionBtnText: {
+    fontFamily: ds.font.bodySemiBold,
+    fontSize: 14,
+    color: '#FFFFFF',
   },
 });

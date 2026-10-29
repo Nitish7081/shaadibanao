@@ -1,25 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  FlatList,
+  Image,
   Alert,
-  ActivityIndicator,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
-import { Header } from '../components/common/Header';
-import { Badge } from '../components/common/Badge';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
+import { ds, PressableScale, Skeleton, Chip } from '../design';
 import {
   getReceivedInterests,
   getSentInterests,
@@ -28,6 +26,7 @@ import {
   getSessionToken,
 } from '../services';
 import { InterestItem } from '@bandhansetu/shared';
+import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
 type InterestsNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Interests'>,
@@ -39,6 +38,10 @@ interface Props {
 }
 
 export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [activeTab, setActiveTab] = useState<'received' | 'sent' | 'accepted'>('received');
   const [receivedList, setReceivedList] = useState<InterestItem[]>([]);
   const [sentList, setSentList] = useState<InterestItem[]>([]);
@@ -62,14 +65,14 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
         getSentInterests(token),
       ]);
 
-      if (recRes.data) {
+      if (recRes?.data) {
         setReceivedList(recRes.data);
       }
-      if (sentRes.data) {
+      if (sentRes?.data) {
         setSentList(sentRes.data);
       }
     } catch (err: any) {
-      setError(err.message || 'Unable to load interests. Please try again.');
+      setError(err?.message || 'Unable to load interests. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -94,11 +97,11 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
       await updateInterestStatus(token, interest.id, 'accepted');
       Alert.alert(
         'Interest Accepted 🎉',
-        `You accepted ${interest.profile.displayName}'s interest! A mutual match has been established.`
+        `You accepted ${interest.profile?.displayName || 'member'}'s interest! A mutual match has been established.`
       );
       await fetchInterests();
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message || 'Could not accept interest.');
+      Alert.alert('Action Failed', err?.message || 'Could not accept interest.');
     } finally {
       setActionLoadingId(null);
     }
@@ -109,10 +112,10 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const token = getSessionToken();
       await updateInterestStatus(token, interest.id, 'declined');
-      Alert.alert('Declined', `Interest from ${interest.profile.displayName} has been declined.`);
+      Alert.alert('Declined', `Interest from ${interest.profile?.displayName || 'member'} has been declined.`);
       await fetchInterests();
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message || 'Could not decline interest.');
+      Alert.alert('Action Failed', err?.message || 'Could not decline interest.');
     } finally {
       setActionLoadingId(null);
     }
@@ -126,7 +129,7 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Withdrawn', 'Interest has been withdrawn.');
       await fetchInterests();
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message || 'Could not withdraw interest.');
+      Alert.alert('Action Failed', err?.message || 'Could not withdraw interest.');
     } finally {
       setActionLoadingId(null);
     }
@@ -139,13 +142,12 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
   ];
   const activeSent = sentList.filter((i) => i.status === 'pending');
 
-  const formatHeight = (cm?: number) => {
-    if (!cm) return '';
-    const totalInches = Math.round(cm / 2.54);
-    const feet = Math.floor(totalInches / 12);
-    const inches = totalInches % 12;
-    return `${feet}'${inches}"`;
-  };
+  const currentData =
+    activeTab === 'received'
+      ? pendingReceived
+      : activeTab === 'sent'
+      ? activeSent
+      : acceptedList;
 
   const formatDate = (dateStr: string) => {
     try {
@@ -159,469 +161,818 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <Header
-        title="Interests & Matches"
-        subtitle="Manage your sacred connections"
-        showStatusBadge={true}
-        variant="royal"
-      />
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <View style={styles.titleRow}>
+        <View style={styles.titleTextCol}>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenTitle}
+          >
+            {t('matchesScreen.interestsTitle')}
+          </Text>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenSubtitle}
+          >
+            {t('matchesScreen.interestsSubtitle')}
+          </Text>
+        </View>
+        <PressableScale
+          style={styles.searchShortcutBtn}
+          onPress={() => navigation.navigate('Search')}
+          accessibilityLabel="Find Matches"
+        >
+          <Ionicons name="search" size={20} color={ds.color.maroon} />
+        </PressableScale>
+      </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
+      {/* Segment Tabs */}
+      <View style={styles.segmentedContainer}>
+        <PressableScale
+          style={[styles.segmentTab, activeTab === 'received' && styles.segmentTabActive]}
+          onPress={() => setActiveTab('received')}
+        >
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.segmentLabel, activeTab === 'received' && styles.segmentLabelActive]}
+          >
+            {t('matchesScreen.tabReceived')}
+          </Text>
+          <View
+            style={[
+              styles.badgePill,
+              activeTab === 'received' ? styles.badgePillActive : styles.badgePillInactive,
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.badgeText,
+                activeTab === 'received' ? styles.badgeTextActive : styles.badgeTextInactive,
+              ]}
+            >
+              {pendingReceived.length}
+            </Text>
+          </View>
+        </PressableScale>
+
+        <PressableScale
+          style={[styles.segmentTab, activeTab === 'sent' && styles.segmentTabActive]}
+          onPress={() => setActiveTab('sent')}
+        >
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.segmentLabel, activeTab === 'sent' && styles.segmentLabelActive]}
+          >
+            {t('matchesScreen.tabSent')}
+          </Text>
+          <View
+            style={[
+              styles.badgePill,
+              activeTab === 'sent' ? styles.badgePillActive : styles.badgePillInactive,
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.badgeText,
+                activeTab === 'sent' ? styles.badgeTextActive : styles.badgeTextInactive,
+              ]}
+            >
+              {activeSent.length}
+            </Text>
+          </View>
+        </PressableScale>
+
+        <PressableScale
+          style={[styles.segmentTab, activeTab === 'accepted' && styles.segmentTabActive]}
+          onPress={() => setActiveTab('accepted')}
+        >
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.segmentLabel, activeTab === 'accepted' && styles.segmentLabelActive]}
+          >
+            {t('matchesScreen.tabMutual')}
+          </Text>
+          <View
+            style={[
+              styles.badgePill,
+              activeTab === 'accepted' ? styles.badgePillActive : styles.badgePillInactive,
+            ]}
+          >
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.badgeText,
+                activeTab === 'accepted' ? styles.badgeTextActive : styles.badgeTextInactive,
+              ]}
+            >
+              {acceptedList.length}
+            </Text>
+          </View>
+        </PressableScale>
+      </View>
+    </View>
+  );
+
+  const renderCard = ({ item }: { item: InterestItem }) => {
+    const profile = item.profile;
+    const isActing = actionLoadingId === item.id;
+    const safePhoto = profile ? getSafeMatchPhoto(profile as any, 'avatar') : null;
+    const initials = getInitials(profile?.displayName);
+    const heightStr = formatHeight(profile?.heightCm);
+
+    return (
+      <View style={styles.cardContainer}>
+        {/* If mutual accepted, show celebratory banner */}
+        {activeTab === 'accepted' && (
+          <LinearGradient
+            colors={['#FFF6E5', '#FFF0D4']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.mutualHeaderBanner}
+          >
+            <Ionicons name="sparkles" size={16} color={ds.color.gold} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.mutualBannerText}>
+              Mutual Connection Established
+            </Text>
+          </LinearGradient>
+        )}
+
+        <PressableScale
+          style={styles.cardBody}
+          onPress={() =>
+            profile &&
+            navigation.navigate('ProfileDetail', {
+              profileId: profile.id,
+              name: profile.displayName,
+            })
+          }
+        >
+          {/* Avatar / Photo */}
+          <View style={styles.avatarWrapper}>
+            {safePhoto ? (
+              <Image
+                source={{ uri: safePhoto.uri }}
+                style={styles.avatarImage}
+                blurRadius={safePhoto.blurred ? 12 : 0}
+              />
+            ) : (
+              <LinearGradient
+                colors={['#7A1528', '#A22842']}
+                style={styles.avatarFallback}
+              >
+                <Text maxFontSizeMultiplier={1.2} style={styles.avatarFallbackText}>
+                  {initials || 'BS'}
+                </Text>
+              </LinearGradient>
+            )}
+
+            {safePhoto?.blurred && (
+              <View style={styles.photoPrivacyPill}>
+                <Ionicons name="lock-closed" size={9} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
+
+          {/* Profile Details */}
+          <View style={styles.detailsCol}>
+            <View style={styles.nameRow}>
+              <Text
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={1}
+                style={styles.nameText}
+              >
+                {profile?.displayName || 'Member'}, {profile?.age || '--'}
+              </Text>
+              {profile?.isVerified && (
+                <View style={styles.verifiedIconWrap}>
+                  <Ionicons name="shield-checkmark" size={14} color="#166534" />
+                </View>
+              )}
+            </View>
+
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={styles.locationMeta}
+            >
+              {heightStr ? `${heightStr} • ` : ''}{profile?.city || 'India'}
+              {profile?.state ? `, ${profile.state}` : ''}
+            </Text>
+
+            {(profile?.education || profile?.occupation) && (
+              <Text
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={1}
+                style={styles.careerMeta}
+              >
+                {profile.occupation || profile.education}
+              </Text>
+            )}
+
+            <View style={styles.dateBadgeRow}>
+              <Ionicons name="time-outline" size={12} color={ds.color.textMuted} />
+              <Text maxFontSizeMultiplier={1.2} style={styles.dateBadgeText}>
+                {activeTab === 'received'
+                  ? `Received ${formatDate(item.createdAt)}`
+                  : activeTab === 'sent'
+                  ? `Sent ${formatDate(item.createdAt)}`
+                  : `Matched ${formatDate(item.updatedAt || item.createdAt)}`}
+              </Text>
+            </View>
+          </View>
+        </PressableScale>
+
+        {/* Action Buttons */}
+        <View style={styles.actionRow}>
+          {activeTab === 'received' && (
+            <>
+              <PressableScale
+                style={[styles.actionBtn, styles.declineBtn]}
+                onPress={() => handleDecline(item)}
+                disabled={isActing}
+                accessibilityLabel="Decline Interest"
+              >
+                <Ionicons name="close-circle-outline" size={16} color={ds.color.textMuted} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.declineBtnText}>
+                  {t('matchesScreen.decline')}
+                </Text>
+              </PressableScale>
+
+              <PressableScale
+                style={[styles.actionBtn, styles.acceptBtn]}
+                onPress={() => handleAccept(item)}
+                disabled={isActing}
+                accessibilityLabel="Accept Interest"
+              >
+                <Ionicons name="heart" size={16} color="#FFFFFF" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.acceptBtnText}>
+                  {t('matchesScreen.accept')}
+                </Text>
+              </PressableScale>
+            </>
+          )}
+
+          {activeTab === 'sent' && (
+            <>
+              <View style={styles.pendingBadge}>
+                <Ionicons name="hourglass-outline" size={13} color="#92400E" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.pendingBadgeText}>
+                  Awaiting Response
+                </Text>
+              </View>
+
+              <PressableScale
+                style={[styles.actionBtn, styles.withdrawBtn]}
+                onPress={() => handleWithdraw(item)}
+                disabled={isActing}
+                accessibilityLabel="Withdraw Interest"
+              >
+                <Ionicons name="arrow-undo-outline" size={14} color={ds.color.maroon} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.withdrawBtnText}>
+                  {t('matchesScreen.withdraw')}
+                </Text>
+              </PressableScale>
+            </>
+          )}
+
+          {activeTab === 'accepted' && (
+            <>
+              <PressableScale
+                style={[styles.actionBtn, styles.biodataBtn]}
+                onPress={() =>
+                  profile &&
+                  navigation.navigate('ProfileDetail', {
+                    profileId: profile.id,
+                    name: profile.displayName,
+                  })
+                }
+              >
+                <Ionicons name="document-text-outline" size={15} color={ds.color.maroon} />
+                <Text maxFontSizeMultiplier={1.2} style={styles.biodataBtnText}>
+                  {t('matchesScreen.viewBiodata')}
+                </Text>
+              </PressableScale>
+
+              <PressableScale
+                style={[styles.actionBtn, styles.chatBtn]}
+                onPress={() =>
+                  profile &&
+                  navigation.navigate('ChatDetail', {
+                    conversationId: `conv-${item.id}`,
+                    partnerName: profile.displayName,
+                  })
+                }
+              >
+                <Ionicons name="chatbubble-ellipses" size={15} color="#FFFFFF" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.chatBtnText}>
+                  {t('matchesScreen.chatNow')}
+                </Text>
+              </PressableScale>
+            </>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const renderEmptyState = () => {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.skeletonContainer}>
+          {[1, 2, 3].map((k) => (
+            <View key={k} style={styles.skeletonCard}>
+              <View style={styles.skeletonTop}>
+                <Skeleton width={68} height={68} radius={14} />
+                <View style={{ flex: 1, marginLeft: 14 }}>
+                  <Skeleton width="60%" height={16} radius={4} style={{ marginBottom: 8 }} />
+                  <Skeleton width="80%" height={14} radius={4} style={{ marginBottom: 8 }} />
+                  <Skeleton width="40%" height={12} radius={4} />
+                </View>
+              </View>
+              <View style={styles.skeletonBottom}>
+                <Skeleton width="48%" height={38} radius={10} />
+                <Skeleton width="48%" height={38} radius={10} />
+              </View>
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.stateContainer}>
+          <View style={styles.errorIconWrap}>
+            <Ionicons name="alert-circle-outline" size={36} color="#DC2626" />
+          </View>
+          <Text maxFontSizeMultiplier={1.2} style={styles.stateTitle}>
+            Could Not Load Connections
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.stateSubtitle}>
+            {error}
+          </Text>
+          <PressableScale style={styles.retryBtn} onPress={() => fetchInterests()}>
+            <Ionicons name="refresh" size={16} color="#FFFFFF" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.retryBtnText}>
+              Try Again
+            </Text>
+          </PressableScale>
+        </View>
+      );
+    }
+
+    const emptyTitle =
+      activeTab === 'received'
+        ? t('matchesScreen.emptyReceivedTitle')
+        : activeTab === 'sent'
+        ? t('matchesScreen.emptySentTitle')
+        : t('matchesScreen.emptyMutualTitle');
+
+    const emptySub =
+      activeTab === 'received'
+        ? t('matchesScreen.emptyReceivedSub')
+        : activeTab === 'sent'
+        ? t('matchesScreen.emptySentSub')
+        : t('matchesScreen.emptyMutualSub');
+
+    return (
+      <View style={styles.stateContainer}>
+        <LinearGradient
+          colors={['#FFF6E8', '#FFEECF']}
+          style={styles.emptyIconCircle}
+        >
+          <Ionicons
+            name={
+              activeTab === 'received'
+                ? 'mail-unread-outline'
+                : activeTab === 'sent'
+                ? 'paper-plane-outline'
+                : 'sparkles-outline'
+            }
+            size={34}
+            color={ds.color.maroon}
+          />
+        </LinearGradient>
+        <Text maxFontSizeMultiplier={1.2} style={styles.stateTitle}>
+          {emptyTitle}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.stateSubtitle}>
+          {emptySub}
+        </Text>
+        <PressableScale
+          style={styles.exploreBtn}
+          onPress={() => navigation.navigate('Search')}
+        >
+          <Text maxFontSizeMultiplier={1.2} style={styles.exploreBtnText}>
+            {t('matchesScreen.exploreProfiles')}
+          </Text>
+          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+        </PressableScale>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      <FlatList
+        data={loading && !refreshing ? [] : currentData}
+        keyExtractor={(item) => item.id}
+        renderItem={renderCard}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 110) },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => fetchInterests(true)}
-            tintColor={colors.royalMaroon}
-            colors={[colors.royalMaroon]}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
           />
         }
-      >
-
-        {/* Tab Switcher */}
-        <View style={styles.tabsRow}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'received' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('received')}
-          >
-            <Text style={[styles.tabText, activeTab === 'received' && styles.tabTextActive]}>
-              Received ({pendingReceived.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'sent' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('sent')}
-          >
-            <Text style={[styles.tabText, activeTab === 'sent' && styles.tabTextActive]}>
-              Sent ({activeSent.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'accepted' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('accepted')}
-          >
-            <Text style={[styles.tabText, activeTab === 'accepted' && styles.tabTextActive]}>
-              Accepted ({acceptedList.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Loading Indicator */}
-        {loading && !refreshing && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.royalMaroon} />
-            <Text style={styles.loadingText}>Fetching connection updates...</Text>
-          </View>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Error Loading Interests</Text>
-            <Text style={styles.errorSub}>{error}</Text>
-            <Button
-              title="Try Again"
-              onPress={() => fetchInterests()}
-              variant="secondary"
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Tab: Received */}
-        {!loading && activeTab === 'received' && (
-          <>
-            {pendingReceived.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-                <Text style={styles.emptyTitle}>No pending interests</Text>
-                <Text style={styles.emptySub}>
-                  When members express interest in your profile, their requests will appear here for your review.
-                </Text>
-                <Button
-                  title="Discover Profiles"
-                  onPress={() => navigation.navigate('Search')}
-                  variant="secondary"
-                  style={{ marginTop: spacing.md }}
-                />
-              </Card>
-            ) : (
-              pendingReceived.map((item) => {
-                const isActing = actionLoadingId === item.id;
-                return (
-                  <Card key={item.id} style={styles.itemCard}>
-                    <TouchableOpacity
-                      onPress={() =>
-                        navigation.navigate('ProfileDetail', {
-                          profileId: item.profile.id,
-                          name: item.profile.displayName,
-                        })
-                      }
-                      style={styles.cardTop}
-                    >
-                      <View style={styles.avatarBox}>
-                        <Ionicons name="person" size={22} color={colors.royalMaroon} />
-                      </View>
-
-                      <View style={styles.infoBox}>
-                        <Text style={styles.personName}>
-                          {item.profile.displayName}, {item.profile.age}
-                        </Text>
-                        <Text style={styles.metaLine}>
-                          {formatHeight(item.profile.heightCm)} • {item.profile.city}
-                        </Text>
-                        <Text style={styles.jobLine}>
-                          {item.profile.education} • {item.profile.occupation}
-                        </Text>
-                        <Text style={styles.timeLine}>Received {formatDate(item.createdAt)}</Text>
-                      </View>
-                      {item.profile.isVerified && <Badge label="Verified" variant="verified" />}
-                    </TouchableOpacity>
-
-                    <View style={styles.buttonGroup}>
-                      <Button
-                        title="Accept"
-                        onPress={() => handleAccept(item)}
-                        variant="primary"
-                        loading={isActing}
-                        disabled={isActing}
-                        style={styles.halfBtn}
-                      />
-                      <Button
-                        title="Decline"
-                        onPress={() => handleDecline(item)}
-                        variant="secondary"
-                        disabled={isActing}
-                        style={styles.halfBtn}
-                      />
-                    </View>
-                  </Card>
-                );
-              })
-            )}
-          </>
-        )}
-
-        {/* Tab: Sent */}
-        {!loading && activeTab === 'sent' && (
-          <>
-            {activeSent.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-                <Text style={styles.emptyTitle}>No pending sent interests</Text>
-                <Text style={styles.emptySub}>
-                  You have no outgoing interests awaiting response. Explore profiles and connect!
-                </Text>
-                <Button
-                  title="Search Matches"
-                  onPress={() => navigation.navigate('Search')}
-                  variant="primary"
-                  style={{ marginTop: spacing.md }}
-                />
-              </Card>
-            ) : (
-              activeSent.map((item) => {
-                const isActing = actionLoadingId === item.id;
-                return (
-                  <Card key={item.id} style={styles.itemCard}>
-                    <TouchableOpacity
-                      onPress={() =>
-                        navigation.navigate('ProfileDetail', {
-                          profileId: item.profile.id,
-                          name: item.profile.displayName,
-                        })
-                      }
-                      style={styles.cardTop}
-                    >
-                      <View style={styles.avatarBox}>
-                        <Ionicons name="person" size={22} color={colors.royalMaroon} />
-                      </View>
-
-                      <View style={styles.infoBox}>
-                        <Text style={styles.personName}>
-                          {item.profile.displayName}, {item.profile.age}
-                        </Text>
-                        <Text style={styles.metaLine}>
-                          {formatHeight(item.profile.heightCm)} • {item.profile.city}
-                        </Text>
-                        <Text style={styles.jobLine}>
-                          {item.profile.education} • {item.profile.occupation}
-                        </Text>
-                        <Text style={styles.timeLine}>Sent {formatDate(item.createdAt)}</Text>
-                      </View>
-                      <Badge label="Pending" variant="match" />
-                    </TouchableOpacity>
-
-                    <View style={styles.buttonGroup}>
-                      <Button
-                        title="Withdraw Request"
-                        onPress={() => handleWithdraw(item)}
-                        variant="secondary"
-                        loading={isActing}
-                        disabled={isActing}
-                        style={styles.fullBtn}
-                      />
-                    </View>
-                  </Card>
-                );
-              })
-            )}
-          </>
-        )}
-
-        {/* Tab: Accepted (Mutual Matches) */}
-        {!loading && activeTab === 'accepted' && (
-          <>
-            {acceptedList.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Ionicons name="flower-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-                <Text style={styles.emptyTitle}>No mutual matches yet</Text>
-                <Text style={styles.emptySub}>
-                  When an interest is mutually accepted, your connection will appear here to start communicating.
-                </Text>
-                <Button
-                  title="Search Matches"
-                  onPress={() => navigation.navigate('Search')}
-                  variant="secondary"
-                  style={{ marginTop: spacing.md }}
-                />
-              </Card>
-            ) : (
-              acceptedList.map((item) => (
-                <Card key={item.id} style={styles.itemCard}>
-                  <View style={styles.mutualMatchBanner}>
-                    <Ionicons name="sparkles" size={22} color={colors.royalGold} />
-                    <View style={styles.bannerTextContainer}>
-                      <Text style={styles.bannerTitle}>
-                        Mutual Match with {item.profile.displayName}
-                      </Text>
-                      <Text style={styles.bannerSub}>
-                        Both sides have accepted interest! You can now start communicating.
-                      </Text>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={() =>
-                      navigation.navigate('ProfileDetail', {
-                        profileId: item.profile.id,
-                        name: item.profile.displayName,
-                      })
-                    }
-                    style={styles.cardTop}
-                  >
-                    <View style={styles.avatarBox}>
-                      <Ionicons name="person" size={22} color={colors.royalMaroon} />
-                    </View>
-                    <View style={styles.infoBox}>
-                      <Text style={styles.personName}>
-                        {item.profile.displayName}, {item.profile.age}
-                      </Text>
-                      <Text style={styles.metaLine}>
-                        {formatHeight(item.profile.heightCm)} • {item.profile.city} • {item.profile.occupation}
-                      </Text>
-                      <Text style={styles.timeLine}>Connected {formatDate(item.updatedAt)}</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <Button
-                    title="Open Conversation"
-                    onPress={() =>
-                      navigation.navigate('ChatDetail', {
-                        conversationId: `conv-${item.id}`,
-                        partnerName: item.profile.displayName,
-                      })
-                    }
-                    variant="primary"
-                    style={{ marginTop: spacing.md }}
-                  />
-                </Card>
-              ))
-            )}
-          </>
-        )}
-      </ScrollView>
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
   },
-  scrollContent: {
-    padding: spacing.base,
-    paddingBottom: 110,
+  listContent: {
+    paddingHorizontal: ds.space.md,
   },
-  tabsRow: {
+  headerContainer: {
+    paddingTop: ds.space.sm,
+    paddingBottom: ds.space.md,
+  },
+  titleRow: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceCard,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-    padding: 3,
-    marginBottom: spacing.base,
-  },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: spacing.sm,
     alignItems: 'center',
-    borderRadius: borderRadius.sm,
+    justifyContent: 'space-between',
+    marginBottom: ds.space.md,
   },
-  tabBtnActive: {
-    backgroundColor: colors.royalMaroon,
+  titleTextCol: {
+    flex: 1,
+    paddingRight: ds.space.sm,
   },
-  tabText: {
-    fontSize: typography.fontSizes.xs,
+  screenTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: ds.color.maroon,
+    letterSpacing: -0.3,
+  },
+  screenSubtitle: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  searchShortcutBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...ds.shadow.soft,
+  },
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: ds.color.surfaceWarm,
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  segmentTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    borderRadius: 10,
+    gap: 5,
+  },
+  segmentTabActive: {
+    backgroundColor: ds.color.surface,
+    ...ds.shadow.soft,
+  },
+  segmentLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.charcoal,
+    color: ds.color.textMuted,
   },
-  tabTextActive: {
+  segmentLabelActive: {
+    color: ds.color.maroon,
+    fontWeight: '700',
+  },
+  badgePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+  },
+  badgePillActive: {
+    backgroundColor: ds.color.maroon,
+  },
+  badgePillInactive: {
+    backgroundColor: ds.color.border,
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  badgeTextActive: {
     color: '#FFFFFF',
   },
-  mutualMatchBanner: {
-    backgroundColor: '#E8F5E9',
-    borderColor: colors.verifiedGreen,
+  badgeTextInactive: {
+    color: ds.color.textMuted,
+  },
+  cardContainer: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
     borderWidth: 1,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
+    borderColor: ds.color.border,
+    marginBottom: ds.space.md,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
+  },
+  mutualHeaderBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: 6,
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3E5CB',
   },
-  bannerEmoji: {
-    fontSize: 20,
-    marginRight: spacing.sm,
-  },
-  bannerTextContainer: {
-    flex: 1,
-  },
-  bannerTitle: {
-    fontSize: typography.fontSizes.xs,
+  mutualBannerText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1B5E20',
+    color: '#8A5D00',
   },
-  bannerSub: {
-    fontSize: typography.fontSizes.xs - 2,
-    color: colors.charcoal,
-    marginTop: 1,
-  },
-  itemCard: {
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  cardTop: {
+  cardBody: {
     flexDirection: 'row',
+    padding: ds.space.md,
     alignItems: 'center',
   },
-  avatarBox: {
-    width: 60,
-    height: 70,
-    backgroundColor: colors.surfaceCard,
-    borderRadius: borderRadius.sm,
+  avatarWrapper: {
+    width: 68,
+    height: 68,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: ds.color.surfaceWarm,
     borderWidth: 1,
-    borderColor: colors.borderDefault,
+    borderColor: ds.color.border,
+    position: 'relative',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarIcon: {
-    fontSize: 26,
+  avatarFallbackText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
   },
-  infoBox: {
+  photoPrivacyPill: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 999,
+    padding: 3,
+  },
+  detailsCol: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginLeft: ds.space.md,
+    justifyContent: 'center',
   },
-  personName: {
-    fontSize: typography.fontSizes.base,
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nameText: {
+    fontSize: 16,
     fontWeight: '700',
-    color: colors.charcoal,
+    color: ds.color.text,
+    letterSpacing: -0.2,
   },
-  metaLine: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    marginTop: 1,
+  verifiedIconWrap: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 999,
+    padding: 2,
   },
-  jobLine: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
-    fontWeight: '500',
-    marginTop: 1,
-  },
-  timeLine: {
-    fontSize: typography.fontSizes.xs - 2,
-    color: colors.textMuted,
+  locationMeta: {
+    fontSize: 13,
+    color: ds.color.textMuted,
     marginTop: 2,
   },
-  buttonGroup: {
+  careerMeta: {
+    fontSize: 13,
+    color: ds.color.maroon,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  dateBadgeRow: {
     flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  dateBadgeText: {
+    fontSize: 11,
+    color: ds.color.textMuted,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+    borderTopColor: ds.color.border,
+    backgroundColor: '#FDFAF5',
+    gap: ds.space.sm,
   },
-  halfBtn: {
+  actionBtn: {
     flex: 1,
-    minHeight: 40,
-  },
-  fullBtn: {
-    width: '100%',
-    minHeight: 40,
-  },
-  emptyCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.xl,
-    marginTop: spacing.md,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 6,
   },
-  emptyIcon: {
-    fontSize: 36,
-    marginBottom: spacing.sm,
-  },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.charcoal,
-  },
-  emptySub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: spacing.xs,
-  },
-  loadingContainer: {
-    padding: spacing['2xl'],
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
-  },
-  errorCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.errorBg,
-    borderColor: colors.errorBorder,
+  declineBtn: {
+    backgroundColor: ds.color.surface,
     borderWidth: 1,
-    marginBottom: spacing.md,
+    borderColor: ds.color.border,
   },
-  errorTitle: {
-    fontSize: typography.fontSizes.base,
+  declineBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.textMuted,
+  },
+  acceptBtn: {
+    backgroundColor: ds.color.maroon,
+  },
+  acceptBtnText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.alertRed,
+    color: '#FFFFFF',
   },
-  errorSub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    gap: 4,
+  },
+  pendingBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  withdrawBtn: {
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  withdrawBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.maroon,
+  },
+  biodataBtn: {
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  biodataBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.maroon,
+  },
+  chatBtn: {
+    backgroundColor: ds.color.maroon,
+  },
+  chatBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  skeletonContainer: {
+    paddingTop: ds.space.sm,
+  },
+  skeletonCard: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.md,
+  },
+  skeletonTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  skeletonBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: ds.space.md,
+    paddingTop: ds.space.sm,
+    borderTopWidth: 1,
+    borderTopColor: ds.color.border,
+  },
+  stateContainer: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.xl,
+    alignItems: 'center',
+    marginTop: ds.space.lg,
+    ...ds.shadow.soft,
+  },
+  emptyIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ds.space.md,
+  },
+  stateTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: ds.color.text,
     textAlign: 'center',
-    marginTop: spacing.xs,
+    marginBottom: 6,
+  },
+  stateSubtitle: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: ds.space.lg,
+    paddingHorizontal: ds.space.sm,
+  },
+  exploreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 12,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 14,
+    gap: 8,
+    ...ds.shadow.soft,
+  },
+  exploreBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  errorIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ds.space.md,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 10,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 12,
+    gap: 6,
+  },
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
