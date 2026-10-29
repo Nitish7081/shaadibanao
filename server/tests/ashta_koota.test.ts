@@ -80,3 +80,4 @@ describe('Vedic Ashta Koota Milan & 36 Gunas Scoring Suite', () => {
     expect(result.compatibilityVerdict).toBe('Good');
   });
 });
+
