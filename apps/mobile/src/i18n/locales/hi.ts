@@ -371,6 +371,14 @@ export const hi: DeepStrings<TranslationTree> = {
     guaranteeTitle: 'सनातन पारदर्शिता का वादा',
     guaranteeBody: 'कोई छिपा हुआ ऑटो-डेबिट नहीं। आपकी स्पष्ट सहमति के बिना कभी कोई कटौती नहीं होती।',
   },
+  notificationsScreen: {
+    headerTitle: 'सूचनाएं',
+    headerSubtitle: 'हाल की गतिविधियां, नई रुचियां और संदेश',
+    allCaughtUpTitle: 'कोई नई सूचना नहीं है!',
+    allCaughtUpSub: 'नई रुचियां, मैच और संदेश प्राप्त होने पर वे यहाँ दिखाई देंगे।',
+    exploreMatches: 'मैच देखें →',
+    couldNotLoad: 'सूचनाएं लोड नहीं हो सकीं',
+  },
   errors: {
     generic: 'कुछ गड़बड़ हो गई। कृपया फिर कोशिश करें।',
     network: 'नेटवर्क में समस्या है। कृपया अपना इंटरनेट जाँचें।',

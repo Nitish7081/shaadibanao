@@ -367,6 +367,14 @@ export const en = {
     guaranteeTitle: 'Sanatan Transparency Guarantee',
     guaranteeBody: 'Zero surprise auto-debits. We never charge your account without explicit confirmation.',
   },
+  notificationsScreen: {
+    headerTitle: 'Notifications',
+    headerSubtitle: 'Recent activity, interests and alerts',
+    allCaughtUpTitle: "You're all caught up!",
+    allCaughtUpSub: 'New interests, matches and messages will appear here.',
+    exploreMatches: 'Explore Matches →',
+    couldNotLoad: 'Could not load notifications',
+  },
   errors: {
     generic: 'Something went wrong. Please try again.',
     network: 'Network error. Please check your internet connection.',
