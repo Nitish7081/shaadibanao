@@ -3,17 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
-import { Button } from '../components/common/Button';
-import { Header } from '../components/common/Header';
+import { ds, PressableScale } from '../design';
 import { setAppLanguage } from '../i18n';
 import { PRIMARY_LANGUAGES, OTHER_LANGUAGES, LanguageOption } from '../i18n/languages';
 
@@ -21,10 +20,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'LanguageSelection'>;
 
 export const LanguageSelectionScreen: React.FC<Props> = ({ navigation, route }) => {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const fromSettings = route.params?.fromSettings === true;
   const [selectedLanguage, setSelectedLanguage] = useState<string>(i18n.language || 'en');
   const [showOther, setShowOther] = useState<boolean>(
-    OTHER_LANGUAGES.some((l) => l.code === (i18n.language || 'en')),
+    OTHER_LANGUAGES.some((l) => l.code === (i18n.language || 'en'))
   );
 
   const finish = () => {
@@ -35,7 +37,6 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation, route }) 
     }
   };
 
-  // Apply immediately so the whole screen switches language on tap.
   const choose = async (code: string) => {
     setSelectedLanguage(code);
     await setAppLanguage(code);
@@ -49,204 +50,287 @@ export const LanguageSelectionScreen: React.FC<Props> = ({ navigation, route }) 
   const renderCard = (lang: LanguageOption) => {
     const isSelected = selectedLanguage === lang.code;
     return (
-      <TouchableOpacity
+      <PressableScale
         key={lang.code}
-        activeOpacity={0.75}
         onPress={() => choose(lang.code)}
         accessibilityRole="button"
         accessibilityState={{ selected: isSelected }}
         accessibilityLabel={`${lang.native} ${lang.label}`}
         style={[styles.langCard, isSelected && styles.langCardSelected]}
       >
-        <Text style={[styles.nativeText, isSelected && styles.nativeTextSelected]}>
-          {lang.native}
-        </Text>
-        <Text style={[styles.labelText, isSelected && styles.labelTextSelected]}>
-          {lang.label}
-        </Text>
-        {isSelected && (
-          <View style={styles.checkCircle}>
-            <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+        <View style={styles.cardContent}>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.nativeText, isSelected && styles.nativeTextSelected]}
+          >
+            {lang.native}
+          </Text>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[styles.labelText, isSelected && styles.labelTextSelected]}
+          >
+            {lang.label}
+          </Text>
+        </View>
+
+        {isSelected ? (
+          <View style={styles.checkCircleSelected}>
+            <Ionicons name="checkmark" size={14} color="#FFFFFF" />
           </View>
+        ) : (
+          <View style={styles.checkCircleEmpty} />
         )}
-      </TouchableOpacity>
+      </PressableScale>
     );
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <Header
-        title="ShaadiBanao"
-        subtitle={t('splash.tagline')}
-        showStatusBadge={true}
-        variant="royal"
-      />
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Top Header */}
+      <View style={styles.topNav}>
+        {fromSettings ? (
+          <PressableScale
+            style={styles.backBtn}
+            onPress={() => navigation.goBack()}
+            accessibilityLabel="Back"
+          >
+            <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
+          </PressableScale>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
+
+        <Text maxFontSizeMultiplier={1.2} style={styles.navTitle}>
+          BandhanSetu
+        </Text>
+
+        {!fromSettings ? (
+          <PressableScale
+            onPress={handleSkip}
+            style={styles.skipBtn}
+            accessibilityLabel="Skip"
+          >
+            <Text maxFontSizeMultiplier={1.2} style={styles.skipBtnText}>
+              {t('language.skip')}
+            </Text>
+          </PressableScale>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
+      </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 40, 60) },
+        ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('language.title')}</Text>
-          <Text style={styles.subtitle}>{t('language.subtitle')}</Text>
+        <View style={styles.titleSection}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.screenHeading}>
+            {t('language.title')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.screenSubheading}>
+            {t('language.subtitle')}
+          </Text>
         </View>
 
-        <View style={styles.grid}>
+        {/* Primary Language Cards */}
+        <View style={styles.cardsGrid}>
           {PRIMARY_LANGUAGES.map(renderCard)}
-          <TouchableOpacity
-            activeOpacity={0.75}
+
+          {/* Toggle other Indian languages */}
+          <PressableScale
             onPress={() => setShowOther((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: showOther }}
-            style={[styles.langCard, styles.otherCard, showOther && styles.langCardSelected]}
+            style={[styles.langCard, styles.toggleCard, showOther && styles.langCardSelected]}
           >
-            <Text style={[styles.nativeText, showOther && styles.nativeTextSelected]}>
-              {t('language.other')}
-            </Text>
+            <View style={styles.cardContent}>
+              <Text maxFontSizeMultiplier={1.2} style={styles.nativeText}>
+                {t('language.other')}
+              </Text>
+              <Text maxFontSizeMultiplier={1.2} style={styles.labelText}>
+                {t('language.otherHint')}
+              </Text>
+            </View>
+
             <Ionicons
               name={showOther ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={colors.royalMaroon}
+              size={20}
+              color={ds.color.maroon}
             />
-            <Text style={styles.labelText}>{t('language.otherHint')}</Text>
-          </TouchableOpacity>
+          </PressableScale>
+
           {showOther && OTHER_LANGUAGES.map(renderCard)}
         </View>
 
         {showOther && selectedLanguage !== 'en' && selectedLanguage !== 'hi' && (
-          <Text style={styles.subtitle}>{t('language.partialNote')}</Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.partialNote}>
+            {t('language.partialNote')}
+          </Text>
         )}
 
-        <View style={styles.footer}>
-          <Button
-            title={t('common.continue')}
-            onPress={finish}
-            variant="primary"
-            style={styles.continueButton}
-          />
-          {!fromSettings && (
-            <TouchableOpacity
-              onPress={handleSkip}
-              style={styles.skipButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.skipText}>{t('language.skip')}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {/* Continue Button */}
+        <PressableScale
+          style={styles.continueBtn}
+          onPress={finish}
+        >
+          <LinearGradient
+            colors={['#7A1528', '#9B1D36']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.continueGradient}
+          >
+            <Text maxFontSizeMultiplier={1.2} style={styles.continueBtnText}>
+              {t('common.continue')}
+            </Text>
+            <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
+          </LinearGradient>
+        </PressableScale>
       </ScrollView>
     </SafeAreaView>
   );
 };
+
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
+  },
+  topNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
+    backgroundColor: ds.color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  navTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: ds.color.maroon,
+  },
+  skipBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  skipBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.textMuted,
   },
   scrollContent: {
-    padding: spacing.base,
-    paddingBottom: spacing['3xl'],
+    padding: ds.space.md,
   },
-  header: {
-    marginVertical: spacing.md,
+  titleSection: {
+    alignItems: 'center',
+    marginVertical: ds.space.md,
   },
-  title: {
-    fontSize: typography.fontSizes.xl,
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
-    color: colors.royalMaroon,
-    marginBottom: spacing.xs,
-    lineHeight: 28,
+  screenHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: ds.color.text,
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  subtitle: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
-    lineHeight: 20,
+  screenSubheading: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginVertical: spacing.md,
+  cardsGrid: {
+    gap: 10,
+    marginBottom: ds.space.lg,
   },
   langCard: {
-    width: '48%',
-    minHeight: 88,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1.2,
-    borderColor: colors.borderLight,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    ...shadows.subtle,
-  },
-  otherCard: {
-    width: '100%',
+    justifyContent: 'space-between',
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: ds.color.border,
+    paddingHorizontal: ds.space.lg,
+    paddingVertical: 14,
+    ...ds.shadow.soft,
   },
   langCardSelected: {
-    borderColor: colors.royalMaroon,
-    borderWidth: 1.8,
-    backgroundColor: '#FAF2F4',
+    borderColor: ds.color.maroon,
+    backgroundColor: '#FFFBF5',
+  },
+  toggleCard: {
+    backgroundColor: ds.color.surfaceWarm,
+  },
+  cardContent: {
+    flex: 1,
   },
   nativeText: {
-    fontSize: 18,
-    fontFamily: fonts.headingSemiBold,
+    fontSize: 17,
     fontWeight: '700',
-    color: colors.charcoal,
-    marginBottom: 2,
-    lineHeight: 26,
-    textAlign: 'center',
+    color: ds.color.text,
   },
   nativeTextSelected: {
-    color: colors.royalMaroon,
+    color: ds.color.maroon,
+    fontWeight: '800',
   },
   labelText: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 16,
+    fontSize: 12,
+    color: ds.color.textMuted,
+    marginTop: 2,
   },
   labelTextSelected: {
-    color: colors.royalMaroon,
-    fontFamily: fonts.bodySemiBold,
+    color: ds.color.maroon,
     fontWeight: '600',
   },
-  checkCircle: {
-    position: 'absolute',
-    top: 7,
-    right: 7,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.royalMaroon,
+  checkCircleSelected: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: ds.color.maroon,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  footer: {
-    marginTop: spacing.sm,
-    paddingBottom: spacing.lg,
+  checkCircleEmpty: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: ds.color.border,
   },
-  continueButton: {
-    width: '100%',
-    minHeight: 50,
+  partialNote: {
+    fontSize: 12,
+    color: ds.color.textMuted,
+    textAlign: 'center',
+    marginBottom: ds.space.md,
   },
-  skipButton: {
+  continueBtn: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: ds.space.sm,
+    ...ds.shadow.soft,
+  },
+  continueGradient: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    minHeight: 48,
     justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
   },
-  skipText: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.royalMaroon,
-    fontWeight: '600',
+  continueBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
-

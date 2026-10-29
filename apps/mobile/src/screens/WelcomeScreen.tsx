@@ -4,22 +4,23 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius, shadows, fonts } from '../constants/theme';
-import { Button } from '../components/common/Button';
-import { Header } from '../components/common/Header';
-import { VedicDivider } from '../components/royal/VedicOrnament';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { RootStackParamList } from '../navigation/types';
+import { ds, PressableScale } from '../design';
+import { VedicDivider } from '../components/royal/VedicOrnament';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
 
 export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const [activeSlide, setActiveSlide] = useState(0);
 
   const slides = [
@@ -44,31 +45,79 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
   ];
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <Header
-        title="ShaadiBanao"
-        subtitle={t('welcome.subtitle')}
-        onBack={() => navigation.navigate('LanguageSelection')}
-        showStatusBadge={true}
-        variant="royal"
-      />
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Top Language & Brand Bar */}
+      <View style={styles.topBar}>
+        <View style={styles.brandTitleRow}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.brandTitle}>
+            BandhanSetu
+          </Text>
+          <View style={styles.sanatanBadge}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.sanatanBadgeText}>
+              Sanatan
+            </Text>
+          </View>
+        </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Carousel Card */}
+        <PressableScale
+          style={styles.langPill}
+          onPress={() => navigation.navigate('LanguageSelection', { fromSettings: true })}
+        >
+          <Ionicons name="language" size={15} color={ds.color.maroon} />
+          <Text maxFontSizeMultiplier={1.2} style={styles.langPillText}>
+            भाषा / Lang
+          </Text>
+        </PressableScale>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 30, 50) },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Welcome Kicker */}
+        <View style={styles.heroHeader}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.heroKicker}>
+            VEDIC MATRIMONY & SACRED BONDS
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.heroHeadline}>
+            {t('welcome.subtitle')}
+          </Text>
+        </View>
+
+        {/* Feature Slides Carousel Card */}
         <View style={styles.slideCard}>
           <View style={styles.tagBadge}>
-            <Text style={styles.tagText}>{slides[activeSlide].tag}</Text>
+            <Text maxFontSizeMultiplier={1.2} style={styles.tagText}>
+              {slides[activeSlide].tag}
+            </Text>
           </View>
-          <View style={styles.iconCircle}>
-            <Ionicons name={slides[activeSlide].icon} size={30} color={colors.royalMaroon} />
-          </View>
-          <Text style={styles.slideTitle}>{slides[activeSlide].title}</Text>
-          <Text style={styles.slideDescription}>{slides[activeSlide].description}</Text>
+
+          <LinearGradient
+            colors={['#FFF6E8', '#FFEECF']}
+            style={styles.iconCircle}
+          >
+            <Ionicons
+              name={slides[activeSlide].icon}
+              size={32}
+              color={ds.color.maroon}
+            />
+          </LinearGradient>
+
+          <Text maxFontSizeMultiplier={1.2} style={styles.slideTitle}>
+            {slides[activeSlide].title}
+          </Text>
+
+          <Text maxFontSizeMultiplier={1.2} style={styles.slideDescription}>
+            {slides[activeSlide].description}
+          </Text>
 
           {/* Dots Indicator */}
           <View style={styles.dotsRow}>
             {slides.map((_, idx) => (
-              <TouchableOpacity
+              <PressableScale
                 key={idx}
                 onPress={() => setActiveSlide(idx)}
                 style={[
@@ -80,44 +129,68 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </View>
 
-        <VedicDivider color="rgba(212, 175, 55, 0.4)" style={{ marginVertical: spacing.sm }} />
+        <VedicDivider color="rgba(212, 175, 55, 0.4)" style={{ marginVertical: ds.space.md }} />
 
         {/* Trust Badges Bar */}
         <View style={styles.trustStrip}>
           <View style={styles.trustItem}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>{t('welcome.trust1')}</Text>
+            <Ionicons name="checkmark-circle" size={16} color={ds.color.goldDeep} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.trustLabel}>
+              {t('welcome.trust1')}
+            </Text>
           </View>
+
           <View style={styles.trustItem}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>{t('welcome.trust2')}</Text>
+            <Ionicons name="checkmark-circle" size={16} color={ds.color.goldDeep} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.trustLabel}>
+              {t('welcome.trust2')}
+            </Text>
           </View>
+
           <View style={styles.trustItem}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.royalGold} />
-            <Text style={styles.trustLabel}>{t('welcome.trust3')}</Text>
+            <Ionicons name="checkmark-circle" size={16} color={ds.color.goldDeep} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.trustLabel}>
+              {t('welcome.trust3')}
+            </Text>
           </View>
         </View>
 
         {/* Action Buttons */}
         <View style={styles.actionContainer}>
-          <Button
-            title={t('welcome.createAccount')}
+          <PressableScale
+            style={styles.primaryActionBtn}
             onPress={() => navigation.navigate('LoginOtp')}
-            variant="primary"
-            style={styles.mainCta}
-          />
-          <Button
-            title={t('welcome.haveAccount')}
+          >
+            <LinearGradient
+              colors={['#7A1528', '#9B1D36']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryGradient}
+            >
+              <Ionicons name="person-add" size={18} color="#FFFFFF" />
+              <Text maxFontSizeMultiplier={1.2} style={styles.primaryBtnText}>
+                {t('welcome.createAccount')}
+              </Text>
+            </LinearGradient>
+          </PressableScale>
+
+          <PressableScale
+            style={styles.secondaryActionBtn}
             onPress={() => navigation.navigate('LoginOtp')}
-            variant="secondary"
-            style={styles.secondaryCta}
-          />
-          <TouchableOpacity
+          >
+            <Text maxFontSizeMultiplier={1.2} style={styles.secondaryBtnText}>
+              {t('welcome.haveAccount')}
+            </Text>
+          </PressableScale>
+
+          <PressableScale
             onPress={() => navigation.navigate('MainTabs')}
             style={styles.browseButton}
           >
-            <Text style={styles.browseText}>{t('welcome.browse')} →</Text>
-          </TouchableOpacity>
+            <Text maxFontSizeMultiplier={1.2} style={styles.browseText}>
+              {t('welcome.browse')} →
+            </Text>
+          </PressableScale>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -125,135 +198,205 @@ export const WelcomeScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.ivory,
+    backgroundColor: ds.color.bg,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
+    backgroundColor: ds.color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+  },
+  brandTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  brandTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: ds.color.maroon,
+    letterSpacing: -0.3,
+  },
+  sanatanBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  sanatanBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  langPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    gap: 4,
+  },
+  langPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ds.color.maroon,
   },
   scrollContent: {
-    padding: spacing.base,
-    paddingBottom: 50,
+    paddingHorizontal: ds.space.md,
+    paddingTop: ds.space.md,
+  },
+  heroHeader: {
+    alignItems: 'center',
+    marginBottom: ds.space.md,
+  },
+  heroKicker: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: ds.color.goldDeep,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  heroHeadline: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: ds.color.text,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: ds.space.sm,
   },
   slideCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    backgroundColor: ds.color.surface,
+    borderRadius: 24,
+    padding: ds.space.xl,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#EFE8DE',
-    ...shadows.card,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xs,
+    borderColor: ds.color.border,
+    ...ds.shadow.soft,
+    marginBottom: ds.space.xs,
   },
   tagBadge: {
-    backgroundColor: '#FAF5ED',
-    paddingHorizontal: spacing.sm + 4,
+    backgroundColor: ds.color.surfaceWarm,
+    paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: borderRadius.full,
+    borderRadius: 999,
+    marginBottom: ds.space.md,
     borderWidth: 1,
-    borderColor: colors.goldBorder,
-    marginBottom: spacing.md,
+    borderColor: ds.color.border,
   },
   tagText: {
-    fontSize: 10,
-    fontFamily: fonts.headingBold,
+    fontSize: 11,
     fontWeight: '800',
-    color: '#8D6E63',
-    letterSpacing: 0.8,
+    color: ds.color.maroon,
+    letterSpacing: 0.5,
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FAF5ED',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
-    borderWidth: 1.5,
-    borderColor: colors.royalGold,
-  },
-  iconText: {
-    fontSize: 28,
+    marginBottom: ds.space.md,
   },
   slideTitle: {
-    fontSize: typography.fontSizes.lg,
-    fontFamily: fonts.headingBold,
+    fontSize: 18,
     fontWeight: '800',
-    color: colors.charcoal,
+    color: ds.color.text,
     textAlign: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 8,
   },
   slideDescription: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fonts.bodyRegular,
-    color: colors.bodyText,
+    fontSize: 13,
+    color: ds.color.textMuted,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: spacing.lg,
+    paddingHorizontal: ds.space.md,
+    marginBottom: ds.space.lg,
   },
   dotsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    gap: 8,
   },
   sliderDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#E0D6C8',
-    marginHorizontal: spacing.xxs,
+    backgroundColor: ds.color.border,
   },
   sliderDotActive: {
-    backgroundColor: colors.royalMaroon,
     width: 22,
+    backgroundColor: ds.color.maroon,
   },
   trustStrip: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: ds.color.surfaceWarm,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: ds.space.md,
     borderWidth: 1,
-    borderColor: '#EFE8DE',
-    marginBottom: spacing.lg,
-    ...shadows.subtle,
+    borderColor: ds.color.border,
+    marginBottom: ds.space.lg,
   },
   trustItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 4,
-  },
-  trustCheck: {
-    color: colors.verifiedGreen,
-    fontWeight: '800',
-    marginRight: spacing.sm,
-    fontSize: 14,
+    gap: 4,
   },
   trustLabel: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fonts.bodyMedium,
-    color: colors.charcoal,
-    fontWeight: '600',
-    marginLeft: spacing.xs,
+    fontSize: 11,
+    fontWeight: '700',
+    color: ds.color.text,
   },
   actionContainer: {
-    marginTop: spacing.xs,
+    gap: 12,
   },
-  mainCta: {
-    marginBottom: spacing.sm,
-    minHeight: 50,
-    ...shadows.subtle,
+  primaryActionBtn: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
   },
-  secondaryCta: {
-    marginBottom: spacing.md,
-    minHeight: 50,
+  primaryGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  secondaryActionBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.color.surface,
+    borderWidth: 1.5,
+    borderColor: ds.color.border,
+    borderRadius: 16,
+    paddingVertical: 13,
+  },
+  secondaryBtnText: {
+    color: ds.color.maroon,
+    fontSize: 14,
+    fontWeight: '700',
   },
   browseButton: {
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    minHeight: 48,
-    justifyContent: 'center',
+    paddingVertical: 10,
   },
   browseText: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fonts.bodySemiBold,
-    color: colors.royalMaroon,
-    fontWeight: '700',
+    fontSize: 13,
+    color: ds.color.textMuted,
+    fontWeight: '600',
   },
 });
