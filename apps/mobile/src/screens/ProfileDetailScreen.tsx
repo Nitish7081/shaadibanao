@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
+import { PaywallModal } from '../components/common/PaywallModal';
 import { ds, PressableScale, Skeleton, Chip } from '../design';
 import { photoSrc } from '../services/cloudinaryUrl';
 import {
@@ -44,6 +45,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isShortlisted, setIsShortlisted] = useState(false);
   const [isInterestSent, setIsInterestSent] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -55,7 +57,18 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         setProfile(res.data);
       }
     } catch (err: any) {
-      setError(err?.message || 'Could not load profile details.');
+      if (
+        err?.status === 402 ||
+        err?.code === 'SUBSCRIPTION_REQUIRED' ||
+        (typeof err?.message === 'string' &&
+          (err.message.includes('SUBSCRIPTION_REQUIRED') ||
+            err.message.includes('paid membership') ||
+            err.message.includes('membership plan')))
+      ) {
+        setShowPaywallModal(true);
+      } else {
+        setError(err?.message || 'Could not load profile details.');
+      }
     } finally {
       setLoading(false);
     }
@@ -168,6 +181,39 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           <Skeleton width={screenWidth - 32} height={120} radius={18} style={{ marginBottom: 16 }} />
           <Skeleton width={screenWidth - 32} height={140} radius={18} />
         </ScrollView>
+      ) : showPaywallModal && !profile ? (
+        <View style={styles.paywallLockedContainer}>
+          <LinearGradient
+            colors={['#801026', '#540917']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.paywallCrownCircle}
+          >
+            <Ionicons name="ribbon" size={34} color="#F9D976" />
+          </LinearGradient>
+          <Text maxFontSizeMultiplier={1.2} style={styles.paywallLockedTitle}>
+            {t('paywall.sheetTitle')}
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.paywallLockedSub}>
+            {t('paywall.sheetSubtitle')}
+          </Text>
+          <PressableScale
+            style={styles.paywallUnlockBtn}
+            onPress={() => setShowPaywallModal(true)}
+          >
+            <LinearGradient
+              colors={['#801026', '#540917']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.paywallUnlockGradient}
+            >
+              <Ionicons name="sparkles" size={16} color="#F9D976" />
+              <Text maxFontSizeMultiplier={1.2} style={styles.paywallUnlockBtnText}>
+                {t('paywall.explorePlansBtn')}
+              </Text>
+            </LinearGradient>
+          </PressableScale>
+        </View>
       ) : error ? (
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={44} color="#DC2626" />
@@ -472,6 +518,16 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </PressableScale>
         </View>
       )}
+
+      <PaywallModal
+        visible={showPaywallModal}
+        onClose={() => setShowPaywallModal(false)}
+        onUpgrade={() => {
+          setShowPaywallModal(false);
+          navigation.navigate('Membership');
+        }}
+        targetName={profile?.displayName || name}
+      />
     </SafeAreaView>
   );
 };
@@ -840,5 +896,56 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  paywallLockedContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: ds.space.xl,
+  },
+  paywallCrownCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#C9A24B',
+    ...ds.shadow.lift,
+  },
+  paywallLockedTitle: {
+    fontFamily: ds.font.headingBold,
+    fontSize: 20,
+    color: ds.color.deepMaroon,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  paywallLockedSub: {
+    fontFamily: ds.font.bodyRegular,
+    fontSize: 13.5,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  paywallUnlockBtn: {
+    width: '100%',
+    maxWidth: 280,
+  },
+  paywallUnlockGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
+    ...ds.shadow.lift,
+  },
+  paywallUnlockBtnText: {
+    fontFamily: ds.font.bodyBold,
+    fontSize: 15,
+    color: '#FFFFFF',
   },
 });

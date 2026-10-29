@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ProfileController } from '../controllers/profile.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { requireApproved } from '../middleware/approval.middleware';
+import { requireSubscriptionForFemaleProfile } from '../middleware/subscriptionGate';
 import { validateRequest } from '../middleware/requestValidator';
 import { upsertProfileSchema } from '@bandhansetu/shared';
 
@@ -16,6 +17,11 @@ profileRouter.put(
   ProfileController.upsertMyProfile
 );
 
-// Public Profile (Requires approved account status)
-profileRouter.get('/:profileId', requireAuth, requireApproved, ProfileController.getPublicProfile);
-
+// Public Profile (Requires approved account status & subscription gate for female profiles)
+profileRouter.get(
+  '/:profileId',
+  requireAuth,
+  requireApproved,
+  requireSubscriptionForFemaleProfile,
+  ProfileController.getPublicProfile
+);

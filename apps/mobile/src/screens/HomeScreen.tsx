@@ -20,7 +20,8 @@ import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
 import { loadActivitySummary } from '../services/activityService';
 import { getActiveBanners } from '../services/bannerService';
-import { getSessionToken, getSessionUser } from '../services/authSession';
+import { getSessionToken, getSessionUser, setCachedUserProfile, setCachedUserMembership } from '../services/authSession';
+import { getMyMembership } from '../services/membershipService';
 import { EmptyMatchesState, ErrorState, OfflineBanner } from '../components/royal';
 import {
   HomeHeader,
@@ -94,12 +95,18 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     // 1. User profile (a missing profile is a normal state for new users)
     if (profileRes.status === 'fulfilled' && profileRes.value?.data) {
       setProfile(profileRes.value.data);
+      setCachedUserProfile(profileRes.value.data);
     } else if (profileRes.status === 'rejected' && isNetworkError(profileRes.reason)) {
       networkDown = true;
     } else {
       // Server answered but user has no profile yet: never show previous user's profile
       setProfile(null);
     }
+
+    // Fetch membership asynchronously to keep paywall cache updated
+    getMyMembership(token).then((mRes) => {
+      if (mRes?.data) setCachedUserMembership(mRes.data);
+    }).catch(() => {});
 
     // 2. Active admin banners
     if (bannersRes.status === 'fulfilled') {

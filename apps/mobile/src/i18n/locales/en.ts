@@ -388,6 +388,22 @@ export const en = {
     fileTooLarge: 'File is too large for upload. Please choose a photo under 5 MB.',
     unsupportedType: 'Unsupported file type. Please upload a JPG, PNG or WEBP photo.',
   },
+  paywall: {
+    sheetTitle: 'Upgrade to View Full Biodata',
+    sheetSubtitle: 'Viewing full biodata and direct contact details requires an active VIP membership.',
+    lockHint: 'Upgrade to view full profile',
+    benefitsTitle: 'Included in VIP Membership:',
+    benefitChat: 'Initiate direct 1-on-1 chats with verified matches',
+    benefitContacts: 'Verified contact phone & WhatsApp disclosures',
+    benefitPhotos: 'Access full high-resolution photo galleries',
+    benefitKundli: 'Complete 36 Guna Milan & horoscope compatibility',
+    explorePlansBtn: 'Explore Membership Plans',
+    closeBtn: 'Maybe Later',
+    plusTitle: 'ShaadiBanao Plus',
+    plusPrice: '₹2,999 / 3 Months',
+    premiumTitle: 'ShaadiBanao Premium',
+    premiumPrice: '₹4,999 / 6 Months',
+  },
 };
 
 export type TranslationTree = typeof en;

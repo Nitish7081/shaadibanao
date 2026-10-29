@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { SearchResultProfile } from '@bandhansetu/shared';
 import { PressableScale, ds } from '../../design';
 import { getInitials, getSafeMatchPhoto } from './matchPhoto';
+import { useTranslation } from 'react-i18next';
+import { isViewerPaywallRestrictedFor } from '../../services/authSession';
 
 interface Props {
   match: SearchResultProfile;
@@ -13,7 +15,9 @@ interface Props {
 }
 
 export const CompactMatchCard: React.FC<Props> = ({ match, onPress, width }) => {
+  const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
+  const isGated = isViewerPaywallRestrictedFor(match.gender);
   const name = match.displayName || 'Member';
   const photo = getSafeMatchPhoto(match, 'card');
   const showPhoto = !!photo && !failed;

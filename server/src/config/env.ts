@@ -47,4 +47,17 @@ export const config = {
     signedUrlTtlSeconds: Number(process.env.CLOUDINARY_SIGNED_URL_TTL_SECONDS) || 600,
     isConfigured: Boolean(cloudName && apiKey && apiSecret),
   },
+  /**
+   * Subscription / Paywall Gate
+   * PAYWALL_ENABLED=true  -> enforce the male-viewer / female-profile gate
+   * PAYWALL_ENABLED=false (default) -> gate is completely off for all users
+   * PAYWALL_EXEMPT_USERS -> comma-separated list of userId or email values that bypass the gate
+   */
+  paywall: {
+    enabled: process.env.PAYWALL_ENABLED === 'true',
+    exemptUsers: (process.env.PAYWALL_EXEMPT_USERS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  },
 };

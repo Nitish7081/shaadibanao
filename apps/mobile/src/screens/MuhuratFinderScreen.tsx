@@ -231,6 +231,14 @@ export const MuhuratFinderScreen: React.FC<Props> = ({ navigation, route }) => {
           );
         }}
       />
+
+      {/* Sample Vedic Data Notice Banner */}
+      <View style={styles.sampleDataBanner}>
+        <Ionicons name="information-circle" size={16} color="#B45309" />
+        <Text maxFontSizeMultiplier={1.2} style={styles.sampleDataBannerText}>
+          Sample Vedic Data (For Reference Only) • Consult Pandit for Kundli-specific dates
+        </Text>
+      </View>
     </View>
   );
 
@@ -574,4 +582,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: ds.color.maroon,
   },
+  sampleDataBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10,
+    gap: 8,
+  },
+  sampleDataBannerText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#92400E',
+    flex: 1,
+  },
 });
+

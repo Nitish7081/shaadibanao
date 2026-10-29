@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserSummary, AuthTokens } from '@bandhansetu/shared';
+import { UserSummary, AuthTokens, UserProfile, UserMembership } from '@bandhansetu/shared';
 import {
   refreshTokens as apiRefreshTokens,
   getCurrentUser as apiGetCurrentUser,
@@ -29,6 +29,8 @@ let currentAccessToken: string | null = null;
 let currentRefreshToken: string | null = null;
 let currentUserId: string | null = null;
 let currentUser: UserSummary | null = null;
+let cachedUserProfile: UserProfile | null = null;
+let cachedUserMembership: UserMembership | null = null;
 
 type AuthExpiredListener = (message: string) => void;
 const expiredListeners: Set<AuthExpiredListener> = new Set();
@@ -155,6 +157,8 @@ export async function loadSessionFromStorage(): Promise<boolean> {
           currentUser = JSON.parse(userStr);
         } catch {
           currentUser = null;
+  cachedUserProfile = null;
+  cachedUserMembership = null;
         }
       }
       return true;
@@ -183,6 +187,51 @@ export function getSessionUserId(): string | null {
 
 export function getSessionUser(): UserSummary | null {
   return currentUser;
+}
+
+export function setCachedUserProfile(profile: UserProfile | null): void {
+  cachedUserProfile = profile;
+}
+
+export function getCachedUserProfile(): UserProfile | null {
+  return cachedUserProfile;
+}
+
+export function setCachedUserMembership(membership: UserMembership | null): void {
+  cachedUserMembership = membership;
+}
+
+export function getCachedUserMembership(): UserMembership | null {
+  return cachedUserMembership;
+}
+
+/**
+ * Checks whether the viewer is restricted by the paywall when viewing a target profile.
+ * - Non-female target: free for everyone (false)
+ * - Female viewer: completely free (false)
+ * - Male / non-female viewer viewing female target: restricted (true) UNLESS active paid plan (Plus/Premium)
+ */
+export function isViewerPaywallRestrictedFor(targetGender?: string): boolean {
+  if (targetGender !== 'female') {
+    return false;
+  }
+  if (cachedUserProfile?.gender === 'female') {
+    return false;
+  }
+  if (
+    cachedUserMembership &&
+    (cachedUserMembership.planId === 'plus' || cachedUserMembership.planId === 'premium') &&
+    cachedUserMembership.status === 'active'
+  ) {
+    if (cachedUserMembership.expiresAt) {
+      const exp = new Date(cachedUserMembership.expiresAt).getTime();
+      if (!isNaN(exp) && exp <= Date.now()) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return true;
 }
 
 export function hasActiveSession(): boolean {

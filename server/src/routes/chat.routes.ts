@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ChatController } from '../controllers/chat.controller';
 import { requireAuth } from '../middleware/auth.middleware';
 import { requireApproved } from '../middleware/approval.middleware';
+import { requireSubscriptionForFemaleProfile } from '../middleware/subscriptionGate';
 import { validateRequest } from '../middleware/requestValidator';
 import {
   createConversationSchema,
@@ -17,10 +18,11 @@ chatRouter.use(requireAuth, requireApproved);
 // GET /api/v1/conversations
 chatRouter.get('/', requireAuth, ChatController.getConversations);
 
-// POST /api/v1/conversations
+// POST /api/v1/conversations (Subscription gate enforced when initiating chat with female match)
 chatRouter.post(
   '/',
   requireAuth,
+  requireSubscriptionForFemaleProfile,
   validateRequest({ body: createConversationSchema }),
   ChatController.getOrCreateConversation
 );
