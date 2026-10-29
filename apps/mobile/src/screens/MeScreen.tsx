@@ -4,29 +4,25 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
   RefreshControl,
-  ActivityIndicator,
-  Image,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
+import { ds, PressableScale, GradientRingAvatar, Skeleton } from '../design';
 import { UserProfile } from '@bandhansetu/shared';
-import { Header } from '../components/common/Header';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
-import { Badge } from '../components/common/Badge';
 import { getMyProfile } from '../services/profileService';
 import { photoSrc } from '../services/cloudinaryUrl';
 import { getMyMembership } from '../services/membershipService';
 import { getSessionToken, performLogout, getSessionUser } from '../services/authSession';
+import { getInitials } from '../components/home/matchPhoto';
 
 type MeNavProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Me'>,
@@ -39,6 +35,9 @@ interface Props {
 
 export const MeScreen: React.FC<Props> = ({ navigation }) => {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [membershipTier, setMembershipTier] = useState<string>('');
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -62,14 +61,13 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       if (profileRes.status === 'fulfilled' && profileRes.value.data) {
         setProfile(profileRes.value.data);
       } else if (profileRes.status === 'fulfilled') {
-        // Server answered but this account has no profile: never keep an old one.
         setProfile(null);
       }
       if (memberRes.status === 'fulfilled' && memberRes.value.data) {
         setMembershipTier(memberRes.value.data.planName || '');
       }
     } catch {
-      // Non-blocking fallback to cached profile or session user
+      // Non-blocking fallback
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -80,7 +78,6 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
     fetchUserData();
   }, [fetchUserData]);
 
-  // Re-fetch whenever screen comes into focus
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       fetchUserData();
@@ -95,80 +92,102 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
   const userAge = profile?.age ? `, ${profile.age}` : '';
   const memberId = profile?.id
     ? `SB-${profile.id.slice(-6).toUpperCase()}`
-    : 'SB-NEW';
+    : 'SB-MEMBER';
   const locationSub = profile?.city ? ` • ${profile.city}` : '';
 
-  const menuItems = [
+  const avatarUrl =
+    profile?.photos && profile.photos.length > 0 && profile.photos[0].url
+      ? photoSrc(profile.photos[0], 'avatar')
+      : undefined;
+
+  const menuSections = [
     {
-      title: t('me.menu.editProfile'),
-      subtitle: t('me.menu.editProfileSub'),
-      icon: 'create-outline',
-      onPress: () => navigation.navigate('ProfileCreation'),
+      title: 'Profile & Verification',
+      items: [
+        {
+          title: t('me.menu.editProfile'),
+          subtitle: t('me.menu.editProfileSub'),
+          icon: 'create-outline' as const,
+          onPress: () => navigation.navigate('ProfileCreation'),
+        },
+        {
+          title: t('me.menu.idVerify'),
+          subtitle: t('me.menu.idVerifySub'),
+          icon: 'shield-checkmark-outline' as const,
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) parentNav.navigate('IdentityVerification');
+            else (navigation as any).navigate('IdentityVerification');
+          },
+        },
+        {
+          title: t('me.menu.privacy'),
+          subtitle: t('me.menu.privacySub'),
+          icon: 'lock-closed-outline' as const,
+          onPress: () => navigation.navigate('PrivacySettings'),
+        },
+      ],
     },
     {
-      title: t('me.menu.idVerify'),
-      subtitle: t('me.menu.idVerifySub'),
-      icon: 'shield-checkmark-outline',
-      onPress: () => {
-        const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-        if (parentNav) parentNav.navigate('IdentityVerification');
-      },
+      title: 'Sacred Services & Membership',
+      items: [
+        {
+          title: t('me.menu.bookings'),
+          subtitle: t('me.menu.bookingsSub'),
+          icon: 'calendar-outline' as const,
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) {
+              parentNav.navigate('MyBookings');
+            } else {
+              (navigation as any).navigate('MyBookings');
+            }
+          },
+        },
+        {
+          title: t('me.menu.kundli'),
+          subtitle: t('me.menu.kundliSub'),
+          icon: 'planet-outline' as const,
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) parentNav.navigate('KundliForm');
+            else (navigation as any).navigate('KundliForm');
+          },
+        },
+        {
+          title: t('me.menu.membership'),
+          subtitle: t('me.menu.membershipSub'),
+          icon: 'ribbon-outline' as const,
+          onPress: () => navigation.navigate('Membership'),
+        },
+      ],
     },
     {
-      title: t('me.menu.bookings'),
-      subtitle: t('me.menu.bookingsSub'),
-      icon: 'calendar-outline',
-      onPress: () => {
-        const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-        if (parentNav) {
-          parentNav.navigate('MyBookings');
-        } else {
-          (navigation as any).navigate('MyBookings');
-        }
-      },
-    },
-    {
-      title: t('me.menu.kundli'),
-      subtitle: t('me.menu.kundliSub'),
-      icon: 'planet-outline',
-      onPress: () => {
-        const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-        if (parentNav) parentNav.navigate('KundliForm');
-      },
-    },
-    {
-      title: t('me.menu.privacy'),
-      subtitle: t('me.menu.privacySub'),
-      icon: 'lock-closed-outline',
-      onPress: () => navigation.navigate('PrivacySettings'),
-    },
-    {
-      title: t('me.menu.membership'),
-      subtitle: t('me.menu.membershipSub'),
-      icon: 'ribbon-outline',
-      onPress: () => navigation.navigate('Membership'),
-    },
-    {
-      title: t('me.menu.notifications'),
-      subtitle: t('me.menu.notificationsSub'),
-      icon: 'notifications-outline',
-      onPress: () => navigation.navigate('Notifications'),
-    },
-    {
-      title: t('me.menu.language'),
-      subtitle: t('me.menu.languageSub'),
-      icon: 'language-outline',
-      onPress: () => {
-        const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-        if (parentNav) parentNav.navigate('LanguageSelection', { fromSettings: true });
-      },
-    },
-    {
-      title: t('me.menu.help'),
-      subtitle: t('me.menu.helpSub'),
-      icon: 'help-buoy-outline',
-      onPress: () =>
-        Alert.alert(t('me.supportTitle'), t('me.supportBody')),
+      title: 'App Settings & Support',
+      items: [
+        {
+          title: t('me.menu.notifications'),
+          subtitle: t('me.menu.notificationsSub'),
+          icon: 'notifications-outline' as const,
+          onPress: () => navigation.navigate('Notifications'),
+        },
+        {
+          title: t('me.menu.language'),
+          subtitle: t('me.menu.languageSub'),
+          icon: 'language-outline' as const,
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) parentNav.navigate('LanguageSelection', { fromSettings: true });
+            else (navigation as any).navigate('LanguageSelection', { fromSettings: true });
+          },
+        },
+        {
+          title: t('me.menu.help'),
+          subtitle: t('me.menu.helpSub'),
+          icon: 'help-buoy-outline' as const,
+          onPress: () => Alert.alert(t('me.supportTitle'), t('me.supportBody')),
+        },
+      ],
     },
   ];
 
@@ -195,211 +214,326 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <Header title={t('me.headerTitle')} subtitle={displayName} showStatusBadge={true} variant="royal" />
-
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 110) },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => fetchUserData(true)}
-            tintColor={colors.royalMaroon}
-            colors={[colors.royalMaroon]}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
           />
         }
       >
-        {/* User Quick Card */}
-        <Card style={styles.userCard}>
-          <View style={styles.userHeader}>
-            <View style={styles.avatar}>
-              {profile?.photos && profile.photos.length > 0 && profile.photos[0].url ? (
-                <Image
-                  source={{ uri: photoSrc(profile.photos[0], 'avatar') }}
-                  style={{ width: 60, height: 60, borderRadius: 30 }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Ionicons name="person" size={28} color={colors.royalMaroon} />
-              )}
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={styles.userName} numberOfLines={1}>
+        {/* Profile Card Header */}
+        <View style={styles.profileHeaderCard}>
+          <View style={styles.avatarRow}>
+            <GradientRingAvatar
+              size={76}
+              uri={avatarUrl}
+              initials={getInitials(displayName)}
+              active={true}
+            />
+
+            <View style={styles.profileMetaCol}>
+              <Text
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={1}
+                style={styles.profileName}
+              >
                 {displayName}{userAge}
               </Text>
-              <Text style={styles.userSub}>
-                Member ID: {memberId}{locationSub}
+
+              <Text
+                maxFontSizeMultiplier={1.2}
+                numberOfLines={1}
+                style={styles.profileIdText}
+              >
+                {memberId}{locationSub}
               </Text>
-              <View style={styles.badgeRow}>
-                {(sessionUser as any)?.approvalStatus === 'approved' && <Badge label={t('me.badgeApproved')} variant="verified" />}
-                {profile?.isVerified && <Badge label={t('me.badgeIdVerified')} variant="verified" />}
-                {profile?.photoChecked && <Badge label={t('me.badgePhotoChecked')} variant="verified" />}
-                {((sessionUser as any)?.photoApprovalStatus === 'pending' || (profile as any)?.photoApprovalStatus === 'pending') && (
-                  <Badge label={t('me.badgePhotoReview')} variant="warning" />
+
+              {/* Badges Row */}
+              <View style={styles.badgesWrapper}>
+                {profile?.isVerified ? (
+                  <View style={styles.verifiedBadge}>
+                    <Ionicons name="shield-checkmark" size={12} color="#166534" />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.verifiedBadgeText}>
+                      {t('me.badgeIdVerified')}
+                    </Text>
+                  </View>
+                ) : (
+                  <PressableScale
+                    style={styles.unverifiedBadge}
+                    onPress={() => {
+                      const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+                      if (parentNav) parentNav.navigate('IdentityVerification');
+                      else (navigation as any).navigate('IdentityVerification');
+                    }}
+                  >
+                    <Ionicons name="alert-circle-outline" size={12} color="#92400E" />
+                    <Text maxFontSizeMultiplier={1.2} style={styles.unverifiedBadgeText}>
+                      Verify ID
+                    </Text>
+                  </PressableScale>
                 )}
-                <Badge label={membershipTier || t('me.freeTier')} variant="gold" />
+
+                <View style={styles.tierBadge}>
+                  <Ionicons name="sparkles" size={11} color="#854D0E" />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.tierBadgeText}>
+                    {membershipTier || t('me.freeTier')}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        </Card>
 
-        {/* Menu Items List */}
-        <Card style={styles.menuCard}>
-          {menuItems.map((item, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.menuRow,
-                idx < menuItems.length - 1 && styles.menuRowBorder,
-              ]}
-              onPress={item.onPress}
-              activeOpacity={0.7}
-            >
-              <View style={styles.iconCircle}>
-                <Ionicons name={item.icon as any} size={20} color={colors.royalMaroon} />
-              </View>
-              <View style={styles.menuTextCol}>
-                <Text style={styles.menuTitle}>{item.title}</Text>
-                <Text style={styles.menuSub}>{item.subtitle}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
-          ))}
-        </Card>
+          {/* Quick Edit Profile Action */}
+          <PressableScale
+            style={styles.editProfilePill}
+            onPress={() => navigation.navigate('ProfileCreation')}
+          >
+            <Ionicons name="create-outline" size={15} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.editProfilePillText}>
+              {t('me.menu.editProfile')}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={ds.color.maroon} />
+          </PressableScale>
+        </View>
+
+        {/* Menu Groups */}
+        {menuSections.map((section, sIdx) => (
+          <View key={`sec-${sIdx}`} style={styles.sectionWrap}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.sectionHeading}>
+              {section.title}
+            </Text>
+
+            <View style={styles.menuCard}>
+              {section.items.map((item, idx) => (
+                <PressableScale
+                  key={`item-${idx}`}
+                  style={[
+                    styles.menuRow,
+                    idx < section.items.length - 1 && styles.menuRowBorder,
+                  ]}
+                  onPress={item.onPress}
+                >
+                  <View style={styles.iconCircle}>
+                    <Ionicons name={item.icon} size={20} color={ds.color.maroon} />
+                  </View>
+                  <View style={styles.menuTextCol}>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.menuTitle}>
+                      {item.title}
+                    </Text>
+                    <Text maxFontSizeMultiplier={1.2} style={styles.menuSub}>
+                      {item.subtitle}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={ds.color.textMuted} />
+                </PressableScale>
+              ))}
+            </View>
+          </View>
+        ))}
 
         {/* Logout Button */}
-        <Button
-          title={t('me.signOutButton')}
-          onPress={handleSignOut}
-          variant="secondary"
-          style={styles.logoutBtn}
-        />
+        <PressableScale style={styles.logoutBtn} onPress={handleSignOut}>
+          <Ionicons name="log-out-outline" size={18} color="#DC2626" />
+          <Text maxFontSizeMultiplier={1.2} style={styles.logoutBtnText}>
+            {t('me.signOutButton')}
+          </Text>
+        </PressableScale>
+
+        <Text maxFontSizeMultiplier={1.2} style={styles.footerVersion}>
+          BandhanSetu • Sanatan Matrimony v1.0.0
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
   },
   scrollContent: {
-    padding: spacing.base,
-    paddingBottom: 110, // Ensure Sign Out button remains fully visible above bottom tab bar
+    paddingHorizontal: ds.space.md,
+    paddingTop: ds.space.sm,
   },
-  userCard: {
-    padding: spacing.base,
-    marginBottom: spacing.base,
-    borderRadius: borderRadius.lg,
+  profileHeaderCard: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 22,
+    padding: ds.space.lg,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surface,
+    borderColor: ds.color.border,
+    marginBottom: ds.space.md,
+    ...ds.shadow.soft,
   },
-  userHeader: {
+  avatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: ds.space.md,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FAF5EE',
-    borderWidth: 1.5,
-    borderColor: colors.softGold,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarText: {
-    fontSize: 28,
-  },
-  userInfo: {
+  profileMetaCol: {
     flex: 1,
-    marginLeft: spacing.base,
-    justifyContent: 'center',
   },
-  userName: {
-    fontSize: typography.fontSizes.base,
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
-    color: colors.charcoal,
-    lineHeight: 22,
+  profileName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: ds.color.text,
+    letterSpacing: -0.2,
   },
-  userSub: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
+  profileIdText: {
+    fontSize: 12,
+    color: ds.color.textMuted,
     marginTop: 2,
-    marginBottom: 4,
   },
-  badgeRow: {
+  badgesWrapper: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.xs,
+    gap: 6,
+    marginTop: 8,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    gap: 4,
+  },
+  verifiedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  unverifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    gap: 4,
+  },
+  unverifiedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF9C3',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    gap: 4,
+  },
+  tierBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#854D0E',
+  },
+  editProfilePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    borderRadius: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    marginTop: ds.space.md,
+    gap: 6,
+  },
+  editProfilePillText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: ds.color.maroon,
+  },
+  sectionWrap: {
+    marginBottom: ds.space.md,
+  },
+  sectionHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: ds.color.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    marginLeft: 4,
   },
   menuCard: {
-    padding: 0,
-    overflow: 'hidden',
-    marginBottom: spacing.base,
-    borderRadius: borderRadius.lg,
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    backgroundColor: colors.surface,
+    borderColor: ds.color.border,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
   },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.base,
-    minHeight: 64,
+    paddingVertical: 13,
+    paddingHorizontal: ds.space.md,
   },
   menuRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: ds.color.border,
   },
   iconCircle: {
     width: 38,
     height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.surfaceCard,
+    borderRadius: 12,
+    backgroundColor: ds.color.surfaceWarm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
-    flexShrink: 0,
-  },
-  menuIcon: {
-    fontSize: 18,
+    marginRight: ds.space.md,
   },
   menuTextCol: {
     flex: 1,
-    justifyContent: 'center',
   },
   menuTitle: {
-    fontSize: typography.fontSizes.sm,
-    fontFamily: fonts.headingSemiBold,
-    fontWeight: '600',
-    color: colors.charcoal,
-    lineHeight: 18,
+    fontSize: 14,
+    fontWeight: '700',
+    color: ds.color.text,
   },
   menuSub: {
-    fontSize: typography.fontSizes.xs,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: ds.color.textMuted,
     marginTop: 2,
-    lineHeight: 16,
-  },
-  menuArrow: {
-    fontSize: 22,
-    color: colors.textMuted,
-    fontWeight: '300',
-    marginLeft: spacing.xs,
   },
   logoutBtn: {
-    marginTop: spacing.sm,
-    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    borderRadius: 16,
+    paddingVertical: 13,
+    gap: 8,
+    marginTop: ds.space.xs,
+    marginBottom: ds.space.md,
+  },
+  logoutBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  footerVersion: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: ds.color.textMuted,
+    marginBottom: ds.space.md,
   },
 });
