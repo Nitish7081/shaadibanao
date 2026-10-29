@@ -12,10 +12,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
 import { RASHI_LIST, NAKSHATRA_LIST } from '@bandhansetu/shared';
+import { DatePickerField } from '../components/common/DatePickerField';
+import { TimePickerField } from '../components/common/TimePickerField';
+import { getDobDateLimits, isValidDob } from '../utils/dateTimeHelpers';
 import { API_BASE } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
 
 export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
+  const dobLimits = getDobDateLimits();
   const [dateOfBirth, setDateOfBirth] = useState('1998-05-15');
   const [timeOfBirth, setTimeOfBirth] = useState('14:30');
   const [isApproximate, setIsApproximate] = useState(false);
@@ -31,6 +35,16 @@ export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
   const handleSubmit = async () => {
     if (!dateOfBirth || !timeOfBirth || !cityName.trim()) {
       Alert.alert('Required Fields', 'Please enter date, time, and birth place.');
+      return;
+    }
+    const dobCheck = isValidDob(dateOfBirth);
+    if (!dobCheck.isValid) {
+      Alert.alert(
+        'Invalid Date of Birth',
+        dobCheck.error === 'underage'
+          ? 'You must be at least 18 years old.'
+          : 'Date of birth cannot be in the future.'
+      );
       return;
     }
 
@@ -90,20 +104,21 @@ export const KundliFormScreen: React.FC<any> = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionTitle}>Birth Information</Text>
 
-        <Text style={styles.label}>Date of Birth (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.textInput}
+        <DatePickerField
+          label="Date of Birth"
           value={dateOfBirth}
-          onChangeText={setDateOfBirth}
-          placeholder="e.g. 1998-05-15"
+          onChange={setDateOfBirth}
+          minDate={dobLimits.minDate}
+          maxDate={dobLimits.maxDate}
+          defaultDate={dobLimits.defaultInitialDate}
+          required
         />
 
-        <Text style={styles.label}>Time of Birth (24-Hour HH:MM)</Text>
-        <TextInput
-          style={styles.textInput}
+        <TimePickerField
+          label="Time of Birth"
           value={timeOfBirth}
-          onChangeText={setTimeOfBirth}
-          placeholder="e.g. 14:30"
+          onChange={setTimeOfBirth}
+          required
         />
 
         <TouchableOpacity

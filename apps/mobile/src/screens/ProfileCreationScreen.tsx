@@ -30,6 +30,9 @@ import {
   NAKSHATRA_LIST,
 } from '@bandhansetu/shared';
 import { Input } from '../components/common/Input';
+import { DatePickerField } from '../components/common/DatePickerField';
+import { TimePickerField } from '../components/common/TimePickerField';
+import { getDobDateLimits } from '../utils/dateTimeHelpers';
 import { Button } from '../components/common/Button';
 import { Header } from '../components/common/Header';
 import { getMyProfile, upsertMyProfile } from '../services/profileService';
@@ -72,6 +75,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     return dn ? dn.trim().split(/\s+/).slice(1).join(' ') : '';
   });
   const [gender, setGender] = useState<'male' | 'female'>('female');
+  const dobLimits = getDobDateLimits();
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [heightCm, setHeightCm] = useState('');
   const [maritalStatus, setMaritalStatus] = useState<'never_married' | 'divorced' | 'widowed'>('never_married');
@@ -613,11 +617,15 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
                   {renderOptionChip('Male (Groom)', gender === 'male', () => setGender('male'))}
                 </View>
 
-                <Input
-                  label="Date of Birth (YYYY-MM-DD) *"
+                <DatePickerField
+                  label="Date of Birth *"
                   value={dateOfBirth}
-                  onChangeText={setDateOfBirth}
-                  helperText="Age is calculated automatically and verified"
+                  onChange={setDateOfBirth}
+                  minDate={dobLimits.minDate}
+                  maxDate={dobLimits.maxDate}
+                  defaultDate={dobLimits.defaultInitialDate}
+                  helperText="Age is calculated automatically (must be at least 18 years old)"
+                  required
                 />
 
                 <Input
@@ -690,12 +698,13 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
 
                   {includeKundli && (
                     <View style={{ marginTop: spacing.sm }}>
-                      <Input
-                        label="Time of Birth (24hr format) *"
+                      <TimePickerField
+                        label="Time of Birth *"
                         value={birthTime}
-                        onChangeText={setBirthTime}
-                        placeholder="e.g. 14:30"
+                        onChange={setBirthTime}
+                        placeholder="Select Birth Time"
                         helperText="Required for Lagna & Kundli chart computation"
+                        required
                       />
                       <Input
                         label="Place of Birth (City)"

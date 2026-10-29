@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { DatePickerField } from '../components/common/DatePickerField';
+import { isValidBookingDate, getBookingDateLimits, formatApiDate } from '../utils/dateTimeHelpers';
 import { API_BASE } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
 
@@ -18,7 +20,8 @@ export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
   const { panditId, serviceId, serviceName, priceInr } = route.params || {};
 
   // Form State
-  const [bookingDate, setBookingDate] = useState('2026-11-20');
+  const bookingLimits = getBookingDateLimits();
+  const [bookingDate, setBookingDate] = useState(formatApiDate(new Date()));
   const [timeSlot, setTimeSlot] = useState('10:00 AM - 01:00 PM');
   const [mode, setMode] = useState<'in_person' | 'online'>('in_person');
   const [venueAddress, setVenueAddress] = useState('Sector 62, Noida, Uttar Pradesh');
@@ -36,6 +39,16 @@ export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
   const handleConfirmBooking = async () => {
     if (!bookingDate || !timeSlot) {
       Alert.alert('Required Fields', 'Please select a date and time slot.');
+      return;
+    }
+    const dateCheck = isValidBookingDate(bookingDate);
+    if (!dateCheck.isValid) {
+      Alert.alert(
+        'Invalid Date',
+        dateCheck.error === 'past'
+          ? 'Booking date must be today or a future date.'
+          : 'Booking date must be within 1 year.'
+      );
       return;
     }
 
@@ -126,12 +139,13 @@ export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
         </View>
 
         {/* Date Selection */}
-        <Text style={styles.sectionTitle}>Auspicious Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.textInput}
+        <Text style={styles.sectionTitle}>Auspicious Ceremony Date</Text>
+        <DatePickerField
           value={bookingDate}
-          onChangeText={setBookingDate}
-          placeholder="e.g. 2026-11-20"
+          onChange={setBookingDate}
+          minDate={bookingLimits.minDate}
+          maxDate={bookingLimits.maxDate}
+          placeholder="Select Auspicious Date"
         />
 
         {/* Time Slot Selection */}

@@ -42,5 +42,8 @@
     "typescript"
   ],
   "author": "BandhanSetu Team",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@react-native-community/datetimepicker": "9.1.0"
+  }
 }

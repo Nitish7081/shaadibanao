@@ -24,6 +24,8 @@ import { colors, fonts, spacing, borderRadius } from '../constants/theme';
 import { getSessionToken, getSessionUser, API_BASE, getAuthHeader } from '../services/authSession';
 import { getMyProfile } from '../services/profileService';
 import { useTranslation } from 'react-i18next';
+import { DatePickerField } from '../components/common/DatePickerField';
+import { isValidBookingDate, getBookingDateLimits } from '../utils/dateTimeHelpers';
 
 // Service type options
 const SERVICE_TYPES = [
@@ -51,6 +53,7 @@ const TIME_SLOTS = [
 export const PanditBookingRequestScreen: React.FC<any> = ({ navigation }) => {
   const { i18n } = useTranslation();
   const isHindi = i18n.language === 'hi';
+  const bookingLimits = getBookingDateLimits();
 
   // Pre-filled fields
   const [fullName, setFullName] = useState('');
@@ -120,12 +123,20 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation }) => {
     if (serviceType === 'other' && !otherService.trim()) {
       newErrors.otherService = 'Please describe the service you need.';
     }
-    if (!bookingDate.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(bookingDate)) {
-      newErrors.bookingDate = 'Please enter date as YYYY-MM-DD (e.g. 2026-12-15).';
-    } else {
-      const d = new Date(bookingDate);
-      if (isNaN(d.getTime()) || d < new Date()) {
-        newErrors.bookingDate = 'Date must be a valid future date.';
+    const dateCheck = isValidBookingDate(bookingDate);
+    if (!dateCheck.isValid) {
+      if (dateCheck.error === 'past') {
+        newErrors.bookingDate = isHindi
+          ? 'तारीख आज या भविष्य की होनी चाहिए।'
+          : 'Booking date must be today or a future date.';
+      } else if (dateCheck.error === 'beyond_one_year') {
+        newErrors.bookingDate = isHindi
+          ? 'बुकिंग की तारीख 1 वर्ष के भीतर होनी चाहिए।'
+          : 'Booking date must be within 1 year.';
+      } else {
+        newErrors.bookingDate = isHindi
+          ? 'कृपया अनुष्ठान की तारीख चुनें।'
+          : 'Please select a preferred ceremony date.';
       }
     }
     if (mode === 'in_person' && !venueAddress.trim()) {
@@ -340,15 +351,21 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation }) => {
             <Ionicons name="calendar-outline" size={14} /> {isHindi ? 'तिथि और समय' : 'Date & Time'}
           </Text>
 
-          <Field label={isHindi ? 'पसंदीदा तिथि (YYYY-MM-DD)' : 'Preferred Date (YYYY-MM-DD)'} error={errors.bookingDate} required>
-            <TextInput
-              style={[styles.input, errors.bookingDate && styles.inputError]}
-              value={bookingDate}
-              onChangeText={setBookingDate}
-              placeholder="2026-12-15"
-              keyboardType="numeric"
-            />
-          </Field>
+          <DatePickerField
+            label={isHindi ? 'पसंदीदा तिथि' : 'Preferred Ceremony Date'}
+            value={bookingDate}
+            onChange={(d) => {
+              setBookingDate(d);
+              if (errors.bookingDate) {
+                setErrors((prev) => ({ ...prev, bookingDate: '' }));
+              }
+            }}
+            minDate={bookingLimits.minDate}
+            maxDate={bookingLimits.maxDate}
+            error={errors.bookingDate}
+            required
+            placeholder={isHindi ? 'तारीख चुनें (उदा. 12 नवं 2026)' : 'Select Date (e.g. 12 Nov 2026)'}
+          />
 
           <Field label={isHindi ? 'पसंदीदा समय' : 'Preferred Time Slot'}>
             <View style={styles.chipRow}>
