@@ -120,7 +120,11 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
       icon: 'calendar-outline',
       onPress: () => {
         const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
-        if (parentNav) parentNav.navigate('MyBookings');
+        if (parentNav) {
+          parentNav.navigate('MyBookings');
+        } else {
+          (navigation as any).navigate('MyBookings');
+        }
       },
     },
     {

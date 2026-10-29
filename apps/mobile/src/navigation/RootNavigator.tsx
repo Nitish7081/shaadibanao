@@ -18,6 +18,7 @@ import { ApprovalPendingScreen } from '../screens/ApprovalPendingScreen';
 import { PanditServicesScreen } from '../screens/PanditServicesScreen';
 import { PanditDetailScreen } from '../screens/PanditDetailScreen';
 import { BookingFlowScreen } from '../screens/BookingFlowScreen';
+import { PanditBookingRequestScreen } from '../screens/PanditBookingRequestScreen';
 import { MyBookingsScreen } from '../screens/MyBookingsScreen';
 import { VideoConsultationScreen } from '../screens/VideoConsultationScreen';
 import { KundliFormScreen } from '../screens/KundliFormScreen';
@@ -52,6 +53,7 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="PanditServices" component={PanditServicesScreen} />
       <Stack.Screen name="PanditDetail" component={PanditDetailScreen} />
       <Stack.Screen name="BookingFlow" component={BookingFlowScreen} />
+      <Stack.Screen name="PanditBookingRequest" component={PanditBookingRequestScreen} />
       <Stack.Screen name="MyBookings" component={MyBookingsScreen} />
       <Stack.Screen name="VideoConsultation" component={VideoConsultationScreen} />
       <Stack.Screen name="KundliForm" component={KundliFormScreen} />

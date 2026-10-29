@@ -180,11 +180,32 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
           keyExtractor={(p) => p.id}
           renderItem={renderPanditCard}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            <TouchableOpacity
+              style={styles.requestBanner}
+              onPress={() => navigation.navigate('PanditBookingRequest')}
+            >
+              <View style={styles.requestBannerLeft}>
+                <Ionicons name="flame" size={22} color={colors.royalGold} />
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text style={styles.requestBannerTitle}>Direct Ceremony Request</Text>
+                  <Text style={styles.requestBannerSub}>Can't find a Pandit? Request a ceremony & we'll assign one.</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </TouchableOpacity>
+          }
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Ionicons name="sunny-outline" size={54} color={colors.softGold} />
               <Text style={styles.emptyTitle}>No Pandits Found</Text>
-              <Text style={styles.emptySub}>Please select another ceremony or try again shortly.</Text>
+              <Text style={styles.emptySub}>Please select another ceremony or submit a direct booking request.</Text>
+              <TouchableOpacity
+                style={styles.directReqBtn}
+                onPress={() => navigation.navigate('PanditBookingRequest')}
+              >
+                <Text style={styles.directReqBtnText}>Submit Booking Request →</Text>
+              </TouchableOpacity>
             </View>
           }
         />
@@ -399,5 +420,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginTop: 4,
+  },
+  requestBanner: {
+    backgroundColor: colors.royalMaroon,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.royalGold,
+  },
+  requestBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  requestBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  requestBannerSub: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  directReqBtn: {
+    backgroundColor: colors.royalMaroon,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    marginTop: 14,
+  },
+  directReqBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

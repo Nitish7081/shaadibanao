@@ -497,6 +497,56 @@ export class AdminController {
   }
 
   /**
+   * POST /api/v1/admin/bookings/:id/assign
+   */
+  public static async assignBookingPandit(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
+      const { panditId } = req.body;
+      if (!panditId) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'panditId is required.' },
+        });
+        return;
+      }
+      const booking = await BookingService.assignPandit(req.params.id, panditId, adminId);
+      res.status(200).json({
+        success: true,
+        message: 'Pandit assigned and booking confirmed.',
+        data: booking,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/bookings/:id/status
+   */
+  public static async updateBookingStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
+      const { status, reason } = req.body;
+      if (!status) {
+        res.status(400).json({
+          success: false,
+          error: { code: 'INVALID_INPUT', message: 'status is required.' },
+        });
+        return;
+      }
+      const booking = await BookingService.adminUpdateStatus(req.params.id, status, adminId, reason);
+      res.status(200).json({
+        success: true,
+        message: `Booking status updated successfully.`,
+        data: booking,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/admin/community
    */
   public static async getCommunityPosts(req: Request, res: Response, next: NextFunction): Promise<void> {

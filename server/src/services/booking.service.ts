@@ -201,9 +201,12 @@ export class BookingService {
 
     booking.status = 'cancelled';
     booking.cancellationReason = reason;
+    const changedBy = mongoose.Types.ObjectId.isValid(actorUserId)
+      ? new mongoose.Types.ObjectId(actorUserId)
+      : actorUserId;
     booking.statusHistory.push({
       status: 'cancelled',
-      changedBy: new mongoose.Types.ObjectId(actorUserId),
+      changedBy,
       reason,
       timestamp: new Date(),
     });
@@ -220,9 +223,12 @@ export class BookingService {
     if (!booking) throw new Error('Booking not found.');
 
     booking.status = 'completed';
+    const changedBy = mongoose.Types.ObjectId.isValid(actorId)
+      ? new mongoose.Types.ObjectId(actorId)
+      : actorId;
     booking.statusHistory.push({
       status: 'completed',
-      changedBy: new mongoose.Types.ObjectId(actorId),
+      changedBy,
       timestamp: new Date(),
     });
     await booking.save();
@@ -296,10 +302,13 @@ export class BookingService {
 
     booking.panditId = pandit._id;
     booking.panditName = pandit.name;
-    booking.status = 'confirmed';
+    booking.status = 'accepted';
+    const changedBy = mongoose.Types.ObjectId.isValid(adminId)
+      ? new mongoose.Types.ObjectId(adminId)
+      : adminId;
     booking.statusHistory.push({
-      status: 'confirmed',
-      changedBy: new mongoose.Types.ObjectId(adminId),
+      status: 'accepted',
+      changedBy,
       reason: `Assigned to Pandit ${pandit.name} by Admin`,
       timestamp: new Date(),
     });
@@ -312,20 +321,26 @@ export class BookingService {
    */
   static async adminUpdateStatus(
     bookingId: string,
-    newStatus: BookingStatus,
+    newStatus: BookingStatus | string,
     adminId: string,
     reason?: string
   ) {
     const booking = await BookingModel.findById(bookingId);
     if (!booking) throw new Error('Booking not found.');
 
-    booking.status = newStatus;
-    if (reason && newStatus === 'cancelled') {
+    const statusToSet: BookingStatus =
+      newStatus === 'confirmed' ? 'accepted' : (newStatus as BookingStatus);
+
+    booking.status = statusToSet;
+    if (reason && statusToSet === 'cancelled') {
       booking.cancellationReason = reason;
     }
+    const changedBy = mongoose.Types.ObjectId.isValid(adminId)
+      ? new mongoose.Types.ObjectId(adminId)
+      : adminId;
     booking.statusHistory.push({
-      status: newStatus,
-      changedBy: new mongoose.Types.ObjectId(adminId),
+      status: statusToSet,
+      changedBy,
       reason,
       timestamp: new Date(),
     });

@@ -1697,14 +1697,14 @@ async function loadBookings() {
   const statusFilter = document.getElementById('filter-bookings-status')?.value || 'all';
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6">Loading ceremony bookings...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6">Loading ceremony bookings...</td></tr>';
 
   try {
     const res = await adminFetch(`/admin/bookings?status=${statusFilter}`);
     const items = res.data?.items || [];
 
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No ceremony bookings found matching filter</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="table-empty">No ceremony bookings found matching filter</td></tr>';
       return;
     }
 
@@ -1735,12 +1735,26 @@ async function loadBookings() {
             <td>${modeBadge}</td>
             <td><strong>₹${(b.priceInr || 0).toLocaleString('en-IN')}</strong></td>
             <td>${statusBadge}</td>
+            <td>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                ${b.status === 'requested' ? `
+                  <button class="btn-primary btn-xs" onclick="updateBookingStatus('${b.id}', 'accepted')">✓ Confirm</button>
+                  <button class="btn-danger btn-xs" onclick="promptCancelBooking('${b.id}')">✕ Cancel</button>
+                ` : ''}
+                ${b.status === 'accepted' ? `
+                  <button class="btn-primary btn-xs" onclick="updateBookingStatus('${b.id}', 'completed')">✓ Complete</button>
+                  <button class="btn-danger btn-xs" onclick="promptCancelBooking('${b.id}')">✕ Cancel</button>
+                ` : ''}
+                ${b.status === 'completed' ? `<span class="text-muted text-xs">Completed</span>` : ''}
+                ${b.status === 'cancelled' || b.status === 'declined' ? `<span class="text-muted text-xs">Closed</span>` : ''}
+              </div>
+            </td>
           </tr>
         `;
       })
       .join('');
   } catch (err) {
-    renderTableError(tbody, 8, err.message, 'loadBookings', err.requestId);
+    renderTableError(tbody, 9, err.message, 'loadBookings', err.requestId);
   }
 }
 
@@ -2184,3 +2198,39 @@ window.handleLogout = handleLogout;
 
 
 
+
+
+async function updateBookingStatus(bookingId, newStatus) {
+  const label = newStatus === 'accepted' ? 'confirm' : newStatus;
+  if (!confirm(`Are you sure you want to ${label} this booking?`)) return;
+  try {
+    const res = await adminFetch(`/admin/bookings/${bookingId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: newStatus }),
+    });
+    showToast(res.message || 'Status updated successfully', 'success');
+    loadBookings();
+    loadDashboardStats();
+  } catch (err) {
+    showToast(err.message || 'Failed to update status', 'error');
+  }
+}
+
+async function promptCancelBooking(bookingId) {
+  const reason = prompt('Please enter cancellation reason:', 'Cancelled by Admin');
+  if (reason === null) return;
+  try {
+    const res = await adminFetch(`/admin/bookings/${bookingId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled', reason: reason.trim() || 'Cancelled by Admin' }),
+    });
+    showToast(res.message || 'Booking cancelled', 'success');
+    loadBookings();
+    loadDashboardStats();
+  } catch (err) {
+    showToast(err.message || 'Failed to cancel booking', 'error');
+  }
+}
+
+window.updateBookingStatus = updateBookingStatus;
+window.promptCancelBooking = promptCancelBooking;

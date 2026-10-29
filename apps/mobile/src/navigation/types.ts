@@ -17,6 +17,7 @@ export type RootStackParamList = {
   PanditServices: { ceremonyType?: string } | undefined;
   PanditDetail: { panditId: string; panditName: string };
   BookingFlow: { panditId: string; serviceId: string; serviceName: string; priceInr: number };
+  PanditBookingRequest: { ceremonyType?: string; serviceId?: string } | undefined;
   MyBookings: undefined;
   VideoConsultation: { bookingId: string; ceremonyName: string; panditName: string };
   KundliForm: undefined;

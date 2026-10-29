@@ -54,6 +54,8 @@ adminRouter.post('/photos/:userId/moderate', AdminController.moderatePhoto);
 
 // 11. Ceremony & Consultation Bookings
 adminRouter.get('/bookings', AdminController.getBookings);
+adminRouter.post('/bookings/:id/assign', AdminController.assignBookingPandit);
+adminRouter.patch('/bookings/:id/status', AdminController.updateBookingStatus);
 
 // 12. Community Posts Moderation
 adminRouter.get('/community', AdminController.getCommunityPosts);
