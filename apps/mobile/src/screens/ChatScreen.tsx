@@ -3,26 +3,28 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  FlatList,
   RefreshControl,
-  ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
-import { Header } from '../components/common/Header';
-import { Badge } from '../components/common/Badge';
-import { Card } from '../components/common/Card';
-import { Button } from '../components/common/Button';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
+import { ds, PressableScale, Skeleton, GradientRingAvatar } from '../design';
 import { getConversations, getSessionToken } from '../services';
 import { ConversationItem } from '@bandhansetu/shared';
+import { getInitials } from '../components/home/matchPhoto';
 
 interface Props {
   navigation: any;
 }
 
 export const ChatScreen: React.FC<Props> = ({ navigation }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,7 +45,7 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
         setConversations(res.data);
       }
     } catch (err: any) {
-      setError(err.message || 'Could not load conversations.');
+      setError(err?.message || 'Could not load conversations.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -73,298 +75,411 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  return (
-    <SafeAreaView edges={['top']} style={styles.safeArea}>
-      <Header
-        title="Messages"
-        onBack={() => navigation.goBack()}
-        subtitle={loading ? 'Updating chats...' : `${conversations.length} Active Conversations`}
-        showStatusBadge={true}
-      />
+  const renderHeader = () => (
+    <View style={styles.headerBlock}>
+      <View style={styles.headerTitleRow}>
+        <View style={{ flex: 1 }}>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenHeading}
+          >
+            {t('chatScreen.messagesTitle')}
+          </Text>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenSubheading}
+          >
+            {t('chatScreen.messagesSubtitle', { count: conversations.length })}
+          </Text>
+        </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        <PressableScale
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
+        </PressableScale>
+      </View>
+    </View>
+  );
+
+  const renderConversationItem = ({ item }: { item: ConversationItem }) => {
+    const hasUnread = item.unreadCount > 0;
+    const partnerName = item.participant?.displayName || 'Connection';
+    const initials = getInitials(partnerName);
+    const contactShared = item.contactExchange?.status === 'accepted';
+    const lastMsgTime = item.lastMessage?.createdAt || item.updatedAt;
+    const lastMsgText = item.lastMessage?.text || 'Say Namaste to begin your auspicious conversation...';
+
+    return (
+      <PressableScale
+        style={[styles.convCard, hasUnread && styles.convCardUnread]}
+        onPress={() =>
+          navigation.navigate('ChatDetail', {
+            conversationId: item.id,
+            partnerName,
+          })
+        }
+      >
+        {/* Avatar */}
+        <LinearGradient
+          colors={hasUnread ? ['#7A1528', '#A22842'] : ['#E8DEC8', '#D4AF37']}
+          style={styles.avatarCircle}
+        >
+          <Text maxFontSizeMultiplier={1.2} style={styles.avatarInitials}>
+            {initials || 'BS'}
+          </Text>
+        </LinearGradient>
+
+        {/* Conversation details */}
+        <View style={styles.convDetailsCol}>
+          <View style={styles.partnerNameRow}>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={[styles.partnerNameText, hasUnread && styles.partnerNameUnread]}
+            >
+              {partnerName}
+            </Text>
+            {lastMsgTime && (
+              <Text maxFontSizeMultiplier={1.2} style={styles.timeText}>
+                {formatTime(lastMsgTime)}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.lastMessageRow}>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={[styles.lastMsgText, hasUnread && styles.lastMsgUnread]}
+            >
+              {lastMsgText}
+            </Text>
+
+            {hasUnread && (
+              <View style={styles.unreadBadge}>
+                <Text maxFontSizeMultiplier={1.2} style={styles.unreadBadgeText}>
+                  {item.unreadCount}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {contactShared && (
+            <View style={styles.contactSharedPill}>
+              <Ionicons name="call" size={11} color="#166534" />
+              <Text maxFontSizeMultiplier={1.2} style={styles.contactSharedText}>
+                {t('chatScreen.contactUnlocked')}
+              </Text>
+            </View>
+          )}
+        </View>
+      </PressableScale>
+    );
+  };
+
+  const renderEmptyOrLoading = () => {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.skeletonContainer}>
+          {[1, 2, 3].map((k) => (
+            <View key={k} style={styles.skeletonCard}>
+              <Skeleton width={52} height={52} radius={26} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Skeleton width="50%" height={16} radius={4} style={{ marginBottom: 8 }} />
+                <Skeleton width="80%" height={14} radius={4} />
+              </View>
+            </View>
+          ))}
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.stateContainer}>
+          <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+          <Text maxFontSizeMultiplier={1.2} style={styles.stateTitle}>
+            Could Not Load Chats
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.stateSub}>
+            {error}
+          </Text>
+          <PressableScale style={styles.retryBtn} onPress={() => fetchConversations()}>
+            <Ionicons name="refresh" size={16} color="#FFFFFF" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.retryBtnText}>
+              Try Again
+            </Text>
+          </PressableScale>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.stateContainer}>
+        <LinearGradient
+          colors={['#FFF6E8', '#FFEECF']}
+          style={styles.emptyIconCircle}
+        >
+          <Ionicons name="chatbubbles-outline" size={36} color={ds.color.maroon} />
+        </LinearGradient>
+        <Text maxFontSizeMultiplier={1.2} style={styles.stateTitle}>
+          {t('chatScreen.noConversationsTitle')}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.stateSub}>
+          {t('chatScreen.noConversationsSub')}
+        </Text>
+        <PressableScale
+          style={styles.exploreBtn}
+          onPress={() => navigation.navigate('MainTabs', { screen: 'Matches' })}
+        >
+          <Text maxFontSizeMultiplier={1.2} style={styles.exploreBtnText}>
+            {t('chatScreen.exploreMatches')}
+          </Text>
+          <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+        </PressableScale>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      <FlatList
+        data={loading && !refreshing ? [] : conversations}
+        keyExtractor={(item) => item.id}
+        renderItem={renderConversationItem}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyOrLoading}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 110) },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => fetchConversations(true)}
-            tintColor={colors.royalMaroon}
-            colors={[colors.royalMaroon]}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
           />
         }
-      >
-
-        {/* Loading State */}
-        {loading && !refreshing && (
-          <View style={styles.centerBox}>
-            <ActivityIndicator size="large" color={colors.royalMaroon} />
-            <Text style={styles.loadingText}>Fetching conversations...</Text>
-          </View>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <Card style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Error Loading Chats</Text>
-            <Text style={styles.errorSub}>{error}</Text>
-            <Button
-              title="Try Again"
-              onPress={() => fetchConversations()}
-              variant="secondary"
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Empty State */}
-        {!loading && !error && conversations.length === 0 && (
-          <Card style={styles.emptyCard}>
-            <Ionicons name="chatbubbles-outline" size={40} color={colors.royalMaroon} style={styles.emptyIcon} />
-            <Text style={styles.emptyTitle}>No active conversations yet</Text>
-            <Text style={styles.emptySub}>
-              Messaging unlocks as soon as an interest is mutually accepted! Explore matches or review pending interests.
-            </Text>
-            <Button
-              title="View Matches & Interests"
-              onPress={() => navigation.navigate('MainTabs', { screen: 'Matches' })}
-              variant="primary"
-              style={{ marginTop: spacing.md }}
-            />
-          </Card>
-        )}
-
-        {/* Conversation List */}
-        {!loading &&
-          conversations.map((conv) => {
-            const hasUnread = conv.unreadCount > 0;
-            const contactShared = conv.contactExchange?.status === 'accepted';
-
-            return (
-              <Card key={conv.id} style={styles.convCard}>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={styles.convItem}
-                  onPress={() =>
-                    navigation.navigate('ChatDetail', {
-                      conversationId: conv.id,
-                      partnerName: conv.participant.displayName,
-                    })
-                  }
-                >
-                  <View style={styles.avatarBox}>
-                    <Ionicons name="person" size={22} color={colors.royalMaroon} />
-                    {conv.participant.isVerified && (
-                      <View style={styles.verifiedDot}>
-                        <Ionicons name="checkmark" size={11} color="#FFFFFF" />
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.convInfo}>
-                    <View style={styles.topRow}>
-                      <Text style={styles.partnerName} numberOfLines={1}>
-                        {conv.participant.displayName}, {conv.participant.age}
-                      </Text>
-                      <Text style={styles.timeText}>
-                        {formatTime(conv.lastMessage?.createdAt || conv.updatedAt)}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.metaSnippet} numberOfLines={1}>
-                      {conv.participant.city} • {conv.participant.occupation}
-                    </Text>
-
-                    <View style={styles.bottomRow}>
-                      <Text
-                        style={[styles.lastMsgText, hasUnread && styles.lastMsgUnread]}
-                        numberOfLines={1}
-                      >
-                        {conv.lastMessage
-                          ? conv.lastMessage.text
-                          : 'Mutual match established. Start your conversation!'}
-                      </Text>
-
-                      {hasUnread && (
-                        <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadText}>{conv.unreadCount}</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Contact status badge */}
-                    <View style={styles.badgeRow}>
-                      {contactShared ? (
-                        <Badge label="📱 Contact Disclosed" variant="verified" />
-                      ) : (
-                        <Badge label="🔒 Contact Masked" variant="neutral" />
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </Card>
-            );
-          })}
-      </ScrollView>
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
   },
-  scrollContent: {
-    padding: spacing.base,
-    paddingBottom: 110,
+  listContent: {
+    paddingHorizontal: ds.space.md,
   },
-  centerBox: {
-    padding: spacing['2xl'],
+  headerBlock: {
+    paddingTop: ds.space.sm,
+    paddingBottom: ds.space.md,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
+  screenHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: ds.color.maroon,
+    letterSpacing: -0.3,
   },
-  errorCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.errorBg,
-    borderColor: colors.errorBorder,
-    borderWidth: 1,
-    marginBottom: spacing.md,
-  },
-  errorTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.alertRed,
-  },
-  errorSub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-  },
-  emptyCard: {
-    alignItems: 'center',
-    padding: spacing.xl,
-    marginTop: spacing.md,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: spacing.sm,
-  },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.charcoal,
-  },
-  emptySub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
+  screenSubheading: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    marginTop: 2,
     lineHeight: 18,
-    marginTop: spacing.xs,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...ds.shadow.soft,
   },
   convCard: {
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-  },
-  convItem: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avatarBox: {
-    width: 56,
-    height: 64,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceCard,
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.borderDefault,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.sm,
+    ...ds.shadow.soft,
+  },
+  convCardUnread: {
+    borderColor: '#EBDCB9',
+    backgroundColor: '#FFFEFA',
+  },
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  avatarIcon: {
-    fontSize: 28,
-  },
-  verifiedDot: {
-    position: 'absolute',
-    bottom: -3,
-    right: -3,
-    backgroundColor: colors.verifiedGreen,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-  },
-  verifiedCheck: {
+  avatarInitials: {
     color: '#FFFFFF',
-    fontSize: 8,
+    fontSize: 18,
     fontWeight: '800',
   },
-  convInfo: {
+  convDetailsCol: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginLeft: 12,
   },
-  topRow: {
+  partnerNameRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  partnerName: {
-    fontSize: typography.fontSizes.sm,
+  partnerNameText: {
+    fontSize: 15,
     fontWeight: '700',
-    color: colors.charcoal,
+    color: ds.color.text,
+    letterSpacing: -0.2,
     flex: 1,
+    marginRight: 8,
+  },
+  partnerNameUnread: {
+    fontWeight: '800',
+    color: ds.color.maroon,
   },
   timeText: {
-    fontSize: typography.fontSizes.xs - 2,
-    color: colors.textMuted,
-    marginLeft: spacing.xs,
+    fontSize: 11,
+    color: ds.color.textMuted,
   },
-  metaSnippet: {
-    fontSize: typography.fontSizes.xs - 1,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  bottomRow: {
+  lastMessageRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 4,
   },
   lastMsgText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: ds.color.textMuted,
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: 6,
   },
   lastMsgUnread: {
-    color: colors.charcoal,
-    fontWeight: '700',
+    color: ds.color.text,
+    fontWeight: '600',
   },
   unreadBadge: {
-    backgroundColor: colors.royalMaroon,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
+    backgroundColor: ds.color.maroon,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  unreadText: {
+  unreadBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
-  badgeRow: {
+  contactSharedPill: {
     flexDirection: 'row',
-    marginTop: 4,
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    gap: 4,
+  },
+  contactSharedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  skeletonContainer: {
+    paddingTop: ds.space.sm,
+  },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.sm,
+  },
+  stateContainer: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.xl,
+    alignItems: 'center',
+    marginTop: ds.space.lg,
+    ...ds.shadow.soft,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ds.space.md,
+  },
+  stateTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: ds.color.text,
+    marginBottom: 6,
+  },
+  stateSub: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: ds.space.lg,
+    paddingHorizontal: ds.space.md,
+  },
+  exploreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 12,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 14,
+    gap: 8,
+  },
+  exploreBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 10,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 12,
+    gap: 6,
+    marginTop: ds.space.sm,
+  },
+  retryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

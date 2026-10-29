@@ -3,20 +3,21 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TextInput,
-  TouchableOpacity,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing, borderRadius } from '../constants/theme';
-import { Header } from '../components/common/Header';
-import { Button } from '../components/common/Button';
+import { ds, PressableScale } from '../design';
 import {
   getMessages,
   sendMessage,
@@ -29,11 +30,15 @@ import {
   getSessionUserId,
 } from '../services';
 import { ChatMessage, ContactExchangeDetails } from '@bandhansetu/shared';
+import { getInitials } from '../components/home/matchPhoto';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
 export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { conversationId, partnerName } = route.params;
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -45,7 +50,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   });
   const [contactActionLoading, setContactActionLoading] = useState(false);
 
-  const scrollViewRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const token = getSessionToken();
   const currentUserId = getSessionUserId() || 'me';
 
@@ -55,14 +60,13 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       setError(null);
       const res = await getMessages(token, conversationId, 1, 50);
       if (res.data) {
-        // Backend returns newest first; reverse for bottom-to-top chat order
+        // Backend returns newest first; reverse for chronological order
         const sorted = [...res.data.items].reverse();
         setMessages(sorted);
       }
-      // Mark messages as read
       await markMessagesAsRead(token, conversationId);
     } catch (err: any) {
-      setError(err.message || 'Could not load conversation messages.');
+      setError(err?.message || 'Could not load conversation messages.');
     } finally {
       setLoading(false);
     }
@@ -71,11 +75,9 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     loadMessages();
 
-    // Initialize Socket.IO connection
     const socket = initChatSocket(token);
     joinConversationRoom(conversationId);
 
-    // Listen for new incoming messages
     const handleNewMessage = (msg: ChatMessage) => {
       if (msg.conversationId === conversationId) {
         setMessages((prev) => {
@@ -86,7 +88,6 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
 
-    // Listen for read receipts
     const handleMessagesRead = (payload: { conversationId: string; readerId: string }) => {
       if (payload.conversationId === conversationId) {
         setMessages((prev) =>
@@ -97,7 +98,6 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
 
-    // Listen for contact exchange updates
     const handleContactUpdate = (payload: {
       conversationId: string;
       contactExchange: ContactExchangeDetails;
@@ -135,7 +135,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         });
       }
     } catch (err: any) {
-      Alert.alert('Message Failed', err.message || 'Unable to send message.');
+      Alert.alert('Message Failed', err?.message || 'Unable to send message.');
     } finally {
       setSending(false);
     }
@@ -149,26 +149,19 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         setContactExchange(res.data);
       }
       if (action === 'request') {
-        Alert.alert(
-          'Contact Request Sent 📱',
-          `A verified contact request was sent to ${partnerName}. Both parties must consent before phone numbers are disclosed.`
-        );
+        Alert.alert('Request Sent', 'Your contact exchange request has been sent.');
       } else if (action === 'accept') {
-        Alert.alert(
-          'Contact Details Unlocked 🎉',
-          `You and ${partnerName} have mutually consented to share contact details.`
-        );
-      } else if (action === 'decline') {
-        Alert.alert('Declined', 'Contact request was declined.');
+        Alert.alert('Contacts Shared 🎉', 'Mutual contact details have been unlocked!');
       }
     } catch (err: any) {
-      Alert.alert('Action Failed', err.message || 'Could not process contact sharing request.');
+      Alert.alert('Action Notice', err?.message || 'Could not update contact status.');
     } finally {
       setContactActionLoading(false);
     }
   };
 
-  const formatTime = (dateStr: string) => {
+  const formatMessageTime = (dateStr?: string) => {
+    if (!dateStr) return '';
     try {
       const d = new Date(dateStr);
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -177,193 +170,211 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
-      <Header
-        title={partnerName}
-        subtitle="✓ ID Verified • Mutual Match"
-        onBack={() => navigation.goBack()}
-        showStatusBadge={true}
-        rightAction={
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('ReportBlock', {
-                profileId: conversationId,
-                name: partnerName,
-              })
-            }
-            style={styles.menuBtn}
-          >
-            <Text style={styles.menuText}>⚠️ Report</Text>
-          </TouchableOpacity>
-        }
-      />
+  const renderMessageBubble = ({ item }: { item: ChatMessage }) => {
+    const isMe = item.senderId === currentUserId;
+    const isRead = item.status === 'read';
 
+    return (
+      <View
+        style={[
+          styles.messageRow,
+          isMe ? styles.messageRowMe : styles.messageRowThem,
+        ]}
+      >
+        <View
+          style={[
+            styles.bubbleContainer,
+            isMe ? styles.bubbleMe : styles.bubbleThem,
+          ]}
+        >
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={[
+              styles.messageText,
+              isMe ? styles.messageTextMe : styles.messageTextThem,
+            ]}
+          >
+            {item.text}
+          </Text>
+
+          <View style={styles.bubbleFooter}>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.messageTime,
+                isMe ? styles.messageTimeMe : styles.messageTimeThem,
+              ]}
+            >
+              {formatMessageTime(item.createdAt)}
+            </Text>
+
+            {isMe && (
+              <Ionicons
+                name={isRead ? 'checkmark-done' : 'checkmark'}
+                size={14}
+                color={isRead ? '#93C5FD' : 'rgba(255,255,255,0.7)'}
+                style={{ marginLeft: 3 }}
+              />
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Top Header Bar */}
+      <View style={styles.headerBar}>
+        <PressableScale
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
+        </PressableScale>
+
+        <View style={styles.partnerInfoCol}>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            numberOfLines={1}
+            style={styles.partnerHeading}
+          >
+            {partnerName}
+          </Text>
+          <View style={styles.onlineBadge}>
+            <View style={styles.onlineDot} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.onlineText}>
+              {t('chatScreen.online')}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.avatarMini}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.avatarMiniText}>
+            {getInitials(partnerName)}
+          </Text>
+        </View>
+      </View>
+
+      {/* Contact Exchange Banner */}
+      <View style={styles.contactBanner}>
+        {contactExchange.status === 'accepted' ? (
+          <View style={styles.contactSharedBox}>
+            <Ionicons name="call" size={15} color="#166534" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.contactSharedTitle}>
+              {t('chatScreen.contactUnlocked')}
+            </Text>
+          </View>
+        ) : contactExchange.status === 'requested' &&
+          contactExchange.requestedBy !== currentUserId ? (
+          <View style={styles.contactActionBox}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.contactActionPrompt}>
+              {partnerName} requested contact sharing:
+            </Text>
+            <View style={styles.contactBtnRow}>
+              <PressableScale
+                style={styles.acceptContactBtn}
+                onPress={() => handleContactAction('accept')}
+                disabled={contactActionLoading}
+              >
+                <Text maxFontSizeMultiplier={1.2} style={styles.acceptContactText}>
+                  {t('chatScreen.acceptContact')}
+                </Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.declineContactBtn}
+                onPress={() => handleContactAction('decline')}
+                disabled={contactActionLoading}
+              >
+                <Text maxFontSizeMultiplier={1.2} style={styles.declineContactText}>
+                  {t('chatScreen.declineContact')}
+                </Text>
+              </PressableScale>
+            </View>
+          </View>
+        ) : contactExchange.status === 'requested' ? (
+          <View style={styles.contactPendingBox}>
+            <Ionicons name="hourglass-outline" size={14} color="#92400E" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.contactPendingText}>
+              {t('chatScreen.contactPending')}
+            </Text>
+          </View>
+        ) : (
+          <PressableScale
+            style={styles.requestContactBar}
+            onPress={() => handleContactAction('request')}
+            disabled={contactActionLoading}
+          >
+            <Ionicons name="shield-checkmark-outline" size={15} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.requestContactBarText}>
+              {t('chatScreen.requestContact')}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={ds.color.maroon} />
+          </PressableScale>
+        )}
+      </View>
+
+      {/* Keyboard-avoiding message area */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-
-        {/* Blueprint Safety Warning Banner (Blueprint S-14) */}
-        <View style={styles.safetyBanner}>
-          <Text style={styles.safetyIcon}>🛡️</Text>
-          <Text style={styles.safetyText}>
-            Safety First: Never send money, OTPs, or bank details. Verified identity badges do not
-            guarantee financial safety.
-          </Text>
-        </View>
-
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.royalMaroon} />
-            <Text style={styles.loadingText}>Connecting to conversation...</Text>
+        {loading ? (
+          <View style={styles.centerLoading}>
+            <ActivityIndicator size="large" color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.loadingText}>
+              Loading sacred conversation...
+            </Text>
           </View>
-        )}
-
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity onPress={loadMessages} style={styles.retryBtn}>
-              <Text style={styles.retryText}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <ScrollView
-          ref={scrollViewRef}
-          contentContainerStyle={styles.messagesContainer}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        >
-          {/* Blueprint Contact Share Consent Card (Blueprint S-14) */}
-          <View style={styles.contactShareCard}>
-            <Text style={styles.contactShareIcon}>📱</Text>
-            <View style={styles.contactShareBody}>
-              <Text style={styles.contactShareTitle}>Verified Contact Sharing</Text>
-
-              {contactExchange.status === 'accepted' ? (
-                <View style={styles.unlockedBox}>
-                  <Text style={styles.unlockedText}>
-                    ✅ Mutual Consent Granted! Contact details:
-                  </Text>
-                  <Text style={styles.unlockedDetail}>
-                    Phone: {contactExchange.phone || '+91 98XXXXXXXX'}
-                  </Text>
-                  {contactExchange.email && (
-                    <Text style={styles.unlockedDetail}>Email: {contactExchange.email}</Text>
-                  )}
-                </View>
-              ) : contactExchange.status === 'requested' ? (
-                <View>
-                  <Text style={styles.contactShareDesc}>
-                    A contact sharing request is currently pending review.
-                  </Text>
-                  <View style={styles.contactBtnRow}>
-                    <Button
-                      title="Accept Share"
-                      onPress={() => handleContactAction('accept')}
-                      loading={contactActionLoading}
-                      variant="primary"
-                      style={styles.contactBtnHalf}
-                    />
-                    <Button
-                      title="Decline"
-                      onPress={() => handleContactAction('decline')}
-                      disabled={contactActionLoading}
-                      variant="secondary"
-                      style={styles.contactBtnHalf}
-                    />
-                  </View>
-                </View>
-              ) : (
-                <View>
-                  <Text style={styles.contactShareDesc}>
-                    Phone numbers remain strictly masked by default. Both you and {partnerName} must
-                    explicitly consent to disclose numbers.
-                  </Text>
-                  <Button
-                    title="Request Contact Share"
-                    onPress={() => handleContactAction('request')}
-                    loading={contactActionLoading}
-                    variant="upgrade"
-                    style={styles.contactShareBtn}
-                  />
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* Messages */}
-          {messages.length === 0 && !loading && !error && (
-            <View style={styles.emptyNotice}>
-              <Text style={styles.emptyEmoji}>💬</Text>
-              <Text style={styles.emptyTitle}>Start your conversation</Text>
-              <Text style={styles.emptySub}>
-                Say hello to {partnerName}! Keep your introduction polite, respectful, and focused on shared values.
-              </Text>
-            </View>
-          )}
-
-          {messages.map((msg) => {
-            const isUser = msg.senderId === currentUserId;
-            return (
-              <View
-                key={msg.id}
-                style={[
-                  styles.messageBubbleWrapper,
-                  isUser ? styles.userWrapper : styles.partnerWrapper,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.messageBubble,
-                    isUser ? styles.userBubble : styles.partnerBubble,
-                  ]}
-                >
-                  <Text style={[styles.messageText, isUser ? styles.userText : styles.partnerText]}>
-                    {msg.text}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    <Text style={[styles.timeText, isUser ? styles.userTime : styles.partnerTime]}>
-                      {formatTime(msg.createdAt)}
-                    </Text>
-                    {isUser && (
-                      <Text style={styles.receiptText}>
-                        {msg.status === 'read' ? ' ✓✓' : ' ✓'}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* Message Input Footer */}
-        <View style={styles.inputBar}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Type a respectful message..."
-            placeholderTextColor={colors.textMuted}
-            value={inputMessage}
-            onChangeText={setInputMessage}
-            multiline={false}
-            maxLength={1000}
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessageBubble}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            showsVerticalScrollIndicator={false}
           />
-          <TouchableOpacity
-            style={[styles.sendButton, (!inputMessage.trim() || sending) && styles.sendBtnDisabled]}
-            onPress={handleSend}
-            disabled={!inputMessage.trim() || sending}
-            activeOpacity={0.8}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.sendButtonText}>Send</Text>
-            )}
-          </TouchableOpacity>
+        )}
+
+        {/* Bottom Input Area */}
+        <View
+          style={[
+            styles.inputToolbar,
+            { paddingBottom: Math.max(insets.bottom, ds.space.sm) },
+          ]}
+        >
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.textInput}
+              placeholder={t('chatScreen.inputPlaceholder')}
+              placeholderTextColor={ds.color.textMuted}
+              value={inputMessage}
+              onChangeText={setInputMessage}
+              multiline
+              maxLength={1000}
+            />
+
+            <PressableScale
+              style={[
+                styles.sendBtn,
+                !inputMessage.trim() && styles.sendBtnDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!inputMessage.trim() || sending}
+              accessibilityLabel="Send Message"
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="send" size={16} color="#FFFFFF" />
+              )}
+            </PressableScale>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -371,246 +382,242 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: ds.color.bg,
   },
-  menuBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.errorBg,
-    borderRadius: borderRadius.sm,
-  },
-  menuText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.alertRed,
-    fontWeight: '700',
-  },
-  safetyBanner: {
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF8E1',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
+    backgroundColor: ds.color.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#FFE082',
+    borderBottomColor: ds.color.border,
   },
-  safetyIcon: {
-    fontSize: 16,
-    marginRight: spacing.xs,
-  },
-  safetyText: {
-    flex: 1,
-    fontSize: typography.fontSizes.xs - 1,
-    color: '#8D6E63',
-    lineHeight: 16,
-  },
-  loadingContainer: {
-    padding: spacing.md,
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.surfaceWarm,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: ds.color.border,
+  },
+  partnerInfoCol: {
+    flex: 1,
+    marginLeft: ds.space.md,
+  },
+  partnerHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: ds.color.text,
+  },
+  onlineBadge: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 4,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#16A34A',
+  },
+  onlineText: {
+    fontSize: 11,
+    color: '#16A34A',
+    fontWeight: '600',
+  },
+  avatarMini: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.maroon,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingText: {
-    marginLeft: spacing.sm,
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
+  avatarMiniText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  errorBox: {
-    backgroundColor: colors.errorBg,
-    padding: spacing.sm,
-    alignItems: 'center',
+  contactBanner: {
+    backgroundColor: ds.color.surfaceWarm,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+    paddingHorizontal: ds.space.md,
+    paddingVertical: 7,
+  },
+  requestContactBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    gap: 6,
   },
-  errorText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.alertRed,
+  requestContactBarText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: ds.color.maroon,
   },
-  retryBtn: {
-    paddingHorizontal: spacing.sm,
+  contactSharedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  contactSharedTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  contactActionBox: {
     paddingVertical: 2,
   },
-  retryText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.royalMaroon,
-    fontWeight: '700',
-  },
-  messagesContainer: {
-    padding: spacing.md,
-    paddingBottom: spacing.xl,
-  },
-  contactShareCard: {
-    backgroundColor: colors.surfaceCard,
-    borderWidth: 1,
-    borderColor: colors.softGold,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-  },
-  contactShareIcon: {
-    fontSize: 26,
-    marginRight: spacing.sm,
-  },
-  contactShareBody: {
-    flex: 1,
-  },
-  contactShareTitle: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: '700',
-    color: colors.charcoal,
-  },
-  contactShareDesc: {
-    fontSize: typography.fontSizes.xs - 2,
-    color: colors.textSecondary,
-    marginVertical: 4,
-    lineHeight: 16,
-  },
-  contactShareBtn: {
-    minHeight: 36,
-    paddingVertical: spacing.xs,
-    marginTop: spacing.xs,
+  contactActionPrompt: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ds.color.text,
+    marginBottom: 4,
   },
   contactBtnRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: 8,
   },
-  contactBtnHalf: {
-    flex: 1,
-    minHeight: 34,
-    paddingVertical: spacing.xs,
+  acceptContactBtn: {
+    backgroundColor: ds.color.maroon,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
-  unlockedBox: {
-    marginTop: spacing.xs,
-    padding: spacing.sm,
-    backgroundColor: '#E8F5E9',
-    borderRadius: borderRadius.sm,
-  },
-  unlockedText: {
-    fontSize: typography.fontSizes.xs,
+  acceptContactText: {
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '700',
-    color: '#2E7D32',
-    marginBottom: 2,
   },
-  unlockedDetail: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.charcoal,
+  declineContactBtn: {
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  declineContactText: {
+    color: ds.color.textMuted,
+    fontSize: 11,
     fontWeight: '600',
   },
-  emptyNotice: {
+  contactPendingBox: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.xl,
-    marginVertical: spacing.xl,
+    gap: 6,
   },
-  emptyEmoji: {
-    fontSize: 36,
-    marginBottom: spacing.sm,
+  contactPendingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#92400E',
   },
-  emptyTitle: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: '700',
-    color: colors.charcoal,
+  messagesList: {
+    padding: ds.space.md,
   },
-  emptySub: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginTop: spacing.xs,
+  messageRow: {
+    marginVertical: 4,
+    flexDirection: 'row',
   },
-  messageBubbleWrapper: {
-    marginBottom: spacing.md,
-    maxWidth: '82%',
+  messageRowMe: {
+    justifyContent: 'flex-end',
   },
-  userWrapper: {
-    alignSelf: 'flex-end',
+  messageRowThem: {
+    justifyContent: 'flex-start',
   },
-  partnerWrapper: {
-    alignSelf: 'flex-start',
+  bubbleContainer: {
+    maxWidth: '78%',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    ...ds.shadow.soft,
   },
-  messageBubble: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
+  bubbleMe: {
+    backgroundColor: ds.color.maroon,
+    borderBottomRightRadius: 4,
   },
-  userBubble: {
-    backgroundColor: colors.royalMaroon,
-    borderBottomRightRadius: 2,
-  },
-  partnerBubble: {
-    backgroundColor: colors.surface,
-    borderBottomLeftRadius: 2,
+  bubbleThem: {
+    backgroundColor: ds.color.surface,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: ds.color.border,
+    borderBottomLeftRadius: 4,
   },
   messageText: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: 14,
     lineHeight: 20,
   },
-  userText: {
+  messageTextMe: {
     color: '#FFFFFF',
   },
-  partnerText: {
-    color: colors.charcoal,
+  messageTextThem: {
+    color: ds.color.text,
   },
-  metaRow: {
+  bubbleFooter: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     marginTop: 3,
   },
-  timeText: {
+  messageTime: {
     fontSize: 10,
   },
-  userTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
+  messageTimeMe: {
+    color: 'rgba(255,255,255,0.75)',
   },
-  partnerTime: {
-    color: colors.textMuted,
+  messageTimeThem: {
+    color: ds.color.textMuted,
   },
-  receiptText: {
-    fontSize: 10,
-    color: colors.softGold,
-    marginLeft: 3,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
+  centerLoading: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: ds.space.sm,
+    fontSize: 13,
+    color: ds.color.textMuted,
+  },
+  inputToolbar: {
+    backgroundColor: ds.color.surface,
+    borderTopWidth: 1,
+    borderTopColor: ds.color.border,
+    paddingHorizontal: ds.space.md,
+    paddingTop: ds.space.sm,
+  },
+  inputCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.surfaceWarm,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 4,
   },
   textInput: {
     flex: 1,
-    minHeight: 42,
-    backgroundColor: colors.surfaceCard,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    fontSize: typography.fontSizes.sm,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-    color: colors.charcoal,
+    fontSize: 14,
+    color: ds.color.text,
+    maxHeight: 90,
+    paddingVertical: 6,
   },
-  sendButton: {
-    marginLeft: spacing.sm,
-    backgroundColor: colors.royalMaroon,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: borderRadius.full,
-    minHeight: 42,
+  sendBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: ds.color.maroon,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendBtnDisabled: {
-    opacity: 0.5,
-  },
-  sendButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: typography.fontSizes.sm,
+    backgroundColor: '#D1C7BD',
   },
 });
