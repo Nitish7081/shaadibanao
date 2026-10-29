@@ -4,15 +4,18 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   TextInput,
   ActivityIndicator,
   Alert,
   Image,
+  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, fonts, spacing, borderRadius, shadows } from '../constants/theme';
+import { useTranslation } from 'react-i18next';
+import { ds, PressableScale } from '../design';
 import { API_BASE, getAuthHeader, getSessionToken } from '../services/authSession';
 import {
   pickImageFromGallery,
@@ -21,6 +24,10 @@ import {
 import { uploadAsset } from '../services/imageUpload';
 
 export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [caption, setCaption] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [category, setCategory] = useState<'wedding_story' | 'culture' | 'festivals' | 'advice'>('wedding_story');
@@ -28,10 +35,10 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
   const [uploadProgressMsg, setUploadProgressMsg] = useState('');
 
   const categories = [
-    { key: 'wedding_story', label: 'Wedding Story' },
-    { key: 'festivals', label: 'Festive Celebration' },
-    { key: 'culture', label: 'Tradition / Culture' },
-    { key: 'advice', label: 'Ceremony Advice' },
+    { key: 'wedding_story', label: t('communityScreen.weddings'), icon: 'heart' as const },
+    { key: 'festivals', label: t('communityScreen.festivals'), icon: 'flame' as const },
+    { key: 'culture', label: t('communityScreen.traditions'), icon: 'rose' as const },
+    { key: 'advice', label: t('communityScreen.advice'), icon: 'book' as const },
   ];
 
   const handlePickFromGallery = async () => {
@@ -76,8 +83,7 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
         throw new Error('You must be signed in to post stories.');
       }
 
-      // Step 1+2: validate, compress, and upload to Cloudinary via shared helper
-      setUploadProgressMsg('Uploading photo...');
+      setUploadProgressMsg('Uploading photo to Cloudinary...');
       const uploadRes = await uploadAsset({
         token,
         asset: selectedPhoto,
@@ -86,8 +92,7 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
       });
       const uploadedMediaUrl = uploadRes.url;
 
-      // Step 3: Create post with uploaded media URL
-      setUploadProgressMsg('Publishing story for moderation...');
+      setUploadProgressMsg('Publishing story for review...');
       const headers = await getAuthHeader();
       const res = await fetch(`${API_BASE}/community/posts`, {
         method: 'POST',
@@ -122,362 +127,420 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Share Community Story</Text>
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      {/* Navigation Bar */}
+      <View style={styles.topNav}>
+        <PressableScale
+          style={styles.navBackBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={22} color={ds.color.maroon} />
+        </PressableScale>
+        <Text
+          maxFontSizeMultiplier={1.2}
+          style={styles.navTitle}
+        >
+          {t('communityScreen.createTitle')}
+        </Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom + 40, 60) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Category Selection */}
-        <Text style={styles.label}>Category</Text>
-        <View style={styles.categoriesGrid}>
-          {categories.map((c) => {
-            const isSelected = category === c.key;
-            return (
-              <TouchableOpacity
-                key={c.key}
-                style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
-                onPress={() => setCategory(c.key as any)}
-                activeOpacity={0.7}
-              >
-                {isSelected && (
-                  <Ionicons name="checkmark-circle" size={14} color={colors.royalMaroon} style={{ marginRight: 4 }} />
-                )}
-                <Text style={[styles.categoryBtnText, isSelected && styles.categoryBtnTextActive]}>
-                  {c.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.sectionWrap}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            {t('communityScreen.categoryLabel')}
+          </Text>
+          <View style={styles.categoriesRow}>
+            {categories.map((c) => {
+              const isSelected = category === c.key;
+              return (
+                <PressableScale
+                  key={c.key}
+                  style={[styles.catBtn, isSelected && styles.catBtnActive]}
+                  onPress={() => setCategory(c.key as any)}
+                >
+                  <Ionicons
+                    name={c.icon}
+                    size={15}
+                    color={isSelected ? '#FFFFFF' : ds.color.maroon}
+                  />
+                  <Text
+                    maxFontSizeMultiplier={1.2}
+                    style={[styles.catBtnText, isSelected && styles.catBtnTextActive]}
+                  >
+                    {c.label}
+                  </Text>
+                </PressableScale>
+              );
+            })}
+          </View>
         </View>
 
-        {/* Photo Selection & Preview Card */}
-        <Text style={styles.label}>Story Photo</Text>
-        {selectedPhoto ? (
-          <View style={styles.previewCard}>
-            <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} resizeMode="cover" />
-            <View style={styles.photoTagBadge}>
-              <Text style={styles.photoTagText}>STORY PHOTO READY</Text>
-            </View>
-            <View style={styles.previewActions}>
-              <TouchableOpacity
-                style={styles.actionPill}
+        {/* Photo Selection Card */}
+        <View style={styles.sectionWrap}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            {t('communityScreen.photoLabel')}
+          </Text>
+
+          {selectedPhoto ? (
+            <View style={styles.previewContainer}>
+              <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} />
+              <PressableScale
+                style={styles.changePhotoBtn}
                 onPress={handlePickFromGallery}
-                disabled={submitting}
               >
-                <Ionicons name="images-outline" size={14} color={colors.royalMaroon} />
-                <Text style={styles.actionPillText}>Replace</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionPill, { borderColor: '#E8D4D6' }]}
-                onPress={() => setSelectedPhoto(null)}
-                disabled={submitting}
-              >
-                <Ionicons name="trash-outline" size={14} color={colors.alertRed} />
-                <Text style={[styles.actionPillText, { color: colors.alertRed }]}>Remove</Text>
-              </TouchableOpacity>
+                <Ionicons name="camera-reverse-outline" size={16} color="#FFFFFF" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.changePhotoBtnText}>
+                  {t('communityScreen.changePhoto')}
+                </Text>
+              </PressableScale>
             </View>
-          </View>
-        ) : (
-          <View style={styles.photoPickerBox}>
-            <Ionicons name="images-outline" size={40} color={colors.softGold} style={{ marginBottom: 8 }} />
-            <Text style={styles.pickerTitle}>Add a Celebration or Wedding Photo</Text>
-            <Text style={styles.pickerSub}>Select from gallery or capture with camera (max 5MB)</Text>
-            <View style={styles.pickerBtnsRow}>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={handlePickFromGallery}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="images" size={16} color="#FFFFFF" />
-                <Text style={styles.pickerButtonText}>Choose from Gallery</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.pickerButtonOutline}
-                onPress={handleCaptureCamera}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="camera" size={16} color={colors.royalMaroon} />
-                <Text style={styles.pickerButtonOutlineText}>Take Photo</Text>
-              </TouchableOpacity>
+          ) : (
+            <View style={styles.photoPickerCard}>
+              <View style={styles.photoIconCircle}>
+                <Ionicons name="image-outline" size={32} color={ds.color.maroon} />
+              </View>
+              <Text maxFontSizeMultiplier={1.2} style={styles.pickerHintTitle}>
+                Add a sacred celebration photo
+              </Text>
+              <Text maxFontSizeMultiplier={1.2} style={styles.pickerHintSub}>
+                Upload high quality JPG, PNG or WEBP (up to 5 MB)
+              </Text>
+
+              <View style={styles.pickerActionRow}>
+                <PressableScale
+                  style={styles.pickerOptionBtn}
+                  onPress={handlePickFromGallery}
+                >
+                  <Ionicons name="images-outline" size={18} color={ds.color.maroon} />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.pickerOptionText}>
+                    {t('communityScreen.galleryBtn')}
+                  </Text>
+                </PressableScale>
+
+                <PressableScale
+                  style={styles.pickerOptionBtn}
+                  onPress={handleCaptureCamera}
+                >
+                  <Ionicons name="camera-outline" size={18} color={ds.color.maroon} />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.pickerOptionText}>
+                    {t('communityScreen.cameraBtn')}
+                  </Text>
+                </PressableScale>
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        </View>
 
         {/* Caption Input */}
-        <Text style={styles.label}>Caption & Celebration Story</Text>
-        <TextInput
-          style={[styles.textInput, { height: 110, textAlignVertical: 'top' }]}
-          value={caption}
-          onChangeText={setCaption}
-          placeholder="Share your wedding memory, joyful moments, or traditional celebrations..."
-          placeholderTextColor="#9E9E9E"
-          multiline
-          maxLength={1000}
-        />
+        <View style={styles.sectionWrap}>
+          <Text maxFontSizeMultiplier={1.2} style={styles.fieldLabel}>
+            {t('communityScreen.captionLabel')}
+          </Text>
+          <View style={styles.inputCard}>
+            <TextInput
+              style={styles.textInput}
+              multiline
+              numberOfLines={4}
+              maxLength={500}
+              placeholder={t('communityScreen.captionPlaceholder')}
+              placeholderTextColor={ds.color.textMuted}
+              value={caption}
+              onChangeText={setCaption}
+              textAlignVertical="top"
+            />
+            <Text maxFontSizeMultiplier={1.2} style={styles.charCount}>
+              {caption.length} / 500
+            </Text>
+          </View>
+        </View>
 
-        {/* Moderation Safety Notice */}
-        <View style={styles.noteBox}>
-          <Ionicons name="shield-checkmark" size={18} color={colors.royalMaroon} />
-          <Text style={styles.noteText}>
-            All community stories are reviewed by ShaadiBanao administrators before public display to keep the community respectful, safe, and family-friendly.
+        {/* Sacred Community Guidelines Card */}
+        <View style={styles.guidelinesCard}>
+          <View style={styles.guidelinesHeader}>
+            <Ionicons name="shield-checkmark" size={18} color="#166534" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.guidelinesTitle}>
+              {t('communityScreen.guidelinesTitle')}
+            </Text>
+          </View>
+          <Text maxFontSizeMultiplier={1.2} style={styles.guidelinesBody}>
+            {t('communityScreen.guidelinesBody')}
           </Text>
         </View>
 
+        {/* Progress Message */}
+        {submitting && (
+          <View style={styles.progressRow}>
+            <ActivityIndicator size="small" color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.progressText}>
+              {uploadProgressMsg}
+            </Text>
+          </View>
+        )}
+
         {/* Submit Button */}
-        <TouchableOpacity
-          style={[styles.submitBtn, submitting && { opacity: 0.8 }]}
+        <PressableScale
+          style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
           onPress={handleSubmit}
           disabled={submitting}
-          activeOpacity={0.85}
         >
-          {submitting ? (
-            <View style={styles.loadingRow}>
-              <ActivityIndicator color="#FFFFFF" size="small" />
-              <Text style={[styles.submitBtnText, { marginLeft: 8 }]}>
-                {uploadProgressMsg || 'Submitting Story...'}
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.submitBtnText}>Submit Story for Review</Text>
-          )}
-        </TouchableOpacity>
+          <LinearGradient
+            colors={['#7A1528', '#9B1D36']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.submitGradient}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                <Text maxFontSizeMultiplier={1.2} style={styles.submitBtnText}>
+                  {t('communityScreen.submitBtn')}
+                </Text>
+              </>
+            )}
+          </LinearGradient>
+        </PressableScale>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenBg: {
     flex: 1,
-    backgroundColor: '#F8F5EE',
+    backgroundColor: ds.color.bg,
   },
-  header: {
-    backgroundColor: colors.royalMaroon,
-    paddingTop: 48,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+  topNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1.5,
-    borderBottomColor: colors.royalGold,
+    justifyContent: 'space-between',
+    paddingHorizontal: ds.space.md,
+    paddingVertical: ds.space.sm,
+    backgroundColor: ds.color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: fonts.headingBold,
+  navBackBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navTitle: {
+    fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
-    marginLeft: 14,
+    color: ds.color.text,
   },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
+  scrollContent: {
+    padding: ds.space.md,
   },
-  label: {
+  sectionWrap: {
+    marginBottom: ds.space.md,
+  },
+  fieldLabel: {
     fontSize: 13,
-    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
-    color: colors.royalMaroon,
+    color: ds.color.text,
     marginBottom: 8,
-    marginTop: 12,
   },
-  categoriesGrid: {
+  categoriesRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 12,
   },
-  categoryBtn: {
+  catBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    backgroundColor: ds.color.surface,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    paddingVertical: 9,
     paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.2,
-    borderColor: '#E8E2D8',
+    borderRadius: 999,
+    gap: 6,
   },
-  categoryBtnActive: {
-    backgroundColor: '#FFF0F4',
-    borderColor: colors.royalMaroon,
-    borderWidth: 1.5,
+  catBtnActive: {
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
   },
-  categoryBtnText: {
-    fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    fontWeight: '500',
+  catBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.text,
   },
-  categoryBtnTextActive: {
-    color: colors.royalMaroon,
-    fontFamily: fonts.bodySemiBold,
+  catBtnTextActive: {
+    color: '#FFFFFF',
     fontWeight: '700',
   },
-  previewCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+  photoPickerCard: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: ds.color.border,
+    borderStyle: 'dashed',
+    padding: ds.space.lg,
+    alignItems: 'center',
+  },
+  photoIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: ds.space.sm,
+  },
+  pickerHintTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: ds.color.text,
+    marginBottom: 4,
+  },
+  pickerHintSub: {
+    fontSize: 12,
+    color: ds.color.textMuted,
+    marginBottom: ds.space.md,
+    textAlign: 'center',
+  },
+  pickerActionRow: {
+    flexDirection: 'row',
+    gap: ds.space.md,
+    width: '100%',
+  },
+  pickerOptionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.color.surfaceWarm,
     borderWidth: 1,
-    borderColor: '#E8E2D8',
+    borderColor: ds.color.border,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 6,
+  },
+  pickerOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.maroon,
+  },
+  previewContainer: {
+    borderRadius: 20,
     overflow: 'hidden',
-    marginBottom: 14,
-    ...shadows.card,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    aspectRatio: 4 / 3,
+    ...ds.shadow.soft,
   },
   previewImage: {
     width: '100%',
-    height: 220,
-    backgroundColor: '#F0ECE4',
+    height: '100%',
   },
-  photoTagBadge: {
+  changePhotoBtn: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(128, 0, 32, 0.88)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-  },
-  photoTagText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontFamily: fonts.headingBold,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  previewActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    padding: 10,
-    backgroundColor: '#FFFFFF',
-  },
-  actionPill: {
+    bottom: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.7)',
     paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: '#FAF5ED',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-  },
-  actionPillText: {
-    fontSize: 11,
-    fontFamily: fonts.bodyMedium,
-    fontWeight: '600',
-    color: colors.royalMaroon,
-  },
-  photoPickerBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.royalGold,
-    padding: 20,
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  pickerTitle: {
-    fontSize: 14,
-    fontFamily: fonts.headingSemiBold,
-    fontWeight: '700',
-    color: colors.charcoal,
-    marginBottom: 4,
-  },
-  pickerSub: {
-    fontSize: 11,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
-    marginBottom: 14,
-  },
-  pickerBtnsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  pickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 7,
+    borderRadius: 999,
     gap: 6,
-    backgroundColor: colors.royalMaroon,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderRadius: 8,
   },
-  pickerButtonText: {
+  changePhotoBtnText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontFamily: fonts.headingBold,
     fontWeight: '700',
   },
-  pickerButtonOutline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
+  inputCard: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.royalMaroon,
-    paddingVertical: 9,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  pickerButtonOutlineText: {
-    color: colors.royalMaroon,
-    fontSize: 12,
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    ...ds.shadow.soft,
   },
   textInput: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E8E2D8',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 13,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    marginBottom: 14,
+    fontSize: 14,
+    color: ds.color.text,
+    minHeight: 90,
+    lineHeight: 20,
   },
-  noteBox: {
+  charCount: {
+    textAlign: 'right',
+    fontSize: 11,
+    color: ds.color.textMuted,
+    marginTop: 4,
+  },
+  guidelinesCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    padding: ds.space.md,
+    marginBottom: ds.space.lg,
+  },
+  guidelinesHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FAF5ED',
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E8DFD0',
-    marginVertical: 10,
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
-  noteText: {
+  guidelinesTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  guidelinesBody: {
     fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    marginLeft: 8,
-    flex: 1,
-    lineHeight: 17,
+    color: '#15803D',
+    lineHeight: 18,
   },
-  submitBtn: {
-    backgroundColor: colors.royalMaroon,
-    paddingVertical: 14,
-    minHeight: 50,
-    borderRadius: 8,
+  progressRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
-    ...shadows.card,
+    gap: 8,
+    marginBottom: ds.space.md,
+  },
+  progressText: {
+    fontSize: 13,
+    color: ds.color.maroon,
+    fontWeight: '600',
+  },
+  submitBtn: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
+  },
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
+  submitGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
   },
   submitBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontFamily: fonts.headingBold,
+    fontSize: 15,
     fontWeight: '700',
   },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
 });
-

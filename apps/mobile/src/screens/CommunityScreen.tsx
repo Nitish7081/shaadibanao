@@ -5,30 +5,37 @@ import {
   StyleSheet,
   FlatList,
   Image,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
   Alert,
+  RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, borderRadius, fonts } from '../constants/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { CommunityPostItem } from '@bandhansetu/shared';
+import { ds, PressableScale, Skeleton } from '../design';
 import { API_BASE } from '../services/authSession';
 import { cloudinaryUrl } from '../services/cloudinaryUrl';
 import { getAuthHeader } from '../services/authSession';
+import { getInitials } from '../components/home/matchPhoto';
 
 export const CommunityScreen: React.FC<any> = ({ navigation }) => {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+
   const [posts, setPosts] = useState<CommunityPostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const categories = [
-    { key: 'all', label: 'All Stories' },
-    { key: 'wedding_story', label: 'Weddings' },
-    { key: 'festivals', label: 'Festivals' },
-    { key: 'culture', label: 'Traditions' },
-    { key: 'advice', label: 'Ritual Advice' },
+    { key: 'all', label: t('communityScreen.allStories'), icon: 'sparkles' as const },
+    { key: 'wedding_story', label: t('communityScreen.weddings'), icon: 'heart' as const },
+    { key: 'festivals', label: t('communityScreen.festivals'), icon: 'flame' as const },
+    { key: 'culture', label: t('communityScreen.traditions'), icon: 'rose' as const },
+    { key: 'advice', label: t('communityScreen.advice'), icon: 'book' as const },
   ];
 
   useEffect(() => {
@@ -77,8 +84,8 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
 
   const handleReportPost = (postId: string) => {
     Alert.alert(
-      'Report Post',
-      'Do you want to report this post to the moderation team for review?',
+      t('communityScreen.reportPost'),
+      t('communityScreen.reportConfirm'),
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -102,338 +109,492 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
     );
   };
 
+  const renderHeader = () => (
+    <View style={styles.headerBlock}>
+      {/* Title & Share Button Row */}
+      <View style={styles.headerTopRow}>
+        <View style={styles.titleCol}>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenHeading}
+          >
+            {t('communityScreen.headerTitle')}
+          </Text>
+          <Text
+            maxFontSizeMultiplier={1.2}
+            style={styles.screenSubheading}
+          >
+            {t('communityScreen.headerSubtitle')}
+          </Text>
+        </View>
+
+        <PressableScale
+          style={styles.shareBtn}
+          onPress={() => navigation.navigate('CreatePost')}
+          accessibilityLabel="Share Story"
+        >
+          <LinearGradient
+            colors={['#7A1528', '#9B1D36']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.shareBtnGradient}
+          >
+            <Ionicons name="add" size={18} color="#FFFFFF" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.shareBtnText}>
+              {t('communityScreen.shareStory')}
+            </Text>
+          </LinearGradient>
+        </PressableScale>
+      </View>
+
+      {/* Category Filter Pills */}
+      <FlatList
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        data={categories}
+        keyExtractor={(c) => c.key}
+        contentContainerStyle={styles.categoryPillsList}
+        renderItem={({ item }) => {
+          const isSelected = selectedCategory === item.key;
+          return (
+            <PressableScale
+              style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
+              onPress={() => setSelectedCategory(item.key)}
+            >
+              <Ionicons
+                name={item.icon}
+                size={14}
+                color={isSelected ? '#FFFFFF' : ds.color.maroon}
+              />
+              <Text
+                maxFontSizeMultiplier={1.2}
+                style={[styles.categoryPillText, isSelected && styles.categoryPillTextActive]}
+              >
+                {item.label}
+              </Text>
+            </PressableScale>
+          );
+        }}
+      />
+    </View>
+  );
+
   const renderPostItem = ({ item }: { item: CommunityPostItem }) => {
     const formattedDate = item.createdAt
       ? new Date(item.createdAt).toLocaleDateString('en-IN', {
           month: 'short',
           day: 'numeric',
-          year: 'numeric',
         })
-      : '';
+      : 'Recently';
+
+    const authorInitials = getInitials(item.authorName || 'Community Member');
 
     return (
       <View style={styles.postCard}>
-        {/* Post Author Header */}
+        {/* Author Header */}
         <View style={styles.authorRow}>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarInitial}>{(item.authorName || 'M')[0]}</Text>
+          <LinearGradient
+            colors={['#7A1528', '#A22842']}
+            style={styles.authorAvatar}
+          >
+            <Text maxFontSizeMultiplier={1.2} style={styles.authorAvatarText}>
+              {authorInitials}
+            </Text>
+          </LinearGradient>
+
+          <View style={styles.authorInfoCol}>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={styles.authorName}
+            >
+              {item.authorName || 'Devotee / Member'}
+            </Text>
+            <Text maxFontSizeMultiplier={1.2} style={styles.postDate}>
+              {formattedDate}
+            </Text>
           </View>
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.authorName}>{item.authorName || 'Community Member'}</Text>
-            <Text style={styles.postDate}>{formattedDate}</Text>
+
+          <View style={styles.categoryBadgePill}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.categoryBadgeText}>
+              {(item.category || 'story').replace('_', ' ')}
+            </Text>
           </View>
-          <TouchableOpacity onPress={() => handleReportPost(item.id)} style={{ padding: 6 }}>
-            <Ionicons name="ellipsis-vertical" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+
+          <PressableScale
+            onPress={() => handleReportPost(item.id)}
+            style={styles.moreActionBtn}
+            accessibilityLabel="Report Post"
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color={ds.color.textMuted} />
+          </PressableScale>
         </View>
 
         {/* Media Photo */}
         {item.mediaUrl ? (
-          <Image
-            source={{ uri: cloudinaryUrl(item.mediaUrl, 'post') }}
-            style={styles.postImage}
-            resizeMode="cover"
-          />
+          <View style={styles.mediaContainer}>
+            <Image
+              source={{ uri: cloudinaryUrl(item.mediaUrl, 'post') }}
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+          </View>
         ) : null}
 
-        {/* Action Bar */}
-        <View style={styles.actionBar}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => handleToggleLike(item.id)}
-          >
-            <Ionicons
-              name={item.isLikedByMe ? 'heart' : 'heart-outline'}
-              size={22}
-              color={item.isLikedByMe ? colors.alertRed : colors.charcoal}
-            />
-            <Text style={[styles.actionCount, item.isLikedByMe && { color: colors.alertRed }]}>
-              {item.likesCount || 0}
+        {/* Caption & Actions */}
+        <View style={styles.cardContentPadding}>
+          {item.caption ? (
+            <Text maxFontSizeMultiplier={1.2} style={styles.captionText}>
+              {item.caption}
             </Text>
-          </TouchableOpacity>
+          ) : null}
 
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>
-              {(item.category || 'story').replace('_', ' ')}
-            </Text>
+          {/* Action Row */}
+          <View style={styles.postActionRow}>
+            <PressableScale
+              style={[styles.likeBtn, item.isLikedByMe && styles.likeBtnActive]}
+              onPress={() => handleToggleLike(item.id)}
+              accessibilityLabel="Like Story"
+            >
+              <Ionicons
+                name={item.isLikedByMe ? 'heart' : 'heart-outline'}
+                size={18}
+                color={item.isLikedByMe ? '#DC2626' : ds.color.textMuted}
+              />
+              <Text
+                maxFontSizeMultiplier={1.2}
+                style={[styles.likeCountText, item.isLikedByMe && styles.likeCountActive]}
+              >
+                {item.likesCount || 0} {item.likesCount === 1 ? 'Blessing' : 'Blessings'}
+              </Text>
+            </PressableScale>
           </View>
-        </View>
-
-        {/* Caption */}
-        <View style={styles.captionWrap}>
-          <Text style={styles.captionText}>{item.caption}</Text>
         </View>
       </View>
     );
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Top Header */}
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerTitle}>ShaadiBanao Community</Text>
-            <Text style={styles.headerSubtitle}>Wedding memories, cultural stories & blessings</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.createBtn}
-            onPress={() => navigation.navigate('CreatePost')}
-          >
-            <Ionicons name="add" size={20} color="#FFFFFF" />
-            <Text style={styles.createBtnText}>Share Story</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Categories Bar */}
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={categories}
-          keyExtractor={(c) => c.key}
-          contentContainerStyle={styles.categoriesContainer}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.categoryChip,
-                selectedCategory === item.key && styles.categoryChipActive,
-              ]}
-              onPress={() => setSelectedCategory(item.key)}
-            >
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  selectedCategory === item.key && styles.categoryChipTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-      </View>
-
-      {/* Feed List */}
-      {loading && !refreshing ? (
-        <ActivityIndicator size="large" color={colors.royalMaroon} style={{ marginTop: 40 }} />
-      ) : (
-        <FlatList
-          style={{ flex: 1 }}
-          data={posts}
-          keyExtractor={(p) => p.id}
-          renderItem={renderPostItem}
-          contentContainerStyle={styles.feedContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                fetchFeed();
-              }}
-              colors={[colors.royalMaroon]}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Ionicons name="images-outline" size={54} color={colors.softGold} />
-              <Text style={styles.emptyTitle}>No Stories Yet</Text>
-              <Text style={styles.emptySub}>Be the first to share an auspicious wedding photo or celebration memory!</Text>
+  const renderEmptyOrLoading = () => {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.skeletonContainer}>
+          {[1, 2].map((k) => (
+            <View key={k} style={styles.skeletonCard}>
+              <View style={styles.skeletonHeader}>
+                <Skeleton width={42} height={42} radius={21} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Skeleton width="45%" height={16} radius={4} style={{ marginBottom: 6 }} />
+                  <Skeleton width="25%" height={12} radius={4} />
+                </View>
+              </View>
+              <Skeleton width="100%" height={240} radius={14} style={{ marginTop: 12 }} />
+              <Skeleton width="85%" height={14} radius={4} style={{ marginTop: 12 }} />
             </View>
-          }
-        />
-      )}
-    </View>
+          ))}
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyContainer}>
+        <LinearGradient
+          colors={['#FFF6E8', '#FFEECF']}
+          style={styles.emptyIconCircle}
+        >
+          <Ionicons name="images-outline" size={36} color={ds.color.maroon} />
+        </LinearGradient>
+        <Text maxFontSizeMultiplier={1.2} style={styles.emptyTitle}>
+          {t('communityScreen.noStoriesTitle')}
+        </Text>
+        <Text maxFontSizeMultiplier={1.2} style={styles.emptySubtitle}>
+          {t('communityScreen.noStoriesSub')}
+        </Text>
+        <PressableScale
+          style={styles.emptyActionBtn}
+          onPress={() => navigation.navigate('CreatePost')}
+        >
+          <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
+          <Text maxFontSizeMultiplier={1.2} style={styles.emptyActionBtnText}>
+            {t('communityScreen.shareFirstStory')}
+          </Text>
+        </PressableScale>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.screenBg}>
+      <FlatList
+        data={loading && !refreshing ? [] : posts}
+        keyExtractor={(p) => p.id}
+        renderItem={renderPostItem}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyOrLoading}
+        contentContainerStyle={[
+          styles.feedContent,
+          { paddingBottom: Math.max(insets.bottom + 90, 110) },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              fetchFeed();
+            }}
+            tintColor={ds.color.maroon}
+            colors={[ds.color.maroon]}
+          />
+        }
+      />
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenBg: {
     flex: 1,
-    backgroundColor: colors.ivory,
-  },
-  header: {
-    backgroundColor: colors.royalMaroon,
-    paddingTop: 48,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    borderBottomWidth: 1.5,
-    borderBottomColor: colors.royalGold,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: colors.softGold,
-    marginTop: 2,
-  },
-  createBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.softGold,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-  },
-  createBtnText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.headingBold,
-    fontWeight: '700',
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  categoriesContainer: {
-    paddingVertical: 4,
-  },
-  categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginRight: 8,
-  },
-  categoryChipActive: {
-    backgroundColor: '#FFFFFF',
-  },
-  categoryChipText: {
-    fontSize: 12,
-    fontFamily: fonts.bodyRegular,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  categoryChipTextActive: {
-    color: colors.royalMaroon,
-    fontFamily: fonts.bodySemiBold,
-    fontWeight: '700',
+    backgroundColor: ds.color.bg,
   },
   feedContent: {
-    padding: 14,
-    paddingBottom: 110,
+    paddingHorizontal: ds.space.md,
+  },
+  headerBlock: {
+    paddingTop: ds.space.sm,
+    paddingBottom: ds.space.md,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: ds.space.md,
+  },
+  titleCol: {
+    flex: 1,
+    paddingRight: ds.space.sm,
+  },
+  screenHeading: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: ds.color.maroon,
+    letterSpacing: -0.3,
+  },
+  screenSubheading: {
+    fontSize: 13,
+    color: ds.color.textMuted,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  shareBtn: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
+  },
+  shareBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    gap: 5,
+  },
+  shareBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  categoryPillsList: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  categoryPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    gap: 6,
+  },
+  categoryPillActive: {
+    backgroundColor: ds.color.maroon,
+    borderColor: ds.color.maroon,
+  },
+  categoryPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.text,
+  },
+  categoryPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   postCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    marginBottom: 16,
-    overflow: 'hidden',
+    backgroundColor: ds.color.surface,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#E8E2D8',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    borderColor: ds.color.border,
+    marginBottom: ds.space.md,
+    overflow: 'hidden',
+    ...ds.shadow.soft,
   },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    paddingHorizontal: ds.space.md,
+    paddingTop: ds.space.md,
+    paddingBottom: ds.space.sm,
   },
-  avatarWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.royalMaroon,
+  authorAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitial: {
+  authorAvatarText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: fonts.headingBold,
+    fontSize: 15,
     fontWeight: '700',
+  },
+  authorInfoCol: {
+    flex: 1,
+    marginLeft: 10,
   },
   authorName: {
     fontSize: 14,
-    fontFamily: fonts.headingSemiBold,
     fontWeight: '700',
-    color: colors.charcoal,
+    color: ds.color.text,
   },
   postDate: {
     fontSize: 11,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textMuted,
+    color: ds.color.textMuted,
     marginTop: 1,
+  },
+  categoryBadgePill: {
+    backgroundColor: ds.color.surfaceWarm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    marginRight: 6,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: ds.color.maroon,
+    textTransform: 'capitalize',
+  },
+  moreActionBtn: {
+    padding: 6,
+  },
+  mediaContainer: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    backgroundColor: '#F5ECE1',
   },
   postImage: {
     width: '100%',
-    height: 240,
-    backgroundColor: '#F0ECE4',
+    height: '100%',
   },
-  actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionCount: {
-    fontSize: 13,
-    fontFamily: fonts.bodySemiBold,
-    fontWeight: '600',
-    color: colors.charcoal,
-    marginLeft: 6,
-  },
-  categoryBadge: {
-    backgroundColor: '#FAF5ED',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E8DFD0',
-  },
-  categoryText: {
-    fontSize: 11,
-    fontFamily: fonts.bodyMedium,
-    color: colors.royalMaroon,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  captionWrap: {
-    paddingHorizontal: 12,
-    paddingBottom: 14,
-    paddingTop: 4,
+  cardContentPadding: {
+    padding: ds.space.md,
   },
   captionText: {
-    fontSize: 13,
-    fontFamily: fonts.bodyRegular,
-    color: colors.charcoal,
-    lineHeight: 18,
+    fontSize: 14,
+    color: ds.color.textBody,
+    lineHeight: 21,
+    marginBottom: ds.space.sm,
   },
-  emptyState: {
+  postActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: ds.space.xs,
+    borderTopWidth: 1,
+    borderTopColor: ds.color.border,
+  },
+  likeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: ds.color.surfaceWarm,
+    gap: 6,
+  },
+  likeBtnActive: {
+    backgroundColor: '#FEE2E2',
+  },
+  likeCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ds.color.textMuted,
+  },
+  likeCountActive: {
+    color: '#DC2626',
+    fontWeight: '700',
+  },
+  skeletonContainer: {
+    paddingTop: ds.space.sm,
+  },
+  skeletonCard: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.md,
+    marginBottom: ds.space.md,
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    backgroundColor: ds.color.surface,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    padding: ds.space.xl,
+    alignItems: 'center',
+    marginTop: ds.space.lg,
+    ...ds.shadow.soft,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 60,
-    paddingHorizontal: 30,
+    marginBottom: ds.space.md,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontFamily: fonts.headingBold,
+    fontSize: 17,
     fontWeight: '700',
-    color: colors.charcoal,
-    marginTop: 12,
+    color: ds.color.text,
+    marginBottom: 6,
   },
-  emptySub: {
+  emptySubtitle: {
     fontSize: 13,
-    fontFamily: fonts.bodyRegular,
-    color: colors.textSecondary,
+    color: ds.color.textMuted,
     textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 18,
+    lineHeight: 19,
+    marginBottom: ds.space.lg,
+    paddingHorizontal: ds.space.md,
+  },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: ds.color.maroon,
+    paddingVertical: 11,
+    paddingHorizontal: ds.space.lg,
+    borderRadius: 14,
+    gap: 8,
+  },
+  emptyActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
