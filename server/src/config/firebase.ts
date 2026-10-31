@@ -148,7 +148,7 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<DecodedFir
 
     if (hasServiceAccount) {
       try {
-        decoded = await auth.verifyIdToken(idToken, true);
+        decoded = await auth.verifyIdToken(idToken, false);
       } catch (revocationError: any) {
         // If revocation check specifically fails due to missing/expired OAuth2 credentials,
         // fall back to cryptographic verification without revocation check

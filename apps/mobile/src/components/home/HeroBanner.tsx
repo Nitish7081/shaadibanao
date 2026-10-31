@@ -92,7 +92,7 @@ export const HeroBanner: React.FC<Props> = ({ banners, loading = false, onBanner
         style={styles.card}
       >
         <View style={styles.art} pointerEvents="none">
-          <HeroArt size={190} />
+          <HeroArt size={135} />
         </View>
         <LinearGradient
           colors={['rgba(84,9,23,0.88)', 'rgba(84,9,23,0.55)', 'rgba(84,9,23,0)']}
@@ -236,8 +236,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: ds.radius.xl,
     overflow: 'hidden',
-    height: 200,
-    marginBottom: ds.space.lg,
+    height: 145,
+    marginBottom: ds.space.md,
     position: 'relative',
     ...ds.shadow.lift,
   },
@@ -256,8 +256,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
   },
-  art: { position: 'absolute', right: -24, bottom: -14, opacity: 0.95 },
-  content: { padding: ds.space.xl, maxWidth: '80%' },
+  art: { position: 'absolute', right: -12, bottom: -8, opacity: 0.92 },
+  content: { paddingVertical: ds.space.md, paddingHorizontal: ds.space.lg, maxWidth: '82%' },
   bannerContent: {
     position: 'absolute',
     bottom: 0,
@@ -269,18 +269,18 @@ const styles = StyleSheet.create({
   kicker: { fontFamily: ds.font.bodySemiBold, fontSize: 12, color: '#F9D976', letterSpacing: 1.2 },
   headline: {
     fontFamily: ds.font.headingBold,
-    fontSize: 21,
-    lineHeight: 28,
+    fontSize: 16,
+    lineHeight: 21,
     color: '#FFFFFF',
-    marginTop: ds.space.sm,
-    marginBottom: ds.space.lg,
+    marginTop: 4,
+    marginBottom: 8,
   },
   bannerHeadline: {
     fontFamily: ds.font.headingBold,
-    fontSize: 19,
-    lineHeight: 25,
+    fontSize: 15,
+    lineHeight: 20,
     color: '#FFFFFF',
-    marginBottom: ds.space.sm,
+    marginBottom: 6,
   },
   bannerCtaRow: {
     flexDirection: 'row',
@@ -290,14 +290,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 6,
+    gap: 5,
     backgroundColor: '#F9D976',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
     borderRadius: ds.radius.pill,
-    minHeight: 40,
+    minHeight: 32,
   },
-  ctaText: { fontFamily: ds.font.bodyBold, fontSize: 13, color: ds.color.deepMaroon },
+  ctaText: { fontFamily: ds.font.bodyBold, fontSize: 12, color: ds.color.deepMaroon },
   dotsRow: {
     position: 'absolute',
     bottom: 10,

@@ -188,7 +188,7 @@ export async function signInWithGoogle(): Promise<{ idToken: string }> {
     throw new Error('Firebase Google Sign-In failed: User credential was not returned.');
   }
 
-  const firebaseIdToken = await userCredential.user.getIdToken(true);
+  const firebaseIdToken = await userCredential.user.getIdToken(false);
   if (!firebaseIdToken) {
     throw new Error('Failed to retrieve Firebase ID token from authenticated Google user.');
   }
@@ -343,3 +343,8 @@ export function describeLoginError(err: any): string {
   return describeFirebaseAuthError(err);
 }
 
+
+// Pre-initialize Google Sign-In for instant tap response
+try {
+  configureGoogleSignIn();
+} catch {}

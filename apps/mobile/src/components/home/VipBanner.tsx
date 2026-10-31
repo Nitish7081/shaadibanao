@@ -38,7 +38,7 @@ export const VipBanner: React.FC<Props> = ({ onUpgradePress }) => (
 );
 
 const styles = StyleSheet.create({
-  card: { borderRadius: ds.radius.xl, padding: ds.space.lg + 2, marginBottom: ds.space.md, ...ds.shadow.lift },
+  card: { borderRadius: ds.radius.xl, padding: ds.space.lg + 2, marginBottom: 0, ...ds.shadow.lift },
   row: { flexDirection: 'row', alignItems: 'center', gap: ds.space.md },
   crown: {
     width: 48,

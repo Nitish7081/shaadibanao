@@ -200,7 +200,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 96 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 16) + 20 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -230,10 +230,12 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           onExplorePress={() => navigation.navigate('Matches')}
         />
 
-        <CompletionCard
-          percentage={completeness}
-          onCompletePress={() => navigation.navigate('ProfileCreation')}
-        />
+        {completeness < 100 && (
+          <CompletionCard
+            percentage={completeness}
+            onCompletePress={() => navigation.navigate('ProfileCreation')}
+          />
+        )}
 
         <StatTiles
           newInterests={stats.newInterests}

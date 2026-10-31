@@ -17,6 +17,7 @@ const C = 2 * Math.PI * R;
 export const CompletionCard: React.FC<Props> = ({ percentage, onCompletePress }) => {
   const pct = Math.max(0, Math.min(100, Math.round(percentage || 0)));
   const done = pct >= 100;
+  if (done) return null;
   return (
     <View style={styles.card}>
       <View style={{ width: SIZE, height: SIZE }}>
