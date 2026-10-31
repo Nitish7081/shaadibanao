@@ -47,6 +47,29 @@ export class SearchService {
 
     const isDbConnected = mongoose.connection.readyState === 1;
 
+    // Enforce matrimonial rule: A boy (male) only sees girls (female), and a girl (female) only sees boys (male)
+    let viewerGender: string | undefined;
+    if (isDbConnected) {
+      const viewerDoc = await ProfileModel.findOne({ userId: requestingUserId }).select('gender');
+      if (viewerDoc?.gender) {
+        viewerGender = viewerDoc.gender;
+      }
+    } else {
+      const viewerDoc =
+        inMemoryProfileStore.get(requestingUserId) ||
+        inMemoryProfileRegistry.find((p) => p.userId === requestingUserId);
+      if (viewerDoc?.gender) {
+        viewerGender = viewerDoc.gender;
+      }
+    }
+
+    let targetGender = gender;
+    if (viewerGender === 'male') {
+      targetGender = 'female';
+    } else if (viewerGender === 'female') {
+      targetGender = 'male';
+    }
+
     let candidateProfiles: any[] = [];
     let totalCount = 0;
 
@@ -88,7 +111,7 @@ export class SearchService {
         userId: { $in: eligibleUserIds },
       };
 
-      if (gender) query.gender = gender;
+      if (targetGender) query.gender = targetGender;
       if (maritalStatus) query.maritalStatus = maritalStatus;
       if (religion) query.religion = new RegExp(`^${religion}$`, 'i');
       if (motherTongue) query.motherTongue = new RegExp(`^${motherTongue}$`, 'i');
@@ -139,7 +162,7 @@ export class SearchService {
 
       candidateProfiles = pool.filter((p) => {
         if (p.userId === requestingUserId) return false;
-        if (gender && p.gender !== gender) return false;
+        if (targetGender && p.gender !== targetGender) return false;
         if (maritalStatus && p.maritalStatus !== maritalStatus) return false;
         if (religion && p.religion?.toLowerCase() !== religion.toLowerCase()) return false;
         if (motherTongue && p.motherTongue?.toLowerCase() !== motherTongue.toLowerCase()) return false;

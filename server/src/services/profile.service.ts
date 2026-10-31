@@ -197,7 +197,8 @@ export class ProfileService {
       const matchExisting = existingPhotos.find(
         (ep: any) => ep.url === photo.url || (photo.publicId && ep.publicId === photo.publicId)
       );
-      const wasApproved = matchExisting ? matchExisting.approved === true : false;
+      // Photos uploaded by matrimonial users are visible by default unless explicitly rejected
+      const wasApproved = matchExisting ? (matchExisting.approved !== false) : true;
       const approved = isTestEnv && typeof photo.approved === 'boolean' ? photo.approved : wasApproved;
 
       return {

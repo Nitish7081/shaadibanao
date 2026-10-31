@@ -27,6 +27,7 @@ import {
   sendInterest,
   getSessionToken,
 } from '../services';
+import { getCachedUserProfile } from '../services/authSession';
 import { SearchResultProfile, SearchFilterInput } from '@bandhansetu/shared';
 import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
@@ -65,10 +66,18 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   ];
 
   const buildFilterParams = useCallback((chipId: string, pageNum: number): Partial<SearchFilterInput> => {
+    const userProfile = getCachedUserProfile();
     const params: Partial<SearchFilterInput> = {
       page: pageNum,
       limit: 10,
     };
+
+    // Matrimonial opposite-gender rule: boy sees girl profiles, girl sees boy profiles
+    if (userProfile?.gender === 'male') {
+      params.gender = 'female';
+    } else if (userProfile?.gender === 'female') {
+      params.gender = 'male';
+    }
 
     if (chipId === 'verified') {
       params.verifiedOnly = true;

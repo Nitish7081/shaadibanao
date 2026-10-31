@@ -54,7 +54,7 @@ const ProfilePhotoSchema = new Schema<IProfilePhoto>(
       enum: PHOTO_PRIVACY,
       default: 'everyone',
     },
-    approved: { type: Boolean, default: false },
+    approved: { type: Boolean, default: true },
   },
   { _id: true }
 );

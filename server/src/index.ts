@@ -26,6 +26,7 @@ const startServer = async (): Promise<void> => {
 
   // Run legacy user approval status migration safely and idempotently
   await MigrationService.runApprovalsMigration();
+  await MigrationService.runPhotoApprovalMigration();
 
   const server = httpServer.listen(config.port, '0.0.0.0', () => {
     console.log(`===============================================`);

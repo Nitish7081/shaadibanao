@@ -252,9 +252,9 @@ export function buildPublicPhotos(doc: any, ctx: PhotoViewerContext = {}): Publi
   const ownerId = idOf(doc.userId);
   const accepted = !!ownerId && !!ctx.acceptedUserIds && ctx.acceptedUserIds.has(ownerId);
 
-  // Only moderation-approved photos are ever public.
+  // Moderation-approved photos (or uploaded photos not rejected) are public.
   return (doc.photos || [])
-    .filter((p: any) => p.approved === true)
+    .filter((p: any) => p.approved !== false && !!p.url)
     .map((p: any): PublicPhotoOut => {
       const mode = effectivePhotoPrivacy(doc.photoPrivacy, p.privacy);
       const canSeeOriginal = mode === 'everyone' || (mode === 'after_interest_accepted' && accepted);

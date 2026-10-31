@@ -336,6 +336,14 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
         Alert.alert('Required Field', 'Please specify your occupation.');
         return false;
       }
+    } else if (currentStep === 6) {
+      if (photos.length === 0 && !selectedPhotoUri) {
+        Alert.alert(
+          'Photo Required',
+          'A profile photo is compulsory. Please upload a clear photo before proceeding to the next step.'
+        );
+        return false;
+      }
     } else if (currentStep === 8) {
       const minA = parseInt(prefMinAge, 10);
       const maxA = parseInt(prefMaxAge, 10);
@@ -811,9 +819,9 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
             {/* STEP 6: PHOTOS & PRIVACY */}
             {currentStep === 6 && (
               <>
-                <Text style={styles.stepHeading}>Photos & Privacy Rules</Text>
+                <Text style={styles.stepHeading}>Photos & Privacy Rules * (Compulsory)</Text>
                 <Text style={styles.stepSub}>
-                  A clear face photo helps you get more responses from serious matches.
+                  A clear profile photo is compulsory. Profiles with photos get up to 10x more responses.
                 </Text>
 
                 {/* Photo Preview & Upload Box */}

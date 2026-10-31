@@ -1,8 +1,27 @@
 import mongoose from 'mongoose';
 import { UserModel } from '../models/user.model';
+import { ProfileModel } from '../models/profile.model';
 import { AuditLogModel } from '../models/audit-log.model';
 
 export class MigrationService {
+  /**
+   * Safe, idempotent migration to ensure all uploaded user photos are visible in profiles
+   */
+  public static async runPhotoApprovalMigration(): Promise<void> {
+    if (mongoose.connection.readyState !== 1) return;
+    try {
+      const res = await ProfileModel.updateMany(
+        { 'photos.approved': false },
+        { $set: { 'photos.$[].approved': true } }
+      );
+      if (res.modifiedCount > 0) {
+        console.log(`[Migration] Approved ${res.modifiedCount} user profiles with pending photos for public display.`);
+      }
+    } catch (err: any) {
+      console.warn('[Migration] Photo approval migration notice:', err?.message);
+    }
+  }
+
   /**
    * Safe, idempotent migration for existing users
    * Ensures pre-existing active users are not locked out,

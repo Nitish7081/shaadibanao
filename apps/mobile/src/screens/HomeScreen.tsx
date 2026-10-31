@@ -20,7 +20,7 @@ import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
 import { loadActivitySummary } from '../services/activityService';
 import { getActiveBanners } from '../services/bannerService';
-import { getSessionToken, getSessionUser, setCachedUserProfile, setCachedUserMembership } from '../services/authSession';
+import { getSessionToken, getSessionUser, getCachedUserProfile, setCachedUserProfile, setCachedUserMembership } from '../services/authSession';
 import { getMyMembership } from '../services/membershipService';
 import { EmptyMatchesState, ErrorState, OfflineBanner } from '../components/royal';
 import {
@@ -85,9 +85,13 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     setMatchesError(null);
     let networkDown = false;
 
+    // Matrimonial opposite-gender rule: boy sees girl profiles, girl sees boy profiles
+    const cachedProfile = profile || getCachedUserProfile();
+    const targetGender = cachedProfile?.gender === 'male' ? 'female' : (cachedProfile?.gender === 'female' ? 'male' : undefined);
+
     const [profileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
       getMyProfile(token),
-      searchProfiles(token, { limit: 8 }),
+      searchProfiles(token, { limit: 8, ...(targetGender ? { gender: targetGender } : {}) }),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
     ]);
