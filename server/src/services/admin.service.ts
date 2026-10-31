@@ -19,6 +19,7 @@ import { TokenService } from './token.service';
 import { SocketService } from '../socket/socket.service';
 import { AppError } from '../middleware/errorHandler';
 import { AuthTokens, UserSummary, PendingApprovalItem, ApprovalStatus } from '@bandhansetu/shared';
+import { inMemoryProfileStore } from './profile.service';
 
 // In-memory mock store for isolated unit tests when MongoDB is disconnected
 const inMemoryAdminStore = new Map<string, any>();
@@ -569,6 +570,16 @@ export class AdminService {
         delete user.rejectionReason;
         delete user.moderationRemarks;
       }
+      const prof = inMemoryProfileStore.get(targetUserId);
+      if (prof) {
+        prof.isVerified = true;
+        prof.photoChecked = true;
+        if (prof.photos && prof.photos.length > 0) {
+          prof.photos.forEach((ph: any) => {
+            ph.approved = true;
+          });
+        }
+      }
       return user || { id: targetUserId, approvalStatus: 'approved' };
     }
 
@@ -586,12 +597,21 @@ export class AdminService {
     user.moderationRemarks = undefined;
     await user.save();
 
-    // Verify associated matrimonial profile if exists
+    // Verify associated matrimonial profile if exists and approve photos for public view
     try {
-      await ProfileModel.findOneAndUpdate(
-        { userId: user._id },
-        { $set: { isVerified: true } }
-      );
+      const profile = await ProfileModel.findOne({ userId: user._id });
+      if (profile) {
+        profile.isVerified = true;
+        profile.photoChecked = true;
+        if (profile.photos && profile.photos.length > 0) {
+          profile.photos.forEach((ph: any) => {
+            ph.approved = true;
+          });
+          user.photoApprovalStatus = 'approved';
+          await user.save();
+        }
+        await profile.save();
+      }
     } catch {
       // Non-blocking
     }
