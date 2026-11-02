@@ -143,7 +143,7 @@ export async function signInWithGoogle(): Promise<{ idToken: string }> {
 
   configureGoogleSignIn();
 
-  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false });
   const signInResult = await GoogleSignin.signIn();
 
   // @react-native-google-signin v13+ resolves with { type: 'cancelled' } instead of throwing

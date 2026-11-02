@@ -72,7 +72,12 @@ export const CompactMatchCard: React.FC<Props> = ({ match, onPress, width }) => 
             </View>
           ) : <View />}
 
-          {score ? (
+          {isGated ? (
+            <View style={[styles.scoreBadge, { backgroundColor: '#540917' }]}>
+              <Ionicons name="ribbon" size={11} color="#F9D976" />
+              <Text style={[styles.scoreText, { color: '#F9D976' }]}>VIP Only</Text>
+            </View>
+          ) : score ? (
             <View style={styles.scoreBadge}>
               <Ionicons name="sparkles" size={11} color="#C9A24B" />
               <Text style={styles.scoreText} numberOfLines={1}>
@@ -108,8 +113,8 @@ export const CompactMatchCard: React.FC<Props> = ({ match, onPress, width }) => 
 
         {/* View Biodata CTA Tap Area */}
         <View style={styles.ctaRow}>
-          <Text style={styles.ctaLabel}>View Biodata</Text>
-          <Ionicons name="arrow-forward" size={14} color={ds.color.maroon} />
+          <Text style={styles.ctaLabel}>{isGated ? 'Unlock Biodata 👑' : 'View Biodata'}</Text>
+          <Ionicons name={isGated ? 'lock-closed' : 'arrow-forward'} size={14} color={ds.color.maroon} />
         </View>
       </View>
     </PressableScale>

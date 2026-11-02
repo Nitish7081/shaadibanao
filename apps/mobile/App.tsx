@@ -40,6 +40,8 @@ export default function App() {
 
   React.useEffect(() => {
     initI18n().finally(() => setI18nReady(true));
+    // Non-blocking background health ping to eliminate Render cold-start latency
+    fetch('https://shaadibanao.onrender.com/api/v1/health').catch(() => {});
   }, []);
 
   React.useEffect(() => {

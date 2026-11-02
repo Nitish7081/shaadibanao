@@ -27,7 +27,7 @@ import {
   sendInterest,
   getSessionToken,
 } from '../services';
-import { getCachedUserProfile } from '../services/authSession';
+import { getCachedUserProfile, isViewerPaywallRestrictedFor } from '../services/authSession';
 import { SearchResultProfile, SearchFilterInput } from '@bandhansetu/shared';
 import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
@@ -111,17 +111,21 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
 
         if (res.data) {
           const items = res.data.items;
+          const userProfile = getCachedUserProfile();
+          const requiredOpposite = userProfile?.gender === 'male' ? 'female' : (userProfile?.gender === 'female' ? 'male' : undefined);
+          const strictlyFiltered = requiredOpposite ? items.filter((p: any) => p.gender === requiredOpposite) : items;
+
           if (pageNum === 1) {
-            setResults(items);
+            setResults(strictlyFiltered);
           } else {
             setResults((prev) => {
               const existingIds = new Set(prev.map((p) => p.id));
-              const newItems = items.filter((p) => !existingIds.has(p.id));
+              const newItems = strictlyFiltered.filter((p) => !existingIds.has(p.id));
               return [...prev, ...newItems];
             });
           }
           setTotalPages(res.data.pagination.totalPages);
-          setTotalItems(res.data.pagination.totalCount);
+          setTotalItems(strictlyFiltered.length < items.length ? strictlyFiltered.length : res.data.pagination.totalCount);
           setPage(pageNum);
         }
       } catch (err: any) {
@@ -312,14 +316,19 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               ) : <View />}
 
-              {photo?.blurred && (
+              {isViewerPaywallRestrictedFor(item.gender) ? (
+                <View style={[styles.privacyTag, { backgroundColor: 'rgba(84,9,23,0.92)' }]}>
+                  <Ionicons name="ribbon" size={11} color="#F9D976" />
+                  <Text style={[styles.privacyTagText, { color: '#F9D976' }]}>VIP ONLY</Text>
+                </View>
+              ) : photo?.blurred ? (
                 <View style={styles.privacyTag}>
                   <Ionicons name="lock-closed" size={11} color="#FFFFFF" />
                   <Text style={styles.privacyTagText}>
                     {isHindi ? 'गोपनीय' : 'PRIVATE'}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
 
             {/* Bottom Scrim Content: Name, Age, Location */}

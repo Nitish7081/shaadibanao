@@ -17,6 +17,9 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     let isMounted = true;
 
+    // Wake up Render server asynchronously during splash screen
+    fetch('https://shaadibanao.onrender.com/api/v1/health').catch(() => {});
+
     const checkAuthAndNavigate = async () => {
       const startTime = Date.now();
       const hasStoredSession = await loadSessionFromStorage();

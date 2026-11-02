@@ -49,12 +49,14 @@ export const config = {
   },
   /**
    * Subscription / Paywall Gate
-   * PAYWALL_ENABLED=true  -> enforce the male-viewer / female-profile gate
-   * PAYWALL_ENABLED=false (default) -> gate is completely off for all users
-   * PAYWALL_EXEMPT_USERS -> comma-separated list of userId or email values that bypass the gate
+   * PAYWALL_ENABLED=false -> gate is explicitly disabled
+   * Default (unset)       -> gate is strictly active for male-viewer / female-profile
+   * PAYWALL_EXEMPT_USERS  -> comma-separated list of userId or email values that bypass the gate
    */
   paywall: {
-    enabled: process.env.PAYWALL_ENABLED === 'true',
+    enabled:
+      process.env.PAYWALL_ENABLED === 'true' ||
+      (process.env.NODE_ENV !== 'test' && process.env.PAYWALL_ENABLED !== 'false'),
     exemptUsers: (process.env.PAYWALL_EXEMPT_USERS || '')
       .split(',')
       .map((s) => s.trim().toLowerCase())

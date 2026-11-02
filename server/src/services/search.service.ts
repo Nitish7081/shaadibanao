@@ -50,7 +50,12 @@ export class SearchService {
     // Enforce matrimonial rule: A boy (male) only sees girls (female), and a girl (female) only sees boys (male)
     let viewerGender: string | undefined;
     if (isDbConnected) {
-      const viewerDoc = await ProfileModel.findOne({ userId: requestingUserId }).select('gender');
+      const queryViewerId = mongoose.Types.ObjectId.isValid(requestingUserId)
+        ? new mongoose.Types.ObjectId(requestingUserId)
+        : requestingUserId;
+      const viewerDoc = await ProfileModel.findOne({
+        $or: [{ userId: queryViewerId }, { userId: requestingUserId }],
+      }).select('gender');
       if (viewerDoc?.gender) {
         viewerGender = viewerDoc.gender;
       }

@@ -97,8 +97,8 @@ export const FeedMatchCard: React.FC<Props> = ({ match, onPress }) => {
             <View />
           )}
           <View style={styles.cta}>
-            <Text style={styles.ctaText}>View Biodata</Text>
-            <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+            <Text style={styles.ctaText}>{isGated ? 'Unlock Biodata 👑' : 'View Biodata'}</Text>
+            <Ionicons name={isGated ? 'lock-closed' : 'chevron-forward'} size={15} color="#FFFFFF" />
           </View>
         </View>
       </View>

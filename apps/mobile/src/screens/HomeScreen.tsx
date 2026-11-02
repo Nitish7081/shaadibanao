@@ -97,9 +97,11 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     ]);
 
     // 1. User profile (a missing profile is a normal state for new users)
+    let effectiveProfile = cachedProfile;
     if (profileRes.status === 'fulfilled' && profileRes.value?.data) {
       setProfile(profileRes.value.data);
       setCachedUserProfile(profileRes.value.data);
+      effectiveProfile = profileRes.value.data;
     } else if (profileRes.status === 'rejected' && isNetworkError(profileRes.reason)) {
       networkDown = true;
     } else {
@@ -120,7 +122,22 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
     // 3. Today's matches (limited to 8 server-side for speed)
     if (searchRes.status === 'fulfilled') {
-      setDailyMatches(searchRes.value?.data?.items || []);
+      const items = searchRes.value?.data?.items || [];
+      const requiredOpposite = effectiveProfile?.gender === 'male' ? 'female' : (effectiveProfile?.gender === 'female' ? 'male' : undefined);
+      // Strictly enforce opposite gender: a boy NEVER sees another boy, a girl NEVER sees another girl
+      const strictlyFiltered = requiredOpposite ? items.filter((m: any) => m.gender === requiredOpposite) : items;
+      setDailyMatches(strictlyFiltered);
+
+      // If initial search ran without target gender, re-fetch with known opposite gender immediately
+      if (!targetGender && requiredOpposite) {
+        searchProfiles(token, { limit: 8, gender: requiredOpposite })
+          .then((fresh) => {
+            if (fresh?.data?.items) {
+              setDailyMatches(fresh.data.items.filter((m: any) => m.gender === requiredOpposite));
+            }
+          })
+          .catch(() => {});
+      }
     } else {
       if (isNetworkError(searchRes.reason)) networkDown = true;
       setMatchesError(searchRes.reason?.message || t('home.unableToLoad'));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -36,7 +36,8 @@ import {
 type Props = NativeStackScreenProps<RootStackParamList, 'LoginOtp'>;
 
 export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language === 'hi';
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
@@ -177,6 +178,11 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  useEffect(() => {
+    // Pre-warm backend connection so Google sign-in completes instantly without cold-start delay
+    fetch('https://shaadibanao.onrender.com/api/v1/health').catch(() => {});
+  }, []);
+
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     try {
@@ -193,7 +199,9 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         }
       }
     } catch (gErr: any) {
-      Alert.alert('Google Sign-In', describeLoginError(gErr));
+      if (gErr?.code !== 'SIGN_IN_CANCELLED') {
+        Alert.alert('Google Sign-In', describeLoginError(gErr));
+      }
     } finally {
       setGoogleLoading(false);
     }
@@ -427,7 +435,12 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
               disabled={googleLoading}
             >
               {googleLoading ? (
-                <ActivityIndicator color={ds.color.maroon} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color={ds.color.maroon} size="small" style={{ marginRight: 8 }} />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.googleBtnText}>
+                    {isHindi ? 'लॉगिन हो रहा है...' : 'Signing in...'}
+                  </Text>
+                </View>
               ) : (
                 <>
                   <Ionicons name="logo-google" size={18} color={ds.color.maroon} />
