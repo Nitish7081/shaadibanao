@@ -85,13 +85,12 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     setMatchesError(null);
     let networkDown = false;
 
-    // Matrimonial opposite-gender rule: boy sees girl profiles, girl sees boy profiles
+    // Opposite-gender filtering is enforced server-side from the authenticated user's saved profile.
     const cachedProfile = profile || getCachedUserProfile();
-    const targetGender = cachedProfile?.gender === 'male' ? 'female' : (cachedProfile?.gender === 'female' ? 'male' : undefined);
 
     const [profileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
       getMyProfile(token),
-      searchProfiles(token, { limit: 8, ...(targetGender ? { gender: targetGender } : {}) }),
+      searchProfiles(token, { limit: 8 }),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
     ]);
@@ -123,21 +122,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     // 3. Today's matches (limited to 8 server-side for speed)
     if (searchRes.status === 'fulfilled') {
       const items = searchRes.value?.data?.items || [];
-      const requiredOpposite = effectiveProfile?.gender === 'male' ? 'female' : (effectiveProfile?.gender === 'female' ? 'male' : undefined);
-      // Strictly enforce opposite gender: a boy NEVER sees another boy, a girl NEVER sees another girl
-      const strictlyFiltered = requiredOpposite ? items.filter((m: any) => m.gender === requiredOpposite) : items;
-      setDailyMatches(strictlyFiltered);
-
-      // If initial search ran without target gender, re-fetch with known opposite gender immediately
-      if (!targetGender && requiredOpposite) {
-        searchProfiles(token, { limit: 8, gender: requiredOpposite })
-          .then((fresh) => {
-            if (fresh?.data?.items) {
-              setDailyMatches(fresh.data.items.filter((m: any) => m.gender === requiredOpposite));
-            }
-          })
-          .catch(() => {});
-      }
+      setDailyMatches(items);
     } else {
       if (isNetworkError(searchRes.reason)) networkDown = true;
       setMatchesError(searchRes.reason?.message || t('home.unableToLoad'));

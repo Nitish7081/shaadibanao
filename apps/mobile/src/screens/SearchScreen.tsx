@@ -66,18 +66,10 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   ];
 
   const buildFilterParams = useCallback((chipId: string, pageNum: number): Partial<SearchFilterInput> => {
-    const userProfile = getCachedUserProfile();
     const params: Partial<SearchFilterInput> = {
       page: pageNum,
       limit: 10,
     };
-
-    // Matrimonial opposite-gender rule: boy sees girl profiles, girl sees boy profiles
-    if (userProfile?.gender === 'male') {
-      params.gender = 'female';
-    } else if (userProfile?.gender === 'female') {
-      params.gender = 'male';
-    }
 
     if (chipId === 'verified') {
       params.verifiedOnly = true;
@@ -111,9 +103,8 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
 
         if (res.data) {
           const items = res.data.items;
-          const userProfile = getCachedUserProfile();
-          const requiredOpposite = userProfile?.gender === 'male' ? 'female' : (userProfile?.gender === 'female' ? 'male' : undefined);
-          const strictlyFiltered = requiredOpposite ? items.filter((p: any) => p.gender === requiredOpposite) : items;
+          // Opposite-gender filtering is enforced by the server from the saved profile.
+          const strictlyFiltered = items;
 
           if (pageNum === 1) {
             setResults(strictlyFiltered);

@@ -68,11 +68,22 @@ export class SearchService {
       }
     }
 
-    let targetGender = gender;
+    // The opposite gender is derived ONLY from the authenticated user's saved profile; the
+    // client-supplied `gender` filter is ignored. If the viewer's gender is unknown/missing we
+    // cannot safely pick a side, so no matchmaking results are returned (nothing is assumed).
+    let targetGender: 'male' | 'female' | undefined;
     if (viewerGender === 'male') {
       targetGender = 'female';
     } else if (viewerGender === 'female') {
       targetGender = 'male';
+    }
+    void gender;
+
+    if (!targetGender) {
+      return {
+        items: [],
+        pagination: { page, limit, totalCount: 0, totalPages: 1 },
+      };
     }
 
     let candidateProfiles: any[] = [];
