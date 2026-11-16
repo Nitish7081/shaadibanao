@@ -35,7 +35,7 @@ let cachedUserMembership: UserMembership | null = null;
 type AuthExpiredListener = (message: string) => void;
 const expiredListeners: Set<AuthExpiredListener> = new Set();
 
-type UserUpdatedListener = (user: UserSummary) => void;
+type UserUpdatedListener = (user: UserSummary | null) => void;
 const userUpdatedListeners: Set<UserUpdatedListener> = new Set();
 
 export function onAuthExpired(listener: AuthExpiredListener): () => void {
@@ -52,7 +52,7 @@ export function onUserUpdated(listener: UserUpdatedListener): () => void {
   };
 }
 
-function notifyUserUpdated(user: UserSummary): void {
+function notifyUserUpdated(user: UserSummary | null): void {
   userUpdatedListeners.forEach((listener) => {
     try {
       listener(user);
@@ -96,6 +96,7 @@ export function setSessionAuth(
   // Reset currentUserId and currentUser to prevent previous account data bleed
   currentUserId = userId ?? null;
   currentUser = user ?? null;
+  notifyUserUpdated(currentUser);
 
   // Persist to AsyncStorage asynchronously
   persistSessionToStorage();
@@ -248,6 +249,7 @@ export function clearSessionAuth(): void {
   currentRefreshToken = null;
   currentUserId = null;
   currentUser = null;
+  notifyUserUpdated(null);
 
   AsyncStorage.multiRemove([
     STORAGE_KEY_ACCESS,

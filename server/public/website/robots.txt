@@ -1,0 +1,11 @@
+# ShaadiBanao Official Website robots.txt
+# Public legal and support pages must remain accessible to search engines and Google Play review bots.
+
+User-agent: *
+Allow: /
+Allow: /privacy-policy
+Allow: /terms-and-conditions
+Allow: /delete-account
+Allow: /contact
+
+Sitemap: https://shaadibanao.com/sitemap.xml

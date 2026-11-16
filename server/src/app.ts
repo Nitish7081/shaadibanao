@@ -67,21 +67,39 @@ export const createApp = (): Express => {
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
   app.use(express.raw({ type: ['image/*', 'application/pdf', 'application/octet-stream'], limit: '15mb' }));
 
-  // Root welcome route
-  app.get('/', (req: Request, res: Response) => {
-    res.json({
-      name: 'BandhanSetu Matrimonial API',
-      status: 'active',
-      healthCheck: '/api/v1/health',
-      documentation: '/docs',
-    });
-  });
-
   // Storage health check (root-level alias)
   app.get('/health/storage', (req: Request, res: Response) => {
     const health = StorageService.getHealthStatus();
     res.status(200).json(health);
   });
+
+  // Serve Official ShaadiBanao Website
+  const websiteStaticPath = path.resolve(__dirname, '../public/website');
+  if (fs.existsSync(path.join(websiteStaticPath, 'index.html'))) {
+    app.use(express.static(websiteStaticPath));
+    const legalAndPublicPages = [
+      '/',
+      '/privacy-policy',
+      '/privacy',
+      '/terms-and-conditions',
+      '/terms',
+      '/delete-account',
+      '/contact',
+    ];
+    app.get(legalAndPublicPages, (req: Request, res: Response) => {
+      res.sendFile(path.join(websiteStaticPath, 'index.html'));
+    });
+  } else {
+    // Root welcome route fallback when website build is not present
+    app.get('/', (req: Request, res: Response) => {
+      res.json({
+        name: 'ShaadiBanao Matrimonial API',
+        status: 'active',
+        healthCheck: '/api/v1/health',
+        documentation: '/docs',
+      });
+    });
+  }
 
   // Sensitive endpoint rate limiting
   app.use('/api/v1/auth', sensitiveEndpointLimiter);
@@ -126,6 +144,21 @@ export const createApp = (): Express => {
   app.get('/admin/*', (req: Request, res: Response) => {
     res.sendFile(path.join(adminStaticPath, 'index.html'));
   });
+
+  // SPA Catch-All for ShaadiBanao Website (non-API and non-admin routes)
+  if (fs.existsSync(path.join(websiteStaticPath, 'index.html'))) {
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+      if (
+        req.originalUrl.startsWith('/api') ||
+        req.originalUrl.startsWith('/admin') ||
+        req.originalUrl.startsWith('/media') ||
+        req.originalUrl.startsWith('/health')
+      ) {
+        return next();
+      }
+      res.sendFile(path.join(websiteStaticPath, 'index.html'));
+    });
+  }
 
   // 404 Not Found Catch-All
   app.use('*', (req: Request, res: Response) => {

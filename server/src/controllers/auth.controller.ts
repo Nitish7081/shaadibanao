@@ -52,7 +52,8 @@ export class AuthController {
   public static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const ipAddress = req.ip || req.socket.remoteAddress;
-      const result = await AuthService.register(req.body, ipAddress);
+      const userAgent = req.headers['user-agent'];
+      const result = await AuthService.register(req.body, ipAddress, userAgent);
 
       const response: ApiResponse = {
         success: true,
@@ -71,9 +72,15 @@ export class AuthController {
    */
   public static async firebaseLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { idToken, profileFor } = req.body;
+      const { idToken, profileFor, consentToTerms, privacyPolicyVersion, termsVersion } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
-      const result = await AuthService.loginWithFirebase(idToken, profileFor, ipAddress);
+      const userAgent = req.headers['user-agent'];
+      const result = await AuthService.loginWithFirebase(idToken, profileFor, ipAddress, {
+        consentToTerms,
+        privacyPolicyVersion,
+        termsVersion,
+        userAgent,
+      });
 
       const response: ApiResponse = {
         success: true,
@@ -81,6 +88,28 @@ export class AuthController {
           ? 'Account registered successfully with Firebase'
           : 'Authentication successful',
         data: result,
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/auth/consent
+   */
+  public static async recordConsent(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
+      const user = await AuthService.recordPolicyConsent(userId, req.body, ipAddress, userAgent);
+
+      const response: ApiResponse = {
+        success: true,
+        message: 'Privacy Policy & Terms consent recorded successfully',
+        data: { user },
       };
 
       res.status(200).json(response);

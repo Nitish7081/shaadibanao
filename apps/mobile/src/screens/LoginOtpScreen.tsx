@@ -17,8 +17,14 @@ import { RootStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { PROFILE_CREATED_FOR, ProfileCreatedFor } from '@bandhansetu/shared';
+import {
+  CURRENT_PRIVACY_POLICY_VERSION,
+  CURRENT_TERMS_VERSION,
+  PROFILE_CREATED_FOR,
+  ProfileCreatedFor,
+} from '@bandhansetu/shared';
 import { ds, PressableScale } from '../design';
+import { LegalConsentRow } from '../components/common/LegalConsentRow';
 import { requestOtp, verifyOtp, registerUser, loginWithFirebase } from '../services/authService';
 import { setSessionAuth } from '../services/authSession';
 import {
@@ -47,6 +53,8 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [consentAgreed, setConsentAgreed] = useState(false);
+  const [consentError, setConsentError] = useState(false);
+  const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resendTimer, setResendTimer] = useState(30);
@@ -60,9 +68,10 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
     if (!consentAgreed) {
+      setConsentError(true);
       Alert.alert(
         'Consent Required',
-        'Please review and agree to our Terms & Privacy Policy to proceed.'
+        'Please review our Privacy Policy and Terms & Conditions and check the agreement box to proceed.'
       );
       return;
     }
@@ -116,7 +125,11 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
     if (phoneConfirmation) {
       try {
         const { idToken } = await confirmFirebasePhoneOtp(phoneConfirmation, otp);
-        const res = await loginWithFirebase(idToken, profileFor);
+        const res = await loginWithFirebase(idToken, profileFor, {
+          consentToTerms: consentAgreed,
+          privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+          termsVersion: CURRENT_TERMS_VERSION,
+        });
 
         if (res.data?.tokens && res.data?.user) {
           setSessionAuth(res.data.tokens, res.data.user.id, res.data.user);
@@ -161,7 +174,9 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
           mobile: cleanMobile,
           verificationToken: verifyRes.data.verificationToken,
           profileFor,
-          consentToTerms: true,
+          consentToTerms: consentAgreed,
+          privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+          termsVersion: CURRENT_TERMS_VERSION,
         });
         if (regRes.data?.tokens && regRes.data?.user) {
           setSessionAuth(regRes.data.tokens, regRes.data.user.id, regRes.data.user);
@@ -185,9 +200,18 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    let obtainedIdToken = pendingGoogleIdToken;
     try {
-      const { idToken } = await signInWithGoogle();
-      const res = await loginWithFirebase(idToken, profileFor);
+      if (!obtainedIdToken) {
+        const googleAuth = await signInWithGoogle();
+        obtainedIdToken = googleAuth.idToken;
+      }
+      const res = await loginWithFirebase(obtainedIdToken, profileFor, {
+        consentToTerms: consentAgreed,
+        privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+        termsVersion: CURRENT_TERMS_VERSION,
+      });
+      setPendingGoogleIdToken(null);
       if (res.data?.tokens && res.data?.user) {
         setSessionAuth(res.data.tokens, res.data.user.id, res.data.user);
         if (res.data.isNewUser || !res.data.user.hasProfile) {
@@ -199,7 +223,17 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         }
       }
     } catch (gErr: any) {
-      if (gErr?.code !== 'SIGN_IN_CANCELLED') {
+      if (gErr?.code === 'CONSENT_REQUIRED') {
+        if (obtainedIdToken) {
+          setPendingGoogleIdToken(obtainedIdToken);
+        }
+        setConsentError(true);
+        Alert.alert(
+          'Explicit Consent Required',
+          'To create a new ShaadiBanao account, please review our Privacy Policy and Terms & Conditions, check the agreement box above, and tap Continue with Google again.'
+        );
+      } else if (gErr?.code !== 'SIGN_IN_CANCELLED') {
+        setPendingGoogleIdToken(null);
         Alert.alert('Google Sign-In', describeLoginError(gErr));
       }
     } finally {
@@ -306,20 +340,15 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                   />
                 </View>
 
-                {/* Consent Checkbox */}
-                <PressableScale
-                  style={styles.consentRow}
-                  onPress={() => setConsentAgreed(!consentAgreed)}
-                >
-                  <Ionicons
-                    name={consentAgreed ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color={ds.color.maroon}
-                  />
-                  <Text maxFontSizeMultiplier={1.2} style={styles.consentText}>
-                    I agree to the Terms of Service, Privacy Policy & Sanatan Community Guidelines.
-                  </Text>
-                </PressableScale>
+                {/* Explicit Unchecked Legal Consent Checkbox + Public Links */}
+                <LegalConsentRow
+                  checked={consentAgreed}
+                  onToggle={() => {
+                    setConsentAgreed(!consentAgreed);
+                    setConsentError(false);
+                  }}
+                  hasError={consentError}
+                />
 
                 {/* Send OTP Button */}
                 <PressableScale

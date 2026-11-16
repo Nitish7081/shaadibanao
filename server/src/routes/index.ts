@@ -17,10 +17,12 @@ import { bookingRouter } from './booking.routes';
 import { consultationRouter } from './consultation.routes';
 import { communityRouter } from './community.routes';
 import { bannerRouter } from './banner.routes';
+import { publicRouter } from './public.routes';
 
 export const apiV1Router = Router();
 
 apiV1Router.use('/health', healthRouter);
+apiV1Router.use('/public', publicRouter);
 apiV1Router.use('/auth', authRouter);
 apiV1Router.use('/profiles', profileRouter);
 apiV1Router.use('/preferences', preferenceRouter);

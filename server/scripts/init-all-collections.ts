@@ -18,6 +18,10 @@ import { KundliModel } from '../src/models/kundli.model';
 import { PanditModel } from '../src/models/pandit.model';
 import { ReportModel } from '../src/models/report.model';
 import { VerificationRequestModel } from '../src/models/verification-request.model';
+import { ConsentLogModel } from '../src/models/consent-log.model';
+import { AccountDeletionRequestModel } from '../src/models/account-deletion-request.model';
+import { DeletionOtpModel } from '../src/models/deletion-otp.model';
+import { ContactInquiryModel } from '../src/models/contact-inquiry.model';
 
 const allModels = [
   { name: 'User', model: UserModel },
@@ -38,6 +42,10 @@ const allModels = [
   { name: 'Pandit', model: PanditModel },
   { name: 'Report', model: ReportModel },
   { name: 'VerificationRequest', model: VerificationRequestModel },
+  { name: 'ConsentLog', model: ConsentLogModel },
+  { name: 'AccountDeletionRequest', model: AccountDeletionRequestModel },
+  { name: 'DeletionOtp', model: DeletionOtpModel },
+  { name: 'ContactInquiry', model: ContactInquiryModel },
 ];
 
 async function initializeCollectionsAndIndexes() {

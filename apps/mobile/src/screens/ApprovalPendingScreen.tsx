@@ -106,7 +106,7 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
     // 4. Listen to authSession events
     const unsubUser = onUserUpdated((updatedUser) => {
       setUser(updatedUser);
-      if (updatedUser.approvalStatus === 'approved' && updatedUser.status !== 'suspended') {
+      if (updatedUser && updatedUser.approvalStatus === 'approved' && updatedUser.status !== 'suspended') {
         isNavigatingRef.current = true;
         navigation.replace('MainTabs');
       }

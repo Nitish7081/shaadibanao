@@ -19,7 +19,17 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
   mongodbUri: process.env.MONGODB_URI || '',
-  corsOrigins: (process.env.CLIENT_ORIGIN || '*').split(',').map((origin) => origin.trim()),
+  corsOrigins: Array.from(
+    new Set(
+      [
+        ...(process.env.CLIENT_ORIGIN || '*').split(','),
+        ...(process.env.PUBLIC_WEBSITE_URL ? process.env.PUBLIC_WEBSITE_URL.split(',') : []),
+      ]
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    )
+  ),
+  publicWebsiteUrl: cleanEnvStr(process.env.PUBLIC_WEBSITE_URL),
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET || 'dev_jwt_access_secret_bandhansetu_auth_min_32',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'dev_jwt_refresh_secret_bandhansetu_auth_min_32',
