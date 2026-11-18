@@ -9,13 +9,15 @@ const API_BASE = '/api/v1';
 const FALLBACK_MEDIA_SVG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' fill='%231e293b' rx='10'/%3E%3Cpath d='M35 78l20-25 15 18 18-24 22 31H20z' fill='%23475569'/%3E%3Ccircle cx='42' cy='40' r='9' fill='%2364748b'/%3E%3Ctext x='60' y='105' font-family='sans-serif' font-size='10' font-weight='600' fill='%2394a3b8' text-anchor='middle'%3EPhoto Unavailable%3C/text%3E%3C/svg%3E";
 
-let authToken = sessionStorage.getItem('sb_admin_token') || null;
+let authToken = localStorage.getItem('sb_admin_token') || sessionStorage.getItem('sb_admin_token') || null;
+let refreshToken = localStorage.getItem('sb_admin_refresh_token') || sessionStorage.getItem('sb_admin_refresh_token') || null;
+let refreshPromise = null;
 let currentAdmin = null;
 let activeTab = 'dashboard';
 
 // State caches for pagination & filtering
 const appState = {
-  approvals: { page: 1, limit: 15, status: 'pending', search: '', items: [] },
+  approvals: { page: 1, limit: 15, status: 'all', search: '', items: [] },
   users: { page: 1, limit: 15, status: '', approvalStatus: 'all', search: '' },
   profiles: { page: 1, limit: 15, isVerified: '', search: '' },
   reports: { page: 1, limit: 15, status: 'pending' },
@@ -26,6 +28,8 @@ const appState = {
 // Pending target user for modal actions
 let activeModalUserId = null;
 let activeModalUserName = null;
+let activeInspectedUserId = null;
+let activeInspectedUser = null;
 let genericConfirmAction = null;
 
 // Initialize app on DOM load
@@ -73,8 +77,45 @@ function showToast(message, type = 'success') {
   }, 4000);
 }
 
-// Authenticated API client
-async function adminFetch(endpoint, options = {}) {
+// Attempt silent token refresh using saved refreshToken so admin stays logged in
+async function refreshAdminSession() {
+  if (!refreshToken) return false;
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.data?.tokens?.accessToken) {
+        authToken = json.data.tokens.accessToken;
+        if (json.data.tokens.refreshToken) {
+          refreshToken = json.data.tokens.refreshToken;
+          localStorage.setItem('sb_admin_refresh_token', refreshToken);
+        }
+        localStorage.setItem('sb_admin_token', authToken);
+        if (json.data.user) {
+          currentAdmin = json.data.user;
+          localStorage.setItem('sb_admin_user', JSON.stringify(currentAdmin));
+        }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+// Authenticated API client (with automatic token refresh on 401)
+async function adminFetch(endpoint, options = {}, _retried = false) {
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -92,6 +133,12 @@ async function adminFetch(endpoint, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401 && endpoint !== '/admin/login' && !_retried && refreshToken) {
+      const refreshed = await refreshAdminSession();
+      if (refreshed) {
+        return adminFetch(endpoint, options, true);
+      }
+    }
     if (response.status === 401 || response.status === 403) {
       if (endpoint !== '/admin/login') {
         showToast(data.message || 'Session expired or unauthorized. Please log in again.', 'error');
@@ -162,9 +209,13 @@ function setupLoginForm() {
 
       if (res.data?.tokens?.accessToken && res.data?.user) {
         authToken = res.data.tokens.accessToken;
+        refreshToken = res.data.tokens.refreshToken || null;
         currentAdmin = res.data.user;
-        sessionStorage.setItem('sb_admin_token', authToken);
-        sessionStorage.setItem('sb_admin_user', JSON.stringify(currentAdmin));
+        localStorage.setItem('sb_admin_token', authToken);
+        if (refreshToken) {
+          localStorage.setItem('sb_admin_refresh_token', refreshToken);
+        }
+        localStorage.setItem('sb_admin_user', JSON.stringify(currentAdmin));
 
         showToast(`Welcome back, ${currentAdmin.displayName || 'Administrator'}!`);
         showAppView();
@@ -181,8 +232,13 @@ function setupLoginForm() {
 
 function handleLogout() {
   authToken = null;
+  refreshToken = null;
   currentAdmin = null;
+  localStorage.removeItem('sb_admin_token');
+  localStorage.removeItem('sb_admin_refresh_token');
+  localStorage.removeItem('sb_admin_user');
   sessionStorage.removeItem('sb_admin_token');
+  sessionStorage.removeItem('sb_admin_refresh_token');
   sessionStorage.removeItem('sb_admin_user');
   showLoginView();
   showToast('Logged out of Admin Portal.', 'warning');
@@ -197,7 +253,7 @@ function showAppView() {
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'flex';
 
-  const storedUser = sessionStorage.getItem('sb_admin_user');
+  const storedUser = localStorage.getItem('sb_admin_user') || sessionStorage.getItem('sb_admin_user');
   if (storedUser) {
     try {
       currentAdmin = JSON.parse(storedUser);
@@ -408,13 +464,15 @@ async function loadDashboardStats() {
     const tbodyUsers = document.getElementById('tbody-recent-users');
     if (tbodyUsers) {
       if (!data.recentUsers || data.recentUsers.length === 0) {
-        tbodyUsers.innerHTML = '<tr><td colspan="5" class="table-empty">No recent registrations found</td></tr>';
+        tbodyUsers.innerHTML = '<tr><td colspan="6" class="table-empty">No recent registrations found</td></tr>';
       } else {
         tbodyUsers.innerHTML = data.recentUsers
           .map((u) => {
+            const uid = u._id || u.id;
             const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-IN') : 'N/A';
             const approvalBadge = getApprovalBadgeHtml(u.approvalStatus || 'pending');
             const statusBadge = u.status === 'active' ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Suspended</span>';
+            const safeName = escapeJs(u.displayName || 'User');
             return `
               <tr>
                 <td><strong>${escapeHtml(u.displayName || 'New User')}</strong></td>
@@ -422,6 +480,16 @@ async function loadDashboardStats() {
                 <td>${statusBadge}</td>
                 <td>${approvalBadge}</td>
                 <td>${dateStr}</td>
+                <td>
+                  <div class="action-btn-group">
+                    <button class="btn-act btn-act-view" onclick="openApplicantModal('${uid}')" title="View User Data & Photos">👁️ Data</button>
+                    ${
+                      u.approvalStatus !== 'rejected'
+                        ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${uid}', '${safeName}')" title="Reject Account">✕ Reject</button>`
+                        : ''
+                    }
+                  </div>
+                </td>
               </tr>
             `;
           })
@@ -491,12 +559,14 @@ async function loadApprovals() {
     tbody.innerHTML = data.items
       .map((item) => {
         const profile = item.profile;
-        const mainPhoto = profile?.photos?.find((p) => p.isMain)?.url || profile?.photos?.[0]?.url;
+        const photos = profile?.photos || [];
+        const mainPhoto = photos.find((p) => p.isMain)?.variants?.avatar || photos.find((p) => p.isMain)?.url || photos[0]?.variants?.avatar || photos[0]?.url;
         const initials = (item.displayName || 'NA').slice(0, 2).toUpperCase();
+        const safeName = escapeJs(item.displayName || 'Applicant');
 
         const avatarHtml = mainPhoto
-          ? `<img src="${escapeHtml(cdnThumb(mainPhoto, 96, true))}" class="user-cell-avatar" alt="Photo" onerror="this.outerHTML='<div class=\\'user-cell-initials\\'>${initials}</div>'"/>`
-          : `<div class="user-cell-initials">${initials}</div>`;
+          ? `<img src="${escapeHtml(cdnThumb(mainPhoto, 96, true))}" class="user-cell-avatar clickable-avatar" alt="Photo" onclick="openApplicantModal('${item.id}')" title="Click to inspect user data & photos" onerror="this.outerHTML='<div class=\\'user-cell-initials clickable-avatar\\' onclick=\\'openApplicantModal(&quot;${item.id}&quot;)\\'>${initials}</div>'"/>`
+          : `<div class="user-cell-initials clickable-avatar" onclick="openApplicantModal('${item.id}')" title="Click to inspect user data">${initials}</div>`;
 
         const locationStr = profile ? [profile.city, profile.state].filter(Boolean).join(', ') : 'Location not submitted';
         const ageGender = profile ? `${profile.gender ? profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1) : ''}${profile.age ? ` • ${profile.age} yrs` : ''}` : 'Basic details pending';
@@ -504,6 +574,11 @@ async function loadApprovals() {
         const completionPercent = profile?.completenessPercent || (item.hasProfile ? 60 : 20);
         const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN') : 'N/A';
         const approvalBadge = getApprovalBadgeHtml(item.approvalStatus);
+        const photoPill = photos.length > 0 ? `<span class="photo-count-pill">📷 ${photos.length}</span>` : '';
+        const latestVerif = item.latestVerification;
+        const idDocPill = latestVerif
+          ? `<div style="margin-top: 4px;"><span class="badge badge-info">🪪 ${escapeHtml(formatDocType(latestVerif.documentType))} (${escapeHtml(latestVerif.documentReferenceMasked || '')})</span></div>`
+          : '';
 
         return `
           <tr>
@@ -511,8 +586,9 @@ async function loadApprovals() {
               <div class="user-cell">
                 ${avatarHtml}
                 <div>
-                  <div class="user-cell-title">${escapeHtml(item.displayName || 'Applicant')}</div>
+                  <div class="user-cell-title">${escapeHtml(item.displayName || 'Applicant')}${photoPill}</div>
                   <div class="user-cell-sub">${escapeHtml(ageGender)} • ${escapeHtml(locationStr)}</div>
+                  ${idDocPill}
                 </div>
               </div>
             </td>
@@ -530,18 +606,23 @@ async function loadApprovals() {
             <td>${approvalBadge}</td>
             <td>
               <div class="action-btn-group">
-                <button class="btn-act btn-act-view" onclick="openApplicantModal('${item.id}')" title="View Submitted Biodata">👁️ Details</button>
+                <button class="btn-act btn-act-view" onclick="openApplicantModal('${item.id}')" title="View Full Biodata & Photos">👁️ Data &amp; Photos</button>
+                ${
+                  latestVerif
+                    ? `<button class="btn-act btn-act-view" onclick="viewVerificationDocument('${latestVerif.id}')" title="View Uploaded ID Proof">🪪 View ID</button>`
+                    : ''
+                }
                 ${
                   item.approvalStatus !== 'approved'
-                    ? `<button class="btn-act btn-act-approve" onclick="promptApproveUser('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">✓ Approve</button>`
+                    ? `<button class="btn-act btn-act-approve" onclick="promptApproveUser('${item.id}', '${safeName}')">✓ Approve</button>`
                     : ''
                 }
                 ${
                   item.approvalStatus !== 'rejected'
-                    ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">✕ Reject</button>`
+                    ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${item.id}', '${safeName}')">✕ Reject</button>`
                     : ''
                 }
-                <button class="btn-act btn-act-changes" onclick="openRequestChangesModal('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">💬 Changes</button>
+                <button class="btn-act btn-act-changes" onclick="openRequestChangesModal('${item.id}', '${safeName}')">💬 Changes</button>
               </div>
             </td>
           </tr>
@@ -553,10 +634,10 @@ async function loadApprovals() {
   }
 }
 
-// Details Modal
-function openApplicantModal(userId) {
-  const item = appState.approvals.items.find((i) => i.id === userId);
-  if (!item) return;
+// Universal Live User Details & Photos Inspection Modal (works from ANY tab!)
+async function openApplicantModal(userId) {
+  if (!userId) return;
+  activeInspectedUserId = userId;
 
   const modal = document.getElementById('applicant-modal');
   const nameEl = document.getElementById('modal-applicant-name');
@@ -564,43 +645,107 @@ function openApplicantModal(userId) {
   const bodyEl = document.getElementById('modal-applicant-content');
   const actionsEl = document.getElementById('modal-applicant-actions');
 
-  if (nameEl) nameEl.innerText = `${item.displayName || 'Applicant'} — Matrimonial Review`;
+  if (!modal || !bodyEl) return;
+
+  if (nameEl) nameEl.innerText = 'Loading User Data & Photos...';
+  if (badgeEl) badgeEl.innerHTML = '<span class="badge badge-info">Fetching Live Data</span>';
+  bodyEl.innerHTML = '<div class="table-empty">Loading full biodata, signed images, preferences, and moderation history...</div>';
+  if (actionsEl) actionsEl.innerHTML = '<button class="btn-secondary" onclick="closeApplicantModal()">Close</button>';
+  modal.style.display = 'flex';
+
+  let item = null;
+  try {
+    const res = await adminFetch(`/admin/users/${userId}/details`);
+    item = res.data;
+  } catch (err) {
+    // Fallback to cached approvals item if endpoint fails
+    item = appState.approvals.items.find((i) => i.id === userId) || null;
+    if (!item) {
+      bodyEl.innerHTML = `<div class="table-empty text-red">⚠️ Failed to load user details: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
+  }
+
+  activeInspectedUser = item;
+  renderUserDetailsModal(item);
+}
+
+function renderUserDetailsModal(item) {
+  const nameEl = document.getElementById('modal-applicant-name');
+  const badgeEl = document.getElementById('modal-applicant-badge');
+  const bodyEl = document.getElementById('modal-applicant-content');
+  const actionsEl = document.getElementById('modal-applicant-actions');
+
+  const safeName = escapeJs(item.displayName || 'Applicant');
+  if (nameEl) nameEl.innerText = `${item.displayName || 'Applicant'} — User Data & Photos`;
   if (badgeEl) badgeEl.innerHTML = getApprovalBadgeHtml(item.approvalStatus);
 
   const profile = item.profile;
   const preferences = item.preferences;
   const kundli = item.kundli;
+  const verifications = item.verifications || [];
+  const reports = item.reports || [];
 
-  // 1. Photos Gallery with Cloudinary Status
+  // 1. Photos Gallery with Lightbox & Per-Photo Moderation (Always Available!)
   let galleryHtml = '';
   if (profile?.photos && profile.photos.length > 0) {
     galleryHtml = `
-      <div style="margin-bottom: 16px;">
-        <div class="bio-label" style="margin-bottom: 8px;">Submitted Profile Photos (${profile.photos.length}) — Cloudinary Moderation</div>
+      <div style="margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+          <div class="bio-section-title" style="margin-bottom: 0;">📷 User Uploaded Photos (${profile.photos.length}) — Click Any Photo to Zoom</div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-act btn-act-approve" onclick="moderateUserPhoto('${item.id}', 'approve')">✓ Approve All</button>
+            <button class="btn-act btn-act-reject" onclick="moderateUserPhoto('${item.id}', 'reject')">✕ Reject All</button>
+          </div>
+        </div>
         <div class="bio-gallery">
           ${profile.photos
-            .map(
-              (p, idx) => `
-            <div class="bio-photo-card" style="position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: #fff;">
-              <img src="${escapeHtml(p.url ? cdnThumb(p.url, 260, true) : FALLBACK_MEDIA_SVG)}" alt="Photo ${idx + 1}" style="width: 130px; height: 150px; object-fit: cover; display: block;" onerror="this.onerror=null; this.src=FALLBACK_MEDIA_SVG; this.classList.add('img-load-failed');"/>
-              <div style="padding: 6px; font-size: 11px;">
-                ${p.isMain ? '<span style="background: var(--royal-maroon); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block; margin-bottom: 4px;">MAIN</span> ' : ''}
-                ${p.url?.includes('cloudinary.com') ? '<span style="background: rgba(16, 185, 129, 0.15); color: #059669; padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block; margin-bottom: 4px;">☁️ CLOUDINARY</span>' : ''}
-                <div style="margin-top: 2px;">
-                  Status: ${p.approved ? '<strong style="color: #16a34a;">✓ Approved</strong>' : '<strong style="color: #d97706;">⏳ Pending</strong>'}
+            .map((p, idx) => {
+              const photoId = p.id || p._id || p.publicId || '';
+              const thumbUrl = p.variants?.card || p.variants?.avatar || (p.url ? cdnThumb(p.url, 260, true) : FALLBACK_MEDIA_SVG);
+              const fullUrl = p.variants?.hero || p.url || FALLBACK_MEDIA_SVG;
+              const isApproved = p.approved !== false;
+              const statusText = isApproved
+                ? '<strong style="color: var(--success-green);">✓ Approved</strong>'
+                : '<strong style="color: var(--danger-red);">✕ Rejected</strong>';
+              return `
+            <div class="bio-photo-card">
+              <img
+                src="${escapeHtml(thumbUrl)}"
+                alt="Photo ${idx + 1}"
+                onclick="openPhotoLightbox('${escapeJs(fullUrl)}', '${escapeJs(item.displayName || 'User')} — Photo #${idx + 1}', '${item.id}', '${escapeJs(photoId)}', ${isApproved ? 'true' : 'false'})"
+                onerror="this.onerror=null; this.src=FALLBACK_MEDIA_SVG; this.classList.add('img-load-failed');"
+              />
+              <div class="bio-photo-meta">
+                <div>
+                  ${p.isMain ? '<span style="background: var(--primary-maroon); color: #fff; padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block; margin-right: 4px;">MAIN</span>' : ''}
+                  ${p.url?.includes('cloudinary.com') ? '<span style="background: rgba(16, 185, 129, 0.18); color: var(--success-green); padding: 2px 5px; border-radius: 3px; font-weight: 700; font-size: 9px; display: inline-block;">☁️ CLOUD</span>' : ''}
+                </div>
+                <div>${statusText}</div>
+                <div class="bio-photo-actions">
+                  ${
+                    !isApproved
+                      ? `<button class="btn-xs btn-act-approve" onclick="moderateUserPhoto('${item.id}', 'approve', '${escapeJs(photoId)}')" title="Approve this photo">✓ Keep</button>`
+                      : ''
+                  }
+                  ${
+                    isApproved
+                      ? `<button class="btn-xs btn-act-reject" onclick="moderateUserPhoto('${item.id}', 'reject', '${escapeJs(photoId)}')" title="Reject this photo">✕ Reject</button>`
+                      : ''
+                  }
                 </div>
               </div>
             </div>
-          `
-            )
+          `;
+            })
             .join('')}
         </div>
       </div>
     `;
   } else {
     galleryHtml = `
-      <div style="margin-bottom: 16px; padding: 12px; background: rgba(245, 158, 11, 0.08); border-radius: 6px; border: 1px dashed rgba(245, 158, 11, 0.4);">
-        <span style="color: #b45309; font-weight: 600;">📷 No profile photo submitted yet.</span>
+      <div style="margin-bottom: 16px; padding: 14px; background: rgba(245, 158, 11, 0.08); border-radius: 8px; border: 1px dashed rgba(245, 158, 11, 0.4);">
+        <span style="color: var(--warning-amber); font-weight: 600;">📷 No profile photo uploaded by this user yet.</span>
       </div>
     `;
   }
@@ -614,13 +759,21 @@ function openApplicantModal(userId) {
     ? '<span class="badge badge-success">📸 Photo Approved</span>'
     : item.photoApprovalStatus === 'rejected'
     ? '<span class="badge badge-danger">📸 Photo Rejected</span>'
-    : '<span class="badge badge-warning">📸 Photo Review Pending</span>';
+    : item.photoApprovalStatus === 'none'
+    ? '<span class="badge badge-muted">📸 No Photos</span>'
+    : '<span class="badge badge-warning">📸 Photo Pending</span>';
 
   const idBadge = item.identityVerificationStatus === 'verified'
     ? '<span class="badge badge-success">🛡️ ID Verified</span>'
     : item.identityVerificationStatus === 'pending'
-    ? '<span class="badge badge-warning">🛡️ ID Proof Pending</span>'
-    : '<span class="badge badge-secondary">🛡️ ID None</span>';
+    ? '<span class="badge badge-warning">🛡️ ID Pending</span>'
+    : item.identityVerificationStatus === 'rejected'
+    ? '<span class="badge badge-danger">🛡️ ID Rejected</span>'
+    : '<span class="badge badge-muted">🛡️ ID None</span>';
+
+  const accountStatusBadge = item.status === 'suspended'
+    ? '<span class="badge badge-danger">🚫 Suspended</span>'
+    : '<span class="badge badge-success">● Active</span>';
 
   const completionPercent = profile?.completenessPercent || (item.hasProfile ? 60 : 20);
 
@@ -634,15 +787,49 @@ function openApplicantModal(userId) {
     heightStr = `${heightCm} cm (${feet}'${inches}")`;
   }
 
+  // Identity Documents Card (Always inspectable & rejectable)
+  let verificationsHtml = '';
+  if (verifications.length > 0) {
+    verificationsHtml = `
+      <div class="bio-section-card">
+        <div class="bio-section-title">🪪 Identity Proofs — Aadhaar / PAN / Voter ID / Passport / Passbook (${verifications.length})</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${verifications
+            .map((v) => {
+              const vBadge =
+                v.status === 'verified'
+                  ? '<span class="badge badge-success">✓ Verified</span>'
+                  : v.status === 'rejected'
+                  ? '<span class="badge badge-danger">✕ Rejected</span>'
+                  : '<span class="badge badge-warning">⏳ Pending</span>';
+              return `
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+                  <div>
+                    <strong>${escapeHtml(formatDocType(v.documentType))}</strong>
+                    <code style="margin-left: 8px; color: var(--gold-accent-light);">${escapeHtml(v.documentReferenceMasked || '')}</code>
+                    <span style="margin-left: 8px;">${vBadge}</span>
+                  </div>
+                  <div class="action-buttons">
+                    <button class="btn-secondary btn-xs" onclick="viewVerificationDocument('${v.id}')">👁️ View Doc</button>
+                    ${v.status !== 'verified' ? `<button class="btn-act btn-act-approve btn-xs" onclick="approveVerification('${v.id}')">✓ Verify &amp; Unlock</button>` : ''}
+                    ${v.status !== 'rejected' ? `<button class="btn-act btn-act-reject btn-xs" onclick="rejectVerification('${v.id}')">✕ Reject</button>` : ''}
+                  </div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `;
+  }
+
   // Partner Preferences Card
   let preferencesHtml = '';
   if (preferences) {
     preferencesHtml = `
-      <div style="margin-top: 16px; background: #faf8f5; border: 1px solid #ebd9c8; border-radius: 8px; padding: 14px;">
-        <div style="font-weight: 700; color: var(--royal-maroon); margin-bottom: 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-          💑 Partner Preferences
-        </div>
-        <div class="bio-grid">
+      <div class="bio-section-card">
+        <div class="bio-section-title">💑 Partner Preferences</div>
+        <div class="bio-grid" style="margin-bottom: 0;">
           <div class="bio-item">
             <div class="bio-label">Age Range</div>
             <div class="bio-val">${preferences.minAge} to ${preferences.maxAge} years</div>
@@ -653,19 +840,19 @@ function openApplicantModal(userId) {
           </div>
           <div class="bio-item">
             <div class="bio-label">Preferred Religions</div>
-            <div class="bio-val">${preferences.religions?.length ? preferences.religions.join(', ') : 'Any'}</div>
+            <div class="bio-val">${escapeHtml(preferences.religions?.length ? preferences.religions.join(', ') : 'Any')}</div>
           </div>
           <div class="bio-item">
             <div class="bio-label">Preferred Mother Tongues</div>
-            <div class="bio-val">${preferences.motherTongues?.length ? preferences.motherTongues.join(', ') : 'Any'}</div>
+            <div class="bio-val">${escapeHtml(preferences.motherTongues?.length ? preferences.motherTongues.join(', ') : 'Any')}</div>
           </div>
           <div class="bio-item">
             <div class="bio-label">Preferred Cities / Locations</div>
-            <div class="bio-val">${preferences.cities?.length ? preferences.cities.join(', ') : 'Any city'}</div>
+            <div class="bio-val">${escapeHtml(preferences.cities?.length ? preferences.cities.join(', ') : 'Any city')}</div>
           </div>
           <div class="bio-item">
             <div class="bio-label">Manglik Preference</div>
-            <div class="bio-val" style="text-transform: capitalize;">${preferences.manglikPreference || 'Any'}</div>
+            <div class="bio-val" style="text-transform: capitalize;">${escapeHtml(preferences.manglikPreference || 'Any')}</div>
           </div>
         </div>
       </div>
@@ -676,17 +863,15 @@ function openApplicantModal(userId) {
   let kundliHtml = '';
   if (kundli) {
     kundliHtml = `
-      <div style="margin-top: 16px; background: #fdfaf3; border: 1px solid #e7d8b5; border-radius: 8px; padding: 14px;">
-        <div style="font-weight: 700; color: #92400e; margin-bottom: 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-          🔮 Vedic Kundli & Astrology Details
-        </div>
-        <div class="bio-grid">
+      <div class="bio-section-card">
+        <div class="bio-section-title">🔮 Vedic Kundli &amp; Astrology Details</div>
+        <div class="bio-grid" style="margin-bottom: 0;">
           <div class="bio-item">
             <div class="bio-label">Moon Sign (Rashi)</div>
             <div class="bio-val">${escapeHtml(kundli.rashi || 'Not specified')}</div>
           </div>
           <div class="bio-item">
-            <div class="bio-label">Birth Nakshatra & Charan</div>
+            <div class="bio-label">Birth Nakshatra &amp; Charan</div>
             <div class="bio-val">${escapeHtml(kundli.nakshatra || 'Not specified')} (Charan ${kundli.charan || 1})</div>
           </div>
           <div class="bio-item">
@@ -710,36 +895,66 @@ function openApplicantModal(userId) {
     `;
   }
 
-  // Approval History Banner
-  let historyHtml = '';
-  if (item.approvedAt) {
-    historyHtml = `
-      <div style="margin-top: 14px; background: rgba(16, 185, 129, 0.08); border: 1px solid #10b981; padding: 10px 14px; border-radius: 6px;">
-        <span style="color: #047857; font-weight: 700;">✓ Account Approved</span> by staff ID <code>${escapeHtml(item.approvedBy || 'Admin')}</code> on ${new Date(item.approvedAt).toLocaleString('en-IN')}
+  // Safety Reports against this user
+  let reportsHtml = '';
+  if (reports.length > 0) {
+    reportsHtml = `
+      <div class="bio-section-card" style="border-color: rgba(239, 68, 68, 0.35);">
+        <div class="bio-section-title" style="color: var(--danger-red);">⚠️ Safety Reports Against User (${reports.length})</div>
+        ${reports
+          .map(
+            (r) => `
+          <div style="font-size: 12.5px; padding: 6px 0; border-bottom: 1px solid var(--border-color);">
+            <span class="badge badge-danger">${escapeHtml(r.category || 'report')}</span>
+            <span style="margin-left: 6px;">${escapeHtml(r.reason || 'No details')}</span>
+            <span class="text-muted" style="margin-left: 6px;">(by ${escapeHtml(r.reporterName || 'Member')})</span>
+          </div>
+        `
+          )
+          .join('')}
       </div>
     `;
-  } else if (item.rejectionReason) {
+  }
+
+  // Approval / Rejection History Banner (Checks actual current approvalStatus first!)
+  let historyHtml = '';
+  if (item.approvalStatus === 'rejected') {
     historyHtml = `
-      <div style="margin-top: 14px; background: rgba(239, 68, 68, 0.08); border: 1px solid var(--danger-red); padding: 12px; border-radius: 6px;">
-        <strong style="color: var(--danger-red);">Recorded Rejection Feedback:</strong><br>
-        <strong>Reason:</strong> ${escapeHtml(item.rejectionReason)}<br>
+      <div style="margin-top: 14px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-red); padding: 12px; border-radius: 6px;">
+        <strong style="color: var(--danger-red);">✕ Account Currently Rejected</strong><br>
+        <strong>Reason:</strong> ${escapeHtml(item.rejectionReason || 'Not specified')}<br>
         <strong>Remarks:</strong> ${escapeHtml(item.moderationRemarks || 'None')}
+      </div>
+    `;
+  } else if (item.approvalStatus === 'changes_requested') {
+    historyHtml = `
+      <div style="margin-top: 14px; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning-amber); padding: 12px; border-radius: 6px;">
+        <strong style="color: var(--warning-amber);">💬 Changes Requested From User</strong><br>
+        <strong>Remarks:</strong> ${escapeHtml(item.moderationRemarks || 'None')}
+      </div>
+    `;
+  } else if (item.approvalStatus === 'approved' && item.approvedAt) {
+    historyHtml = `
+      <div style="margin-top: 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success-green); padding: 10px 14px; border-radius: 6px;">
+        <span style="color: var(--success-green); font-weight: 700;">✓ Account Approved</span> by staff ID <code>${escapeHtml(item.approvedBy || 'Admin')}</code> on ${new Date(item.approvedAt).toLocaleString('en-IN')}
       </div>
     `;
   }
 
   bodyEl.innerHTML = `
     <!-- Top Account Verification Status Bar -->
-    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 16px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 16px;">
       <div>
         <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Account ID:</span>
-        <code style="font-weight: 700; color: var(--text-primary); margin-left: 4px;">${escapeHtml(item.id)}</code>
+        <code style="font-weight: 700; color: var(--gold-accent-light); margin-left: 4px;">${escapeHtml(item.id)}</code>
       </div>
       <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+        ${accountStatusBadge}
         ${phoneBadge}
         ${photoBadge}
         ${idBadge}
         <span class="badge badge-info">${completionPercent}% Complete</span>
+        <span class="badge badge-warning">${escapeHtml((item.membership?.planId || 'free').toUpperCase())}</span>
       </div>
     </div>
 
@@ -747,17 +962,19 @@ function openApplicantModal(userId) {
     ${galleryHtml}
 
     <!-- Detailed Matrimonial Biodata -->
-    <div style="font-weight: 700; color: var(--royal-maroon); margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
-      📋 Personal Biodata & Family Background
-    </div>
+    <div class="bio-section-title">📋 Personal Biodata, Contact &amp; Family Background</div>
     <div class="bio-grid">
       <div class="bio-item">
         <div class="bio-label">Full Name</div>
         <div class="bio-val">${escapeHtml(profile ? `${profile.firstName} ${profile.lastName}` : item.displayName || 'N/A')}</div>
       </div>
       <div class="bio-item">
-        <div class="bio-label">Gender & Age</div>
-        <div class="bio-val">${escapeHtml(profile?.gender || 'N/A')} ${profile?.age ? `(${profile.age} years)` : ''}</div>
+        <div class="bio-label">Mobile &amp; Email</div>
+        <div class="bio-val">${escapeHtml(item.mobile || 'No mobile')} • ${escapeHtml(item.email || 'No email')}</div>
+      </div>
+      <div class="bio-item">
+        <div class="bio-label">Gender &amp; Age</div>
+        <div class="bio-val" style="text-transform: capitalize;">${escapeHtml(profile?.gender || 'N/A')} ${profile?.age ? `(${profile.age} years)` : ''}</div>
       </div>
       <div class="bio-item">
         <div class="bio-label">Date of Birth</div>
@@ -776,11 +993,11 @@ function openApplicantModal(userId) {
         <div class="bio-val">${escapeHtml(profile?.motherTongue || 'N/A')}</div>
       </div>
       <div class="bio-item">
-        <div class="bio-label">Religion & Community</div>
+        <div class="bio-label">Religion &amp; Community</div>
         <div class="bio-val">${escapeHtml(profile?.religion || 'Hindu')} ${profile?.caste ? `• ${escapeHtml(profile.caste)}` : ''}</div>
       </div>
       <div class="bio-item">
-        <div class="bio-label">Gotra & Manglik</div>
+        <div class="bio-label">Gotra &amp; Manglik</div>
         <div class="bio-val">${escapeHtml(profile?.gotra || 'Not specified')} • Manglik: ${escapeHtml(profile?.manglik || 'No')}</div>
       </div>
       <div class="bio-item">
@@ -804,12 +1021,12 @@ function openApplicantModal(userId) {
         <div class="bio-val">${escapeHtml(profile?.education || 'N/A')}</div>
       </div>
       <div class="bio-item">
-        <div class="bio-label">Profession & Employed In</div>
+        <div class="bio-label">Profession &amp; Employed In</div>
         <div class="bio-val">${escapeHtml(profile?.occupation || 'N/A')} (${escapeHtml(profile?.employedIn || 'private')})</div>
       </div>
       <div class="bio-item">
         <div class="bio-label">Annual Income Band</div>
-        <div class="bio-val">${escapeHtml(profile?.annualIncomeBand || 'Confidential')} ${profile?.showIncomeBand ? '(Public)' : '(Hidden on Public Card)'}</div>
+        <div class="bio-val">${escapeHtml(profile?.annualIncomeBand || 'Confidential')} ${profile?.showIncomeBand ? '(Public)' : '(Hidden)'}</div>
       </div>
       <div class="bio-item">
         <div class="bio-label">Registration Date</div>
@@ -821,12 +1038,15 @@ function openApplicantModal(userId) {
       profile?.aboutMe
         ? `
       <div style="margin-top: 14px;">
-        <div class="bio-label" style="margin-bottom: 6px;">About Applicant & Partner Expectations</div>
+        <div class="bio-label" style="margin-bottom: 6px;">About Applicant &amp; Partner Expectations</div>
         <div class="bio-about">${escapeHtml(profile.aboutMe)}</div>
       </div>
     `
         : ''
     }
+
+    <!-- Identity Documents -->
+    ${verificationsHtml}
 
     <!-- Partner Preferences Card -->
     ${preferencesHtml}
@@ -834,42 +1054,100 @@ function openApplicantModal(userId) {
     <!-- Kundli / Astrology Card -->
     ${kundliHtml}
 
+    <!-- Safety Reports -->
+    ${reportsHtml}
+
     <!-- Decision / Rejection Audit History -->
     ${historyHtml}
   `;
 
-  const photoBtns = profile?.photos && profile.photos.length > 0 ? `
-    <button class="btn-act" style="background: #16a34a; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: 600; cursor: pointer;" onclick="moderateUserPhoto('${item.id}', 'approve')">✓ Approve Photo</button>
-    <button class="btn-act" style="background: #dc2626; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: 600; cursor: pointer;" onclick="moderateUserPhoto('${item.id}', 'reject')">✕ Reject Photo</button>
-  ` : '';
-
   actionsEl.innerHTML = `
     <button class="btn-secondary" onclick="closeApplicantModal()">Close</button>
-    ${photoBtns}
-    <button class="btn-act btn-act-changes" onclick="closeApplicantModal(); openRequestChangesModal('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">Request Changes</button>
-    <button class="btn-act btn-act-reject" onclick="closeApplicantModal(); openRejectModal('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">Reject Applicant</button>
-    <button class="btn-act btn-act-approve" onclick="closeApplicantModal(); promptApproveUser('${item.id}', '${escapeHtml(item.displayName || 'Applicant')}')">✓ Approve Applicant</button>
+    <button class="btn-act btn-act-changes" onclick="closeApplicantModal(); openRequestChangesModal('${item.id}', '${safeName}')">💬 Request Changes</button>
+    <button class="btn-act btn-act-reject" onclick="closeApplicantModal(); openRejectModal('${item.id}', '${safeName}')">✕ Reject Account</button>
+    ${
+      item.approvalStatus !== 'approved'
+        ? `<button class="btn-act btn-act-approve" onclick="closeApplicantModal(); promptApproveUser('${item.id}', '${safeName}')">✓ Approve Account</button>`
+        : ''
+    }
   `;
+}
 
+function openPhotoLightbox(url, title, userId, photoId, isApproved) {
+  const modal = document.getElementById('photo-lightbox-modal');
+  const img = document.getElementById('lightbox-img');
+  const titleEl = document.getElementById('lightbox-title');
+  const badgeEl = document.getElementById('lightbox-status-badge');
+  const actionsEl = document.getElementById('lightbox-actions');
+  if (!modal || !img) return;
+
+  img.src = url || FALLBACK_MEDIA_SVG;
+  img.onerror = () => {
+    img.src = FALLBACK_MEDIA_SVG;
+  };
+  if (titleEl) titleEl.innerText = title || 'User Photo';
+  if (badgeEl) {
+    badgeEl.className = `badge ${isApproved ? 'badge-success' : 'badge-danger'}`;
+    badgeEl.innerText = isApproved ? '✓ Approved Photo' : '✕ Rejected Photo';
+  }
+  if (actionsEl) {
+    const openOriginalBtn = url && !url.startsWith('data:')
+      ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="text-decoration: none;">Open Original ↗</a>`
+      : '';
+    actionsEl.innerHTML = `
+      <button class="btn-secondary" onclick="closePhotoLightbox()">Close</button>
+      ${openOriginalBtn}
+      ${
+        userId
+          ? `
+            <button class="btn-act btn-act-approve" onclick="moderateUserPhoto('${userId}', 'approve', '${escapeJs(photoId || '')}'); closePhotoLightbox();">✓ Approve Photo</button>
+            <button class="btn-act btn-act-reject" onclick="moderateUserPhoto('${userId}', 'reject', '${escapeJs(photoId || '')}'); closePhotoLightbox();">✕ Reject Photo</button>
+          `
+          : ''
+      }
+    `;
+  }
   modal.style.display = 'flex';
 }
 
-async function moderateUserPhoto(userId, action) {
+function closePhotoLightbox() {
+  const modal = document.getElementById('photo-lightbox-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function moderateUserPhoto(userId, action, photoId) {
   try {
+    const payload = {
+      action,
+      remarks: `Moderated via admin panel: ${action}`,
+      ...(photoId ? { photoId } : {}),
+    };
     await adminFetch(`/admin/photos/${userId}/moderate`, {
       method: 'POST',
-      body: JSON.stringify({ action, remarks: `Moderated via admin panel: ${action}` }),
+      body: JSON.stringify(payload),
     });
     showToast(`Profile photo ${action === 'approve' ? 'approved' : 'rejected'} successfully!`);
-    loadApprovals();
-    closeApplicantModal();
+    refreshAllUserViews();
+    if (activeInspectedUserId === userId && document.getElementById('applicant-modal')?.style.display === 'flex') {
+      openApplicantModal(userId);
+    }
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
+function refreshAllUserViews() {
+  loadDashboardStats();
+  if (activeTab === 'approvals') loadApprovals();
+  if (activeTab === 'users') loadUsers();
+  if (activeTab === 'profiles') loadProfiles();
+  if (activeTab === 'reports') loadReports();
+}
+
 function closeApplicantModal() {
   document.getElementById('applicant-modal').style.display = 'none';
+  activeInspectedUserId = null;
+  activeInspectedUser = null;
 }
 
 // Approval Action
@@ -881,9 +1159,7 @@ function promptApproveUser(userId, name) {
       try {
         await adminFetch(`/admin/approvals/${userId}/approve`, { method: 'POST' });
         showToast(`Account for "${name}" approved successfully!`);
-        loadApprovals();
-        loadUsers();
-        loadDashboardStats();
+        refreshAllUserViews();
       } catch (err) {
         showToast(err.message, 'error');
       }
@@ -969,17 +1245,33 @@ async function loadUsers() {
 
     tbody.innerHTML = data.users
       .map((u) => {
+        const uid = u._id || u.id;
         const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-IN') : 'N/A';
         const roleBadge = u.role === 'admin' ? '<span class="badge badge-info">Admin</span>' : '<span class="badge badge-muted">Member</span>';
         const statusBadge = u.status === 'active' ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-danger">Suspended</span>';
         const approvalBadge = getApprovalBadgeHtml(u.approvalStatus || 'pending');
         const planName = (u.membership?.planId || 'free').toUpperCase();
+        const displayName = u.displayName || (u.profile ? `${u.profile.firstName} ${u.profile.lastName}`.trim() : 'Member');
+        const safeName = escapeJs(displayName);
+        const initials = (displayName || 'MB').slice(0, 2).toUpperCase();
+        const photoUrl = u.mainPhotoUrl || u.profile?.mainPhotoUrl || u.avatarUrl;
+        const photosCount = u.photosCount || u.profile?.photosCount || u.profile?.photos?.length || 0;
+
+        const avatarHtml = photoUrl
+          ? `<img src="${escapeHtml(cdnThumb(photoUrl, 96, true))}" class="user-cell-avatar clickable-avatar" alt="User Photo" onclick="openApplicantModal('${uid}')" title="Click to inspect user data & photos" onerror="this.outerHTML='<div class=\\'user-cell-initials clickable-avatar\\' onclick=\\'openApplicantModal(&quot;${uid}&quot;)\\'>${initials}</div>'"/>`
+          : `<div class="user-cell-initials clickable-avatar" onclick="openApplicantModal('${uid}')" title="Click to inspect user data">${initials}</div>`;
+        const photoPill = photosCount > 0 ? `<span class="photo-count-pill">📷 ${photosCount}</span>` : '';
 
         return `
           <tr>
             <td>
-              <div><strong>${escapeHtml(u.displayName || 'Member')}</strong></div>
-              <div class="user-cell-sub">${escapeHtml(u.email || u.mobile || 'N/A')}</div>
+              <div class="user-cell">
+                ${avatarHtml}
+                <div>
+                  <div class="user-cell-title">${escapeHtml(displayName)}${photoPill}</div>
+                  <div class="user-cell-sub">${escapeHtml(u.email || u.mobile || 'N/A')}</div>
+                </div>
+              </div>
             </td>
             <td>${roleBadge}</td>
             <td>${statusBadge}</td>
@@ -988,17 +1280,23 @@ async function loadUsers() {
             <td>${dateStr}</td>
             <td>
               <div class="action-btn-group">
+                <button class="btn-act btn-act-view" onclick="openApplicantModal('${uid}')" title="View Full Biodata & Photos">👁️ Data &amp; Photos</button>
                 ${
                   u.approvalStatus !== 'approved'
-                    ? `<button class="btn-act btn-act-approve" onclick="promptApproveUser('${u._id}', '${escapeHtml(u.displayName || 'User')}')" title="Approve Registration">✓ Approve</button>`
+                    ? `<button class="btn-act btn-act-approve" onclick="promptApproveUser('${uid}', '${safeName}')" title="Approve Account">✓ Approve</button>`
+                    : ''
+                }
+                ${
+                  u.approvalStatus !== 'rejected'
+                    ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${uid}', '${safeName}')" title="Reject Account">✕ Reject</button>`
                     : ''
                 }
                 ${
                   u.status === 'active'
-                    ? `<button class="btn-act btn-act-reject" onclick="toggleUserStatus('${u._id}', 'suspended', '${escapeHtml(u.displayName || 'User')}')">Suspend</button>`
-                    : `<button class="btn-act btn-act-approve" onclick="toggleUserStatus('${u._id}', 'active', '${escapeHtml(u.displayName || 'User')}')">Activate</button>`
+                    ? `<button class="btn-act btn-act-changes" onclick="toggleUserStatus('${uid}', 'suspended', '${safeName}')">Suspend</button>`
+                    : `<button class="btn-act btn-act-approve" onclick="toggleUserStatus('${uid}', 'active', '${safeName}')">Activate</button>`
                 }
-                <button class="btn-act btn-act-view" onclick="toggleUserRole('${u._id}', '${u.role === 'admin' ? 'member' : 'admin'}', '${escapeHtml(u.displayName || 'User')}')">
+                <button class="btn-act btn-act-view" onclick="toggleUserRole('${uid}', '${u.role === 'admin' ? 'member' : 'admin'}', '${safeName}')">
                   ${u.role === 'admin' ? 'Make Member' : 'Make Admin'}
                 </button>
               </div>
@@ -1084,18 +1382,38 @@ async function loadProfiles() {
 
     tbody.innerHTML = data.profiles
       .map((p) => {
+        const userObj = p.userId && typeof p.userId === 'object' ? p.userId : null;
+        const userId = userObj?._id || userObj?.id || (typeof p.userId === 'string' ? p.userId : '');
+        const fullName = `${p.firstName || ''} ${p.lastName || ''}`.trim() || userObj?.displayName || 'Member';
+        const safeName = escapeJs(fullName);
+        const initials = fullName.slice(0, 2).toUpperCase();
         const locationStr = [p.city, p.state].filter(Boolean).join(', ') || 'N/A';
+        const ageGender = `${p.gender ? p.gender.charAt(0).toUpperCase() + p.gender.slice(1) : 'N/A'}${p.age ? ` • ${p.age} yrs` : ''}`;
+        const approvalStatus = userObj?.approvalStatus || 'pending';
+        const approvalBadge = getApprovalBadgeHtml(approvalStatus);
         const verifyBadge = p.isVerified
           ? '<span class="badge badge-success">✓ Verified Trust</span>'
           : '<span class="badge badge-warning">Unverified</span>';
 
+        const photosCount = p.photosCount || p.photos?.length || 0;
+        const thumbUrl = p.mainPhotoUrl || p.photos?.[0]?.variants?.avatar || p.photos?.[0]?.url;
+        const avatarHtml = thumbUrl
+          ? `<img src="${escapeHtml(cdnThumb(thumbUrl, 96, true))}" class="user-cell-avatar clickable-avatar" alt="Profile Photo" onclick="openApplicantModal('${userId}')" title="Click to view all photos & biodata" onerror="this.outerHTML='<div class=\\'user-cell-initials clickable-avatar\\' onclick=\\'openApplicantModal(&quot;${userId}&quot;)\\'>${initials}</div>'"/>`
+          : `<div class="user-cell-initials clickable-avatar" onclick="openApplicantModal('${userId}')" title="Click to view biodata">${initials}</div>`;
+        const photoPill = photosCount > 0 ? `<span class="photo-count-pill">📷 ${photosCount}</span>` : '';
+
         return `
           <tr>
             <td>
-              <strong>${escapeHtml(`${p.firstName} ${p.lastName}`)}</strong>
-              <div class="user-cell-sub">${escapeHtml(p.education || 'Graduate')} • ${escapeHtml(p.occupation || 'Professional')}</div>
+              <div class="user-cell">
+                ${avatarHtml}
+                <div>
+                  <div class="user-cell-title">${escapeHtml(fullName)}${photoPill}</div>
+                  <div class="user-cell-sub">${escapeHtml(p.education || 'Graduate')} • ${escapeHtml(p.occupation || 'Professional')}</div>
+                </div>
+              </div>
             </td>
-            <td>${escapeHtml(p.gender || 'N/A')}</td>
+            <td>${escapeHtml(ageGender)}</td>
             <td>${escapeHtml(locationStr)}</td>
             <td>
               <div class="progress-bar-wrap">
@@ -1103,11 +1421,19 @@ async function loadProfiles() {
               </div>
               <div class="user-cell-sub">${p.completenessPercent || 0}% Complete</div>
             </td>
-            <td>${verifyBadge}</td>
+            <td>
+              <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">
+                ${approvalBadge}
+                ${verifyBadge}
+              </div>
+            </td>
             <td>
               <div class="action-btn-group">
-                <button class="btn-act ${p.isVerified ? 'btn-act-reject' : 'btn-act-approve'}" onclick="toggleProfileVerify('${p._id}', ${!p.isVerified})">
-                  ${p.isVerified ? 'Revoke Trust' : '✓ Verify Trust Badge'}
+                ${userId ? `<button class="btn-act btn-act-view" onclick="openApplicantModal('${userId}')" title="View Full Biodata & Photos">👁️ Data &amp; Photos</button>` : ''}
+                ${userId && approvalStatus !== 'approved' ? `<button class="btn-act btn-act-approve" onclick="promptApproveUser('${userId}', '${safeName}')">✓ Approve</button>` : ''}
+                ${userId && approvalStatus !== 'rejected' ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${userId}', '${safeName}')">✕ Reject</button>` : ''}
+                <button class="btn-act ${p.isVerified ? 'btn-act-changes' : 'btn-act-approve'}" onclick="toggleProfileVerify('${p._id}', ${!p.isVerified})">
+                  ${p.isVerified ? 'Revoke Trust' : '✓ Verify Trust'}
                 </button>
               </div>
             </td>
@@ -1166,15 +1492,18 @@ async function loadReports() {
 
     tbody.innerHTML = data.reports
       .map((r) => {
-        const reported = r.reportedUserId || {};
+        const reported = r.reportedUserId && typeof r.reportedUserId === 'object' ? r.reportedUserId : {};
+        const reportedId = reported._id || reported.id || (typeof r.reportedUserId === 'string' ? r.reportedUserId : '');
+        const reportedName = reported.displayName || 'Reported Member';
+        const safeReportedName = escapeJs(reportedName);
         const reporter = r.reporterId || {};
         const badgeClass = r.status === 'pending' ? 'badge-warning' : r.status === 'actioned' ? 'badge-danger' : 'badge-muted';
 
         return `
           <tr>
             <td>
-              <strong>${escapeHtml(reported.displayName || 'Reported Member')}</strong>
-              <div class="user-cell-sub">${escapeHtml(reported.email || reported.mobile || 'ID: ' + r.reportedUserId)}</div>
+              <strong>${escapeHtml(reportedName)}</strong>
+              <div class="user-cell-sub">${escapeHtml(reported.email || reported.mobile || 'ID: ' + reportedId)}</div>
             </td>
             <td>
               <strong>${escapeHtml(reporter.displayName || 'Reporter')}</strong>
@@ -1185,7 +1514,9 @@ async function loadReports() {
             <td><span class="badge ${badgeClass}">${escapeHtml(r.status || 'pending')}</span></td>
             <td>
               <div class="action-btn-group">
-                <button class="btn-act btn-act-reject" onclick="actionReport('${r._id}', 'actioned', 'suspended')">Suspend User</button>
+                ${reportedId ? `<button class="btn-act btn-act-view" onclick="openApplicantModal('${reportedId}')">👁️ Inspect</button>` : ''}
+                ${reportedId ? `<button class="btn-act btn-act-reject" onclick="openRejectModal('${reportedId}', '${safeReportedName}')">✕ Reject</button>` : ''}
+                <button class="btn-act btn-act-changes" onclick="actionReport('${r._id}', 'actioned', 'suspended')">Suspend</button>
                 <button class="btn-act btn-act-approve" onclick="actionReport('${r._id}', 'dismissed', 'none')">Dismiss</button>
               </div>
             </td>
@@ -1358,6 +1689,64 @@ function setupEventListeners() {
     loadUsers();
   });
 
+  document.getElementById('btn-refresh-users')?.addEventListener('click', () => {
+    loadUsers();
+  });
+
+  // Profile Moderation Filters, Search & Pagination
+  document.getElementById('filter-profile-verified')?.addEventListener('change', (e) => {
+    appState.profiles.isVerified = e.target.value;
+    appState.profiles.page = 1;
+    loadProfiles();
+  });
+
+  const searchProfiles = document.getElementById('search-profiles');
+  searchProfiles?.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      appState.profiles.search = e.target.value.trim();
+      appState.profiles.page = 1;
+      loadProfiles();
+    }, 350);
+  });
+
+  document.getElementById('btn-profiles-prev')?.addEventListener('click', () => {
+    if (appState.profiles.page > 1) {
+      appState.profiles.page--;
+      loadProfiles();
+    }
+  });
+
+  document.getElementById('btn-profiles-next')?.addEventListener('click', () => {
+    appState.profiles.page++;
+    loadProfiles();
+  });
+
+  // Reports Filter & Pagination
+  document.getElementById('filter-report-status')?.addEventListener('change', (e) => {
+    appState.reports.status = e.target.value;
+    appState.reports.page = 1;
+    loadReports();
+  });
+
+  document.getElementById('btn-reports-prev')?.addEventListener('click', () => {
+    if (appState.reports.page > 1) {
+      appState.reports.page--;
+      loadReports();
+    }
+  });
+
+  document.getElementById('btn-reports-next')?.addEventListener('click', () => {
+    appState.reports.page++;
+    loadReports();
+  });
+
+  // Pandit, Verification, Booking, and Community status filters
+  document.getElementById('filter-pandits-status')?.addEventListener('change', () => loadPandits());
+  document.getElementById('filter-verif-status')?.addEventListener('change', () => loadVerifications());
+  document.getElementById('filter-bookings-status')?.addEventListener('change', () => loadBookings());
+  document.getElementById('filter-posts-status')?.addEventListener('change', () => loadCommunityPosts());
+
   // Rejection Confirm Button
   document.getElementById('btn-confirm-reject')?.addEventListener('click', async () => {
     const reason = document.getElementById('reject-reason-select').value;
@@ -1373,10 +1762,9 @@ function setupEventListeners() {
         method: 'POST',
         body: JSON.stringify({ reason, remarks }),
       });
-      showToast(`User registration rejected with feedback recorded.`);
+      showToast(`User account rejected with feedback recorded.`);
       closeRejectModal();
-      loadApprovals();
-      loadDashboardStats();
+      refreshAllUserViews();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -1398,8 +1786,7 @@ function setupEventListeners() {
       });
       showToast(`Profile change request sent to user.`);
       closeRequestChangesModal();
-      loadApprovals();
-      loadDashboardStats();
+      refreshAllUserViews();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -1413,11 +1800,49 @@ function setupEventListeners() {
     }
   });
 
-  // Audit Logs Filter
+  // Audit Logs Filter, Search & Pagination
   document.getElementById('filter-audit-action')?.addEventListener('change', (e) => {
     appState.audit.action = e.target.value;
     appState.audit.page = 1;
     loadAuditLogs();
+  });
+
+  const searchAudit = document.getElementById('search-audit');
+  searchAudit?.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      appState.audit.search = e.target.value.trim();
+      appState.audit.page = 1;
+      loadAuditLogs();
+    }, 350);
+  });
+
+  document.getElementById('btn-audit-prev')?.addEventListener('click', () => {
+    if (appState.audit.page > 1) {
+      appState.audit.page--;
+      loadAuditLogs();
+    }
+  });
+
+  document.getElementById('btn-audit-next')?.addEventListener('click', () => {
+    appState.audit.page++;
+    loadAuditLogs();
+  });
+
+  // Close open modals on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const lightbox = document.getElementById('photo-lightbox-modal');
+      if (lightbox && lightbox.style.display === 'flex') {
+        closePhotoLightbox();
+        return;
+      }
+      closeRejectModal();
+      closeRequestChangesModal();
+      closeConfirmModal();
+      closeCommunityPreviewModal();
+      closeApplicantModal();
+    }
   });
 
   // Manual Upgrade Tool
@@ -1462,6 +1887,23 @@ function formatActionName(action) {
   return (action || 'action').replace(/_/g, ' ').toUpperCase();
 }
 
+function formatDocType(docType) {
+  switch (docType) {
+    case 'aadhaar_card':
+      return 'Aadhaar Card';
+    case 'pan_card':
+      return 'PAN Card';
+    case 'voter_id':
+      return 'Voter ID Card';
+    case 'passport':
+      return 'Passport';
+    case 'bank_passbook':
+      return 'Bank Passbook';
+    default:
+      return (docType || 'ID Proof').replace(/_/g, ' ').toUpperCase();
+  }
+}
+
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
   return str
@@ -1470,6 +1912,16 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function escapeJs(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/\r/g, '')
+    .replace(/\n/g, ' ');
 }
 
 // ==========================================================================
@@ -1500,15 +1952,13 @@ async function loadPandits() {
             ? '<span class="badge badge-danger">✕ Rejected</span>'
             : '<span class="badge badge-warning pulse">⏳ Pending</span>';
 
-        const actions =
-          p.verificationStatus === 'pending'
-            ? `
-              <div class="action-buttons">
-                <button class="btn-primary btn-xs" onclick="verifyPandit('${p.id}')">✓ Verify</button>
-                <button class="btn-danger btn-xs" onclick="rejectPandit('${p.id}')">✕ Reject</button>
-              </div>
-            `
-            : `<span class="text-muted text-xs">${p.verificationStatus}</span>`;
+        const actions = `
+          <div class="action-buttons">
+            ${p.userId ? `<button class="btn-act btn-act-view btn-xs" onclick="openApplicantModal('${p.userId}')">👁️ Profile</button>` : ''}
+            ${p.verificationStatus !== 'verified' ? `<button class="btn-primary btn-xs" onclick="verifyPandit('${p.id}')">✓ Verify</button>` : ''}
+            ${p.verificationStatus !== 'rejected' ? `<button class="btn-danger btn-xs" onclick="rejectPandit('${p.id}')">✕ Reject</button>` : ''}
+          </div>
+        `;
 
         return `
           <tr>
@@ -1539,7 +1989,7 @@ async function loadPandits() {
       })
       .join('');
   } catch (err) {
-    renderTableError(tbody, 8, err.message, 'loadVerifications', err.requestId);
+    renderTableError(tbody, 8, err.message, 'loadPandits', err.requestId);
   }
 }
 
@@ -1576,7 +2026,7 @@ async function rejectPandit(id) {
 // ==========================================================================
 async function loadVerifications() {
   const tbody = document.getElementById('tbody-verifications');
-  const statusFilter = document.getElementById('filter-verif-status')?.value || 'pending';
+  const statusFilter = document.getElementById('filter-verif-status')?.value || 'all';
   if (!tbody) return;
 
   tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6">Loading verification queue...</td></tr>';
@@ -1593,7 +2043,7 @@ async function loadVerifications() {
     tbody.innerHTML = items
       .map((r) => {
         const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : 'N/A';
-        const docBadge = `<span class="badge badge-info">${escapeHtml((r.documentType || 'id').replace('_', ' ').toUpperCase())}</span>`;
+        const docBadge = `<span class="badge badge-info">🪪 ${escapeHtml(formatDocType(r.documentType))}</span>`;
         const statusBadge =
           r.status === 'verified'
             ? '<span class="badge badge-success">✓ Verified</span>'
@@ -1605,17 +2055,15 @@ async function loadVerifications() {
           ? '<span class="text-green text-xs">✓ Explicit Consent</span>'
           : '<span class="text-red text-xs">No Consent</span>';
 
-        const viewDocBtn = `<button class="btn-secondary btn-xs" onclick="viewVerificationDocument('${r.id}')">View document</button>`;
-        const actions =
-          r.status === 'pending'
-            ? `
-              <div class="action-buttons">
-                ${viewDocBtn}
-                <button class="btn-primary btn-xs" onclick="approveVerification('${r.id}')">✓ Approve</button>
-                <button class="btn-danger btn-xs" onclick="rejectVerification('${r.id}')">✕ Reject</button>
-              </div>
-            `
-            : `<span class="text-muted text-xs">${r.status}</span>`;
+        const viewDocBtn = `<button class="btn-secondary btn-xs" onclick="viewVerificationDocument('${r.id}')">👁️ View Doc</button>`;
+        const actions = `
+          <div class="action-buttons">
+            ${viewDocBtn}
+            ${r.userId ? `<button class="btn-act btn-act-view btn-xs" onclick="openApplicantModal('${r.userId}')">👤 User</button>` : ''}
+            ${r.status !== 'verified' ? `<button class="btn-primary btn-xs" onclick="approveVerification('${r.id}')">✓ Approve</button>` : ''}
+            ${r.status !== 'rejected' ? `<button class="btn-danger btn-xs" onclick="rejectVerification('${r.id}')">✕ Reject</button>` : ''}
+          </div>
+        `;
 
         return `
           <tr>
@@ -1638,7 +2086,7 @@ async function loadVerifications() {
       })
       .join('');
   } catch (err) {
-    renderTableError(tbody, 8, err.message, 'loadPandits', err.requestId);
+    renderTableError(tbody, 8, err.message, 'loadVerifications', err.requestId);
   }
 }
 
@@ -1650,12 +2098,49 @@ function cdnThumb(url, width, face) {
 }
 
 // Private identity document: short-lived (10 min) signed URL fetched on demand, audit-logged server side.
+// Displays image documents directly inside the Lightbox Modal (no popup blockers!) with direct Approve/Reject buttons.
 async function viewVerificationDocument(id) {
   try {
     const res = await adminFetch(`/admin/verifications/${id}/document-url`);
-    const url = res?.data?.url;
+    const data = res?.data || {};
+    const url = data.url;
     if (!url) throw new Error('Document not available.');
-    window.open(url, '_blank', 'noopener,noreferrer');
+
+    const isPdf = String(data.format || '').toLowerCase() === 'pdf' || url.toLowerCase().includes('.pdf');
+    if (isPdf) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const modal = document.getElementById('photo-lightbox-modal');
+    const img = document.getElementById('lightbox-img');
+    const titleEl = document.getElementById('lightbox-title');
+    const badgeEl = document.getElementById('lightbox-status-badge');
+    const actionsEl = document.getElementById('lightbox-actions');
+    if (!modal || !img) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    img.src = url;
+    img.onerror = () => {
+      img.src = FALLBACK_MEDIA_SVG;
+    };
+    const docLabel = formatDocType(data.documentType);
+    if (titleEl) titleEl.innerText = `🪪 ${docLabel} ${data.documentReferenceMasked ? `(${data.documentReferenceMasked})` : ''}`;
+    if (badgeEl) {
+      badgeEl.className = 'badge badge-info';
+      badgeEl.innerText = 'Private Vault • 10m Signed URL';
+    }
+    if (actionsEl) {
+      actionsEl.innerHTML = `
+        <button class="btn-secondary" onclick="closePhotoLightbox()">Close</button>
+        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="text-decoration: none;">Open Full Tab ↗</a>
+        <button class="btn-act btn-act-approve" onclick="closePhotoLightbox(); approveVerification('${id}');">✓ Verify &amp; Unlock Account</button>
+        <button class="btn-act btn-act-reject" onclick="closePhotoLightbox(); rejectVerification('${id}');">✕ Reject Document</button>
+      `;
+    }
+    modal.style.display = 'flex';
   } catch (err) {
     showToast(err.message || 'Could not open document.', 'error');
   }
@@ -1668,6 +2153,9 @@ async function approveVerification(id) {
     showToast('Identity verification approved and badge issued!');
     loadVerifications();
     loadDashboardStats();
+    if (activeInspectedUserId && document.getElementById('applicant-modal')?.style.display === 'flex') {
+      openApplicantModal(activeInspectedUserId);
+    }
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1684,6 +2172,9 @@ async function rejectVerification(id) {
     showToast('Identity verification rejected.');
     loadVerifications();
     loadDashboardStats();
+    if (activeInspectedUserId && document.getElementById('applicant-modal')?.style.display === 'flex') {
+      openApplicantModal(activeInspectedUserId);
+    }
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -1763,7 +2254,7 @@ async function loadBookings() {
 // ==========================================================================
 async function loadCommunityPosts() {
   const tbody = document.getElementById('tbody-community');
-  const statusFilter = document.getElementById('filter-posts-status')?.value || 'pending';
+  const statusFilter = document.getElementById('filter-posts-status')?.value || 'all';
   if (!tbody) return;
 
   tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6">Loading community posts...</td></tr>';
@@ -2168,9 +2659,11 @@ window.toggleBannerItem = toggleBannerItem;
 window.replaceBannerItem = replaceBannerItem;
 window.deleteBannerItem = deleteBannerItem;
 window.handleBannerFileSelected = handleBannerFileSelected;
-window.handleBannerUploadSubmit = handleBannerUploadSubmit;
+window.submitBannerUpload = submitBannerUpload;
 window.openApplicantModal = openApplicantModal;
 window.closeApplicantModal = closeApplicantModal;
+window.openPhotoLightbox = openPhotoLightbox;
+window.closePhotoLightbox = closePhotoLightbox;
 window.promptApproveUser = promptApproveUser;
 window.openRejectModal = openRejectModal;
 window.closeRejectModal = closeRejectModal;
@@ -2179,6 +2672,12 @@ window.closeRequestChangesModal = closeRequestChangesModal;
 window.openConfirmModal = openConfirmModal;
 window.closeConfirmModal = closeConfirmModal;
 window.moderateUserPhoto = moderateUserPhoto;
+window.viewVerificationDocument = viewVerificationDocument;
+window.approveVerification = approveVerification;
+window.rejectVerification = rejectVerification;
+window.verifyPandit = verifyPandit;
+window.rejectPandit = rejectPandit;
+window.actionReport = actionReport;
 window.loadApprovals = loadApprovals;
 window.loadUsers = loadUsers;
 window.loadProfiles = loadProfiles;

@@ -14,8 +14,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       ...config.android,
       package: 'com.shaadibanao.app',
-      // Strictly disable cleartext HTTP in production builds; allow in local dev
-      usesCleartextTraffic: !isProduction,
     } as any,
   };
 };

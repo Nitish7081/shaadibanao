@@ -81,7 +81,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
         </PressableScale>
         <Text maxFontSizeMultiplier={1.2} style={styles.navTitle}>
-          BandhanSetu
+          Shaadi Banao
         </Text>
         <View style={{ width: 38 }} />
       </View>
@@ -100,7 +100,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
         >
           <View style={styles.header}>
             <Text maxFontSizeMultiplier={1.2} style={styles.brandTitle}>
-              BandhanSetu Matrimony
+              Shaadi Banao Matrimony
             </Text>
             <Text maxFontSizeMultiplier={1.2} style={styles.tagline}>
               Serious about marriage • Safe & Vedic by design

@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "680373929265-5fkbpik2n488p333rvliaalu3rq1pl7r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shaadibanao.app",
+            "certificate_hash": "56b2e89c6cca22e85237ccf7666ba25d61aefb0f"
+          }
+        },
+        {
           "client_id": "680373929265-ljt8b6kd7tdurrqitsarh34mcdetqbl1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -27,6 +35,14 @@
           "android_info": {
             "package_name": "com.shaadibanao.app",
             "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "680373929265-njc2bf08mr44v1o73jj1dp4v8t0kji3f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.shaadibanao.app",
+            "certificate_hash": "fead76342f48525e782a96143856f35d8d1a7d28"
           }
         },
         {

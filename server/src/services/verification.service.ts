@@ -6,10 +6,12 @@ import { AuditLogModel } from '../models/audit-log.model';
 import { StorageService } from './storage.service';
 import { presentPhoto } from './photoPrivacy';
 import { AppError } from '../middleware/errorHandler';
+import { SocketService } from '../socket/socket.service';
+import { IDENTITY_DOCUMENT_TYPES, IdentityDocumentType } from '@bandhansetu/shared';
 
 export interface SubmitIdentityInput {
   userId: string;
-  documentType: 'aadhaar_card' | 'passport' | 'voter_id';
+  documentType: IdentityDocumentType;
   documentReferenceNumber: string; // e.g. "1234 5678 9012"
   documentStorageKey: string;
   consentGranted: boolean;
@@ -33,6 +35,14 @@ export class VerificationService {
   static async submitIdentityVerification(input: SubmitIdentityInput) {
     if (!input.consentGranted) {
       throw new Error('Explicit consent is required for identity verification document submission.');
+    }
+
+    if (!IDENTITY_DOCUMENT_TYPES.includes(input.documentType)) {
+      throw new AppError(
+        `Invalid document type '${input.documentType}'. Allowed: Aadhaar Card, PAN Card, Voter ID, Passport, Bank Passbook.`,
+        400,
+        'INVALID_DOCUMENT_TYPE'
+      );
     }
 
     const user = await UserModel.findById(input.userId);
@@ -144,10 +154,32 @@ export class VerificationService {
     request.verifiedAt = new Date();
     await request.save();
 
-    // Update user & profile
-    await UserModel.findByIdAndUpdate(request.userId, {
-      identityVerificationStatus: 'verified',
-    });
+    // Update user & profile: verifying identity also approves pending/changes_requested accounts
+    // so the verified user can immediately log into ShaadiBanao without waiting for a second manual step.
+    const targetUser = await UserModel.findById(request.userId);
+    if (targetUser) {
+      targetUser.identityVerificationStatus = 'verified';
+      targetUser.identityDocumentType = request.documentType;
+      targetUser.identityDocumentReferenceMasked = request.documentReferenceMasked;
+      if (targetUser.status !== 'suspended' && targetUser.approvalStatus !== 'approved') {
+        targetUser.approvalStatus = 'approved';
+        targetUser.approvedBy = adminId;
+        targetUser.approvedAt = new Date();
+        targetUser.rejectionReason = undefined;
+        targetUser.moderationRemarks = undefined;
+      }
+      await targetUser.save();
+
+      SocketService.emitToUser(targetUser._id.toString(), 'user:approval_status_changed', {
+        approvalStatus: targetUser.approvalStatus,
+        identityVerificationStatus: 'verified',
+        approvedAt: targetUser.approvedAt,
+      });
+    } else {
+      await UserModel.findByIdAndUpdate(request.userId, {
+        identityVerificationStatus: 'verified',
+      });
+    }
 
     await ProfileModel.findOneAndUpdate(
       { userId: request.userId },
@@ -161,11 +193,11 @@ export class VerificationService {
       targetUserId: request.userId.toString(),
       targetUserEmail: request.userEmail,
       targetUserMobile: request.userMobile,
-      details: { documentType: request.documentType, requestId },
+      details: { documentType: request.documentType, requestId, accountApproved: targetUser?.approvalStatus === 'approved' },
       ipAddress,
     });
 
-    return { success: true, message: 'Identity verification approved.' };
+    return { success: true, message: 'Identity verification approved and user account unlocked for ShaadiBanao.' };
   }
 
   /**
@@ -190,6 +222,11 @@ export class VerificationService {
     await UserModel.findByIdAndUpdate(request.userId, {
       identityVerificationStatus: 'rejected',
     });
+
+    await ProfileModel.findOneAndUpdate(
+      { userId: request.userId },
+      { isVerified: false }
+    );
 
     await AuditLogModel.create({
       adminId,
@@ -237,18 +274,25 @@ export class VerificationService {
       ipAddress,
     });
 
-    return { url: signed.url, expiresInSeconds: signed.expiresInSeconds };
+    return {
+      url: signed.url,
+      format: signed.format || 'jpg',
+      documentType: request.documentType,
+      documentReferenceMasked: request.documentReferenceMasked,
+      expiresInSeconds: signed.expiresInSeconds,
+    };
   }
 
   /**
-   * Admin: Moderate user profile photo
+   * Admin: Moderate user profile photo (single photo via optional photoId, or all photos)
    */
   static async moderateProfilePhoto(
     userId: string,
     action: 'approve' | 'reject',
     adminId: string,
     remarks?: string,
-    ipAddress?: string
+    ipAddress?: string,
+    photoId?: string
   ) {
     const isDbConnected = mongoose.connection.readyState === 1;
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
@@ -260,19 +304,39 @@ export class VerificationService {
     const user = await UserModel.findById(userId);
     if (!user) throw new Error('User not found.');
 
-    user.photoApprovalStatus = newStatus;
-    await user.save();
-
     const profile = await ProfileModel.findOne({ userId });
-    if (profile) {
-      profile.photoChecked = action === 'approve';
-      if (profile.photos && profile.photos.length > 0) {
+    let finalPhotoStatus: 'approved' | 'rejected' | 'pending' | 'none' = newStatus;
+
+    if (profile && profile.photos && profile.photos.length > 0) {
+      if (photoId) {
+        const target = profile.photos.find(
+          (p: any) =>
+            p._id?.toString() === photoId ||
+            p.id === photoId ||
+            (p.publicId && p.publicId === photoId)
+        );
+        if (!target) {
+          throw new AppError('Photo not found on user profile.', 404, 'PHOTO_NOT_FOUND');
+        }
+        target.approved = action === 'approve';
+        const anyApproved = profile.photos.some((p: any) => p.approved !== false);
+        profile.photoChecked = anyApproved;
+        finalPhotoStatus = anyApproved ? 'approved' : 'rejected';
+      } else {
+        profile.photoChecked = action === 'approve';
         profile.photos.forEach((p: any) => {
           p.approved = action === 'approve';
         });
+        finalPhotoStatus = newStatus;
       }
       await profile.save();
+    } else if (profile) {
+      profile.photoChecked = action === 'approve';
+      await profile.save();
     }
+
+    user.photoApprovalStatus = finalPhotoStatus;
+    await user.save();
 
     await AuditLogModel.create({
       adminId,
@@ -280,11 +344,11 @@ export class VerificationService {
       targetUserId: userId,
       targetUserEmail: user.email,
       targetUserMobile: user.mobile,
-      details: { action, remarks },
+      details: { action, remarks, ...(photoId ? { photoId } : { scope: 'all' }) },
       ipAddress,
     });
 
-    return { success: true, photoApprovalStatus: newStatus, status: newStatus };
+    return { success: true, photoApprovalStatus: finalPhotoStatus, status: finalPhotoStatus };
   }
 
   /**

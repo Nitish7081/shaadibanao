@@ -837,6 +837,7 @@ h1, h2, h3, h4, .brand-name, .stat-value {
 .action-btn-group {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .btn-act {
@@ -1001,18 +1002,96 @@ h1, h2, h3, h4, .brand-name, .stat-value {
 
 .bio-photo-card {
   position: relative;
-  width: 100px;
-  height: 120px;
+  width: 154px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border-color);
+  background: var(--bg-input);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .bio-photo-card img {
-  width: 100%;
-  height: 100%;
+  width: 154px;
+  height: 168px;
   object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+
+.bio-photo-card img:hover {
+  transform: scale(1.03);
+}
+
+.bio-photo-meta {
+  padding: 8px;
+  font-size: 11px;
+  color: var(--text-sub);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bio-photo-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.bio-photo-actions .btn-xs {
+  flex: 1;
+  text-align: center;
+}
+
+.bio-section-card {
+  margin-top: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.bio-section-title {
+  font-weight: 700;
+  color: var(--gold-accent);
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.clickable-avatar {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.clickable-avatar:hover {
+  transform: scale(1.08);
+  border-color: var(--gold-accent);
+}
+
+.photo-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--gold-accent-light);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+.lightbox-full-img {
+  max-width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  display: inline-block;
 }
 
 .bio-photo-main-tag {

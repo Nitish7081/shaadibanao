@@ -4,11 +4,11 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  StatusBar,
   Linking,
   FlatList,
   useWindowDimensions,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -85,28 +85,50 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     setMatchesError(null);
     let networkDown = false;
 
-    // Matrimonial opposite-gender rule: boy sees girl profiles, girl sees boy profiles
-    const cachedProfile = profile || getCachedUserProfile();
-    const targetGender = cachedProfile?.gender === 'male' ? 'female' : (cachedProfile?.gender === 'female' ? 'male' : undefined);
+    // COMPULSORY Matrimonial opposite-gender rule: boy ALWAYS sees girls, girl ALWAYS sees boys.
+    // If cached profile gender isn't known yet (e.g. cold launch / account switch), fetch profile FIRST
+    // so same-gender profiles can NEVER appear or flash during refresh.
+    let effectiveProfile = getCachedUserProfile();
+    let profileRes: PromiseSettledResult<any> | null = null;
 
-    const [profileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
-      getMyProfile(token),
-      searchProfiles(token, { limit: 8, ...(targetGender ? { gender: targetGender } : {}) }),
+    if (!effectiveProfile?.gender) {
+      const [firstProf] = await Promise.allSettled([getMyProfile(token)]);
+      profileRes = firstProf;
+      if (firstProf.status === 'fulfilled' && firstProf.value?.data) {
+        effectiveProfile = firstProf.value.data;
+        setProfile(firstProf.value.data);
+        setCachedUserProfile(firstProf.value.data);
+      } else if (firstProf.status === 'rejected' && isNetworkError(firstProf.reason)) {
+        networkDown = true;
+      } else {
+        setProfile(null);
+      }
+    }
+
+    const viewerGender = effectiveProfile?.gender?.toLowerCase?.();
+    const requiredOpposite =
+      viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : undefined;
+
+    const [freshProfileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
+      profileRes ? Promise.resolve(null) : getMyProfile(token),
+      requiredOpposite
+        ? searchProfiles(token, { limit: 8, gender: requiredOpposite })
+        : Promise.resolve({ data: { items: [] } } as any),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
     ]);
 
-    // 1. User profile (a missing profile is a normal state for new users)
-    let effectiveProfile = cachedProfile;
-    if (profileRes.status === 'fulfilled' && profileRes.value?.data) {
-      setProfile(profileRes.value.data);
-      setCachedUserProfile(profileRes.value.data);
-      effectiveProfile = profileRes.value.data;
-    } else if (profileRes.status === 'rejected' && isNetworkError(profileRes.reason)) {
-      networkDown = true;
-    } else {
-      // Server answered but user has no profile yet: never show previous user's profile
-      setProfile(null);
+    // 1. User profile update (when fetched in parallel above)
+    if (!profileRes) {
+      if (freshProfileRes.status === 'fulfilled' && freshProfileRes.value?.data) {
+        effectiveProfile = freshProfileRes.value.data;
+        setProfile(freshProfileRes.value.data);
+        setCachedUserProfile(freshProfileRes.value.data);
+      } else if (freshProfileRes.status === 'rejected' && isNetworkError(freshProfileRes.reason)) {
+        networkDown = true;
+      } else if (freshProfileRes.status === 'rejected') {
+        setProfile(null);
+      }
     }
 
     // Fetch membership asynchronously to keep paywall cache updated
@@ -120,23 +142,35 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     }
     setLoadingBanners(false);
 
-    // 3. Today's matches (limited to 8 server-side for speed)
+    // 3. Today's matches (strictly opposite gender enforced both server-side & client-side)
+    const finalViewerGender = effectiveProfile?.gender?.toLowerCase?.();
+    const finalOpposite =
+      finalViewerGender === 'male' ? 'female' : finalViewerGender === 'female' ? 'male' : undefined;
+
     if (searchRes.status === 'fulfilled') {
       const items = searchRes.value?.data?.items || [];
-      const requiredOpposite = effectiveProfile?.gender === 'male' ? 'female' : (effectiveProfile?.gender === 'female' ? 'male' : undefined);
-      // Strictly enforce opposite gender: a boy NEVER sees another boy, a girl NEVER sees another girl
-      const strictlyFiltered = requiredOpposite ? items.filter((m: any) => m.gender === requiredOpposite) : items;
-      setDailyMatches(strictlyFiltered);
+      if (finalOpposite) {
+        const strictlyFiltered = items.filter(
+          (m: any) => String(m.gender || '').toLowerCase() === finalOpposite
+        );
+        setDailyMatches(strictlyFiltered);
 
-      // If initial search ran without target gender, re-fetch with known opposite gender immediately
-      if (!targetGender && requiredOpposite) {
-        searchProfiles(token, { limit: 8, gender: requiredOpposite })
-          .then((fresh) => {
-            if (fresh?.data?.items) {
-              setDailyMatches(fresh.data.items.filter((m: any) => m.gender === requiredOpposite));
-            }
-          })
-          .catch(() => {});
+        // If profile gender changed on refresh vs cached gender, immediately re-fetch opposite gender
+        if (requiredOpposite !== finalOpposite) {
+          searchProfiles(token, { limit: 8, gender: finalOpposite })
+            .then((fresh) => {
+              if (fresh?.data?.items) {
+                setDailyMatches(
+                  fresh.data.items.filter(
+                    (m: any) => String(m.gender || '').toLowerCase() === finalOpposite
+                  )
+                );
+              }
+            })
+            .catch(() => {});
+        }
+      } else {
+        setDailyMatches([]);
       }
     } else {
       if (isNetworkError(searchRes.reason)) networkDown = true;
@@ -207,7 +241,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={styles.screenContainer}>
-      <StatusBar barStyle="dark-content" backgroundColor={ds.color.bg} />
+      <StatusBar style="dark" />
 
       {/* Header: existing ShaadiBanao logo + name, bell with badge, greeting, Live/Approved chips */}
       <HomeHeader

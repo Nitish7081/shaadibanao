@@ -276,14 +276,14 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             )}
 
-            {approvalStatus === 'pending' && !isSuspended && (
+            {!isSuspended && (
               <TouchableOpacity
                 style={[styles.secondaryBtn, { borderColor: colors.softGold, backgroundColor: '#FAF6ED', marginBottom: 8 }]}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate('IdentityVerification')}
               >
                 <Text style={[styles.secondaryBtnText, { color: colors.royalMaroon, fontWeight: '700' }]}>
-                  🪪 Verify Govt ID / Aadhaar (Fast-Track)
+                  🪪 Verify ID (Aadhaar / PAN / Voter ID / Passport / Passbook)
                 </Text>
               </TouchableOpacity>
             )}

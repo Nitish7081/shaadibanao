@@ -1,11 +1,12 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { IDENTITY_DOCUMENT_TYPES, IdentityDocumentType } from '@bandhansetu/shared';
 
 export interface IVerificationRequest extends Document {
   userId: mongoose.Types.ObjectId;
   userDisplayName?: string;
   userMobile?: string;
   userEmail?: string;
-  documentType: 'aadhaar_card' | 'passport' | 'voter_id';
+  documentType: IdentityDocumentType;
   documentReferenceMasked: string; // e.g. "XXXX-XXXX-1234"
   documentStorageKey: string;      // Private internal storage key; never served publicly
   consentGranted: boolean;
@@ -31,7 +32,7 @@ const VerificationRequestSchema = new Schema<IVerificationRequest>(
     userEmail: { type: String, trim: true },
     documentType: {
       type: String,
-      enum: ['aadhaar_card', 'passport', 'voter_id'],
+      enum: IDENTITY_DOCUMENT_TYPES,
       required: true,
     },
     documentReferenceMasked: {

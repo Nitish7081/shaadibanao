@@ -31,9 +31,9 @@ export interface CloudinaryUploadResult {
 
 export const ALLOWED_MIME_TYPES: Record<string, string[]> = {
   profile_photo: ['image/jpeg', 'image/png', 'image/webp'],
-  identity_document: ['image/jpeg', 'image/png', 'application/pdf'],
+  identity_document: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
   community_post: ['image/jpeg', 'image/png', 'image/webp'],
-  kundli_chart: ['image/jpeg', 'image/png', 'application/pdf'],
+  kundli_chart: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
   public_banner: ['image/jpeg', 'image/png', 'image/webp'],
 };
 
@@ -258,7 +258,10 @@ export class StorageService {
    * Callers MUST have authorised the request (owner or admin) before calling this.
    * The URL and public_id are never logged.
    */
-  static async getSignedPrivateUrl(publicId: string, ttlSeconds = 600): Promise<{ url: string; expiresInSeconds: number }> {
+  static async getSignedPrivateUrl(
+    publicId: string,
+    ttlSeconds = 600
+  ): Promise<{ url: string; expiresInSeconds: number; format?: string }> {
     this.ensureCloudinaryConfigured();
     if (!config.cloudinary.isConfigured) {
       throw new Error('Cloudinary environment credentials are not configured on server.');
@@ -274,7 +277,7 @@ export class StorageService {
       expires_at: expiresAt,
       attachment: false,
     });
-    return { url, expiresInSeconds: ttlSeconds };
+    return { url, expiresInSeconds: ttlSeconds, format: resource.format };
   }
 
   /**
@@ -308,7 +311,7 @@ export class StorageService {
           public_id: options.publicId,
           resource_type: 'image',
           type: deliveryType,
-          allowed_formats: isPrivate ? ['jpg', 'jpeg', 'png', 'pdf'] : ['jpg', 'jpeg', 'png', 'webp'],
+          allowed_formats: isPrivate ? ['jpg', 'jpeg', 'png', 'webp', 'pdf'] : ['jpg', 'jpeg', 'png', 'webp'],
           // Private documents are stored untouched; public images get auto quality/format
           ...(isPrivate
             ? {}

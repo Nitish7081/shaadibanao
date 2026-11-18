@@ -18,6 +18,8 @@ import { Card } from '../components/common/Card';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { StatusNotice } from '../components/common/StatusNotice';
+import { apiClient } from '../services/apiClient';
+import { getSessionToken } from '../services/authSession';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReportBlock'>;
 
@@ -26,6 +28,7 @@ export const ReportBlockScreen: React.FC<Props> = ({ route, navigation }) => {
   const [selectedReason, setSelectedReason] = useState<ReportReason>('fake_photos');
   const [comments, setComments] = useState('');
   const [alsoBlock, setAlsoBlock] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const reasonLabels: Record<ReportReason, string> = {
     fake_photos: 'Fake or stolen photos',
@@ -36,17 +39,44 @@ export const ReportBlockScreen: React.FC<Props> = ({ route, navigation }) => {
     other: 'Other policy violation',
   };
 
-  const handleSubmitReport = () => {
-    Alert.alert(
-      'Report Submitted',
-      `Thank you for protecting our community. Our Trust & Safety team has received your report regarding ${name} (${profileId}) and will review it confidentially within 4 hours.`,
-      [
-        {
-          text: 'Return',
-          onPress: () => navigation.goBack(),
+  const handleSubmitReport = async () => {
+    const token = getSessionToken();
+    if (!token) {
+      Alert.alert('Session Expired', 'Please sign in to file a report.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await apiClient('/reports', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
         },
-      ]
-    );
+        body: JSON.stringify({
+          profileId,
+          reason: selectedReason,
+          comments: comments.trim(),
+          alsoBlock,
+        }),
+      });
+
+      Alert.alert(
+        'Report Submitted',
+        response?.message ||
+          `Thank you for protecting our community. Our Trust & Safety team has received your report regarding ${name} (${profileId}) and will review it confidentially within 4 hours.`,
+        [
+          {
+            text: 'Return',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Could not submit report. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -126,9 +156,11 @@ export const ReportBlockScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
 
           <Button
-            title="Submit Report"
+            title={submitting ? 'Submitting Report...' : 'Submit Report'}
             onPress={handleSubmitReport}
             variant="primary"
+            loading={submitting}
+            disabled={submitting}
             style={[styles.submitBtn, { backgroundColor: colors.alertRed }]}
           />
         </Card>

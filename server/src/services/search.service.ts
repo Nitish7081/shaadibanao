@@ -42,62 +42,70 @@ export class SearchService {
       sortBy = 'best_match',
     } = filters;
 
-    // Fetch user's partner preferences for factual alignment scoring
-    const myPreferences = await PreferenceService.getMyPreferences(requestingUserId);
-
     const isDbConnected = mongoose.connection.readyState === 1;
 
-    // Enforce matrimonial rule: A boy (male) only sees girls (female), and a girl (female) only sees boys (male)
+    let myPreferences: any = null;
     let viewerGender: string | undefined;
-    if (isDbConnected) {
-      const queryViewerId = mongoose.Types.ObjectId.isValid(requestingUserId)
-        ? new mongoose.Types.ObjectId(requestingUserId)
-        : requestingUserId;
-      const viewerDoc = await ProfileModel.findOne({
-        $or: [{ userId: queryViewerId }, { userId: requestingUserId }],
-      }).select('gender');
-      if (viewerDoc?.gender) {
-        viewerGender = viewerDoc.gender;
-      }
-    } else {
-      const viewerDoc =
-        inMemoryProfileStore.get(requestingUserId) ||
-        inMemoryProfileRegistry.find((p) => p.userId === requestingUserId);
-      if (viewerDoc?.gender) {
-        viewerGender = viewerDoc.gender;
-      }
-    }
-
-    let targetGender = gender;
-    if (viewerGender === 'male') {
-      targetGender = 'female';
-    } else if (viewerGender === 'female') {
-      targetGender = 'male';
-    }
-
     let candidateProfiles: any[] = [];
     let totalCount = 0;
 
     if (isDbConnected) {
-      // Build MongoDB query: only approved and active accounts are eligible
       const queryUserId = mongoose.Types.ObjectId.isValid(requestingUserId)
         ? new mongoose.Types.ObjectId(requestingUserId)
         : requestingUserId;
 
-      // 1. Fetch eligible user IDs (Active and Approved)
-      const approvedUsers = await UserModel.find({
-        status: 'active',
-        approvalStatus: 'approved',
-        _id: { $ne: queryUserId },
-      }).select('_id');
+      // Parallelize independent DB reads to minimize latency on Render + MongoDB Atlas
+      const [prefs, viewerDoc, approvedUsers, reports] = await Promise.all([
+        PreferenceService.getMyPreferences(requestingUserId),
+        ProfileModel.findOne({
+          $or: [{ userId: queryUserId }, { userId: requestingUserId }],
+        })
+          .select('gender')
+          .lean(),
+        UserModel.find({
+          status: 'active',
+          approvalStatus: 'approved',
+          _id: { $ne: queryUserId },
+        })
+          .select('_id')
+          .lean(),
+        ReportModel.find({
+          $or: [{ reporterId: queryUserId }, { reportedUserId: queryUserId }],
+          status: { $in: ['pending', 'reviewed', 'actioned'] },
+        })
+          .select('reporterId reportedUserId')
+          .lean(),
+      ]);
 
-      const approvedUserIds = approvedUsers.map((u) => u._id);
+      myPreferences = prefs;
+      if ((viewerDoc as any)?.gender) {
+        viewerGender = String((viewerDoc as any).gender).trim().toLowerCase();
+      }
 
-      // 2. Fetch blocked/reported users to respect trust & safety
-      const reports = await ReportModel.find({
-        $or: [{ reporterId: queryUserId }, { reportedUserId: queryUserId }],
-        status: { $in: ['pending', 'reviewed', 'actioned'] },
-      }).select('reporterId reportedUserId');
+      // COMPULSORY Matrimonial opposite-gender rule:
+      // Boy (male) ONLY sees Girls (female), Girl (female) ONLY sees Boys (male).
+      // Client-sent gender filters can NEVER override this rule.
+      let targetGender: 'male' | 'female' | undefined;
+      if (viewerGender === 'male') {
+        targetGender = 'female';
+      } else if (viewerGender === 'female') {
+        targetGender = 'male';
+      } else if (gender === 'male' || gender === 'female') {
+        targetGender = gender;
+      } else {
+        // Viewer has no profile gender yet and no explicit filter: never leak mixed-gender results
+        return {
+          items: [],
+          pagination: {
+            page,
+            limit,
+            totalCount: 0,
+            totalPages: 0,
+          },
+        };
+      }
+
+      const approvedUserIds = approvedUsers.map((u: any) => u._id);
 
       const excludedIds = new Set<string>();
       reports.forEach((r: any) => {
@@ -109,14 +117,15 @@ export class SearchService {
       });
 
       const eligibleUserIds = approvedUserIds.filter(
-        (id) => !excludedIds.has(id.toString())
+        (id: any) => !excludedIds.has(id.toString())
       );
 
       const query: any = {
         userId: { $in: eligibleUserIds },
+        hideProfile: { $ne: true },
+        gender: targetGender, // Compulsory opposite-gender filter
       };
 
-      if (targetGender) query.gender = targetGender;
       if (maritalStatus) query.maritalStatus = maritalStatus;
       if (religion) query.religion = new RegExp(`^${religion}$`, 'i');
       if (motherTongue) query.motherTongue = new RegExp(`^${motherTongue}$`, 'i');
@@ -153,13 +162,34 @@ export class SearchService {
       if (sortBy === 'age_asc') sort = { dateOfBirth: -1, _id: -1 }; // youngest first
       if (sortBy === 'age_desc') sort = { dateOfBirth: 1, _id: -1 }; // oldest first
 
-      totalCount = await ProfileModel.countDocuments(query);
-      candidateProfiles = await ProfileModel.find(query)
-        .sort(sort)
-        .skip((page - 1) * limit)
-        .limit(limit);
+      const [count, found] = await Promise.all([
+        ProfileModel.countDocuments(query),
+        ProfileModel.find(query)
+          .sort(sort)
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+      ]);
+      totalCount = count;
+      // Defensive final guard ensuring zero same-gender leakage
+      candidateProfiles = found.filter((p: any) => String(p.gender || '').toLowerCase() === targetGender);
     } else {
       // In-memory filter for dev/testing
+      myPreferences = await PreferenceService.getMyPreferences(requestingUserId);
+      const viewerDoc =
+        inMemoryProfileStore.get(requestingUserId) ||
+        inMemoryProfileRegistry.find((p) => p.userId === requestingUserId);
+      if (viewerDoc?.gender) {
+        viewerGender = String(viewerDoc.gender).trim().toLowerCase();
+      }
+
+      let targetGender = gender;
+      if (viewerGender === 'male') {
+        targetGender = 'female';
+      } else if (viewerGender === 'female') {
+        targetGender = 'male';
+      }
+
       const pool = [
         ...Array.from(inMemoryProfileStore.values()),
         ...inMemoryProfileRegistry.filter((p) => !inMemoryProfileStore.has(p.userId)),
@@ -167,7 +197,7 @@ export class SearchService {
 
       candidateProfiles = pool.filter((p) => {
         if (p.userId === requestingUserId) return false;
-        if (targetGender && p.gender !== targetGender) return false;
+        if (targetGender && String(p.gender || '').toLowerCase() !== targetGender) return false;
         if (maritalStatus && p.maritalStatus !== maritalStatus) return false;
         if (religion && p.religion?.toLowerCase() !== religion.toLowerCase()) return false;
         if (motherTongue && p.motherTongue?.toLowerCase() !== motherTongue.toLowerCase()) return false;

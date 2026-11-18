@@ -350,7 +350,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
         </PressableScale>
 
         <Text maxFontSizeMultiplier={1.2} style={styles.footerVersion}>
-          BandhanSetu • Sanatan Matrimony v1.0.0
+          Shaadi Banao • Matrimony v1.0.0
         </Text>
       </ScrollView>
     </SafeAreaView>

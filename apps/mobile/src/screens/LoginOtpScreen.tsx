@@ -82,9 +82,8 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         );
         return;
       } catch (fbErr: any) {
-        setLoading(false);
-        Alert.alert('Phone Verification Failed', describeFirebaseAuthError(fbErr));
-        return;
+        console.warn('[LoginOtpScreen] Firebase phone auth failed, attempting backend fallback:', fbErr);
+        // If Firebase phone auth fails (e.g. BILLING_NOT_ENABLED), fall back to backend OTP service
       }
     }
 
@@ -218,7 +217,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />
         </PressableScale>
         <Text maxFontSizeMultiplier={1.2} style={styles.navTitle}>
-          BandhanSetu Sign In
+          Shaadi Banao Sign In
         </Text>
         <View style={{ width: 38 }} />
       </View>

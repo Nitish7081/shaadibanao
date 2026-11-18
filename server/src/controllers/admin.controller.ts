@@ -70,6 +70,22 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/users/:id/details
+   */
+  public static async getUserDetails(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.getUserDetails(req.params.id);
+      const response: ApiResponse = {
+        success: true,
+        data,
+      };
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/admin/approvals
    */
   public static async getApprovals(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -449,13 +465,14 @@ export class AdminController {
   public static async moderatePhoto(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const adminId = req.user?.userId || (req as any).user?.id || 'admin';
-      const { action, remarks } = req.body;
+      const { action, remarks, photoId } = req.body;
       const result = await VerificationService.moderateProfilePhoto(
         req.params.userId,
         action,
         adminId,
         remarks,
-        req.ip
+        req.ip,
+        photoId
       );
       res.status(200).json({ success: true, data: result });
     } catch (error) {

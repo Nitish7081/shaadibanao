@@ -29,7 +29,7 @@ export const HeroBanner: React.FC<Props> = ({ banners, loading = false, onBanner
   const { t } = useTranslation();
   const [cardWidth, setCardWidth] = useState<number>(0);
   const [activeIndex, setActiveIndex] = useState<number>(0);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
 
   const activeBanners = Array.isArray(banners)
     ? banners.filter((b) => !!b && typeof b.imageUrl === 'string' && b.imageUrl)

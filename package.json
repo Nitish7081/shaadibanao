@@ -43,7 +43,7 @@
   ],
   "author": "BandhanSetu Team",
   "license": "UNLICENSED",
-  "dependencies": {
-    "@react-native-community/datetimepicker": "9.1.0"
+  "devDependencies": {
+    "@types/react": "~19.3.0"
   }
 }

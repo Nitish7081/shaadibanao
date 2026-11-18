@@ -328,10 +328,11 @@
                       <th>Status</th>
                       <th>Approval</th>
                       <th>Date</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody id="tbody-recent-users">
-                    <tr><td colspan="5" class="table-empty">Loading registrations...</td></tr>
+                    <tr><td colspan="6" class="table-empty">Loading registrations...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -370,11 +371,11 @@
             <div class="toolbar-left">
               <!-- Filter status pills -->
               <div class="filter-pills">
-                <button class="pill-btn active" data-filter-approval="pending">Pending Review</button>
+                <button class="pill-btn active" data-filter-approval="all">All Records</button>
+                <button class="pill-btn" data-filter-approval="pending">Pending Review</button>
+                <button class="pill-btn" data-filter-approval="approved">Approved</button>
                 <button class="pill-btn" data-filter-approval="changes_requested">Changes Requested</button>
                 <button class="pill-btn" data-filter-approval="rejected">Rejected</button>
-                <button class="pill-btn" data-filter-approval="approved">Approved</button>
-                <button class="pill-btn" data-filter-approval="all">All Records</button>
               </div>
             </div>
 
@@ -506,11 +507,11 @@
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Profile Name</th>
-                    <th>Gender & Age</th>
+                    <th>Profile &amp; Photos</th>
+                    <th>Gender &amp; Age</th>
                     <th>Location</th>
                     <th>Completeness</th>
-                    <th>Verification</th>
+                    <th>Approval &amp; Trust</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -856,15 +857,15 @@
           <div class="panel-card">
             <div class="panel-header">
               <div>
-                <h3 class="panel-title">Identity & Aadhaar Verification Queue</h3>
-                <p class="panel-subtitle">Consent-backed verification records. Aadhaar numbers are masked for data minimization.</p>
+                <h3 class="panel-title">Identity &amp; Govt ID Verification Queue</h3>
+                <p class="panel-subtitle">Review Aadhaar Card, PAN Card, Voter ID, Passport &amp; Bank Passbook submissions. Approving verifies &amp; unlocks the user's ShaadiBanao account.</p>
               </div>
               <div class="table-actions">
                 <select id="filter-verif-status" class="filter-select">
-                  <option value="pending" selected>Pending Review</option>
+                  <option value="all" selected>All Records</option>
+                  <option value="pending">Pending Review</option>
                   <option value="verified">Verified</option>
                   <option value="rejected">Rejected</option>
-                  <option value="all">All Records</option>
                 </select>
                 <button class="btn-primary btn-sm" onclick="loadVerifications()">⟳ Refresh Queue</button>
               </div>
@@ -949,10 +950,10 @@
               </div>
               <div class="table-actions">
                 <select id="filter-posts-status" class="filter-select">
-                  <option value="pending" selected>Pending Review</option>
-                  <option value="approved">Approved & Live</option>
+                  <option value="all" selected>All Posts</option>
+                  <option value="approved">Approved &amp; Live</option>
+                  <option value="pending">Pending Review</option>
                   <option value="rejected">Rejected</option>
-                  <option value="all">All Posts</option>
                 </select>
                 <button class="btn-primary btn-sm" onclick="loadCommunityPosts()">⟳ Refresh Feed</button>
               </div>
@@ -1080,14 +1081,14 @@
   <div id="reject-modal" class="modal-backdrop" style="display: none;">
     <div class="modal-container">
       <div class="modal-header">
-        <h3 class="modal-title text-red">Reject Registration</h3>
+        <h3 class="modal-title text-red">Reject User / Profile</h3>
         <button class="modal-close-btn" onclick="closeRejectModal()">✕</button>
       </div>
 
       <div class="modal-body">
         <p class="modal-text">
           Select the reason for rejecting <strong id="reject-target-name">this user</strong>.
-          The reason will be communicated to the user on their screen.
+          The user will immediately lose public visibility and protected access, and their data/photos remain available in the admin panel for future review.
         </p>
 
         <div class="form-group">
@@ -1183,6 +1184,25 @@
       </div>
       <div class="modal-footer" id="community-modal-actions">
         <!-- Action buttons injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Full-Size Photo Lightbox Modal -->
+  <div id="photo-lightbox-modal" class="modal-backdrop" style="display: none; z-index: 1200;">
+    <div class="modal-container modal-lg" style="max-width: 820px;">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <h3 id="lightbox-title" class="modal-title">Photo Preview</h3>
+          <span id="lightbox-status-badge" class="badge badge-info">Photo</span>
+        </div>
+        <button class="modal-close-btn" onclick="closePhotoLightbox()">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: center; background: #050811;">
+        <img id="lightbox-img" src="" alt="Full size user photo" class="lightbox-full-img" />
+      </div>
+      <div class="modal-footer" id="lightbox-actions">
+        <button class="btn-secondary" onclick="closePhotoLightbox()">Close</button>
       </div>
     </div>
   </div>

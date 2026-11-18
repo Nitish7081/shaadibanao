@@ -82,6 +82,9 @@ export class ProfileService {
       occupation: doc.occupation,
       annualIncomeBand: doc.annualIncomeBand,
       showIncomeBand: doc.showIncomeBand,
+      hideProfile: !!doc.hideProfile,
+      showLastSeen: !!doc.showLastSeen,
+      showOnlineStatus: !!doc.showOnlineStatus,
       photos: (doc.photos || []).map((p: any) => ({
         id: p._id?.toString() || p.id,
         ...presentPhoto(p.url, p.publicId), // authenticated photos => short signed URLs (+ variants)
@@ -125,6 +128,7 @@ export class ProfileService {
       motherTongue: doc.motherTongue,
       religion: doc.religion,
       caste: doc.caste,
+      manglik: doc.manglik,
       city: doc.city,
       state: doc.state,
       education: doc.education,

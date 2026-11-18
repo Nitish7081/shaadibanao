@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { CommunityPostItem } from '@bandhansetu/shared';
 import { ds, PressableScale, Skeleton } from '../design';
-import { API_BASE } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
 import { cloudinaryUrl } from '../services/cloudinaryUrl';
 import { getAuthHeader } from '../services/authSession';
 import { getInitials } from '../components/home/matchPhoto';
@@ -28,6 +28,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
   const [posts, setPosts] = useState<CommunityPostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const categories = [
@@ -38,36 +39,43 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
     { key: 'advice', label: t('communityScreen.advice'), icon: 'book' as const },
   ];
 
-  useEffect(() => {
-    fetchFeed();
-  }, [selectedCategory]);
-
-  const fetchFeed = async () => {
-    setLoading(true);
+  const fetchFeed = useCallback(async (isPullRefresh = false) => {
+    if (!isPullRefresh) setLoading(true);
+    setFeedError(null);
     try {
       const headers = await getAuthHeader();
       const catParam = selectedCategory !== 'all' ? `&category=${selectedCategory}` : '';
-      const res = await fetch(`${API_BASE}/community/feed?page=1&limit=25${catParam}`, { headers });
-      const json = await res.json();
+      const json = await apiClient<any>(`/community/feed?page=1&limit=25${catParam}`, { headers });
       if (json.success && json.data) {
         setPosts(json.data.items || []);
       }
-    } catch {
-      // Fallback
+    } catch (err: any) {
+      setFeedError(err?.message || 'Unable to load community stories. Please retry.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    fetchFeed();
+  }, [fetchFeed]);
+
+  // Immediately refresh feed when returning from CreatePostScreen so newly posted stories appear right away
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('focus', () => {
+      fetchFeed(true);
+    });
+    return unsubscribe;
+  }, [navigation, fetchFeed]);
 
   const handleToggleLike = async (postId: string) => {
     try {
       const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/community/posts/${postId}/like`, {
+      const json = await apiClient<any>(`/community/posts/${postId}/like`, {
         method: 'POST',
         headers,
       });
-      const json = await res.json();
       if (json.success && json.data) {
         setPosts((prev) =>
           prev.map((p) =>
@@ -94,7 +102,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
           onPress: async () => {
             try {
               const headers = await getAuthHeader();
-              await fetch(`${API_BASE}/community/posts/${postId}/report`, {
+              await apiClient(`/community/posts/${postId}/report`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ reason: 'Reported by user' }),
@@ -295,6 +303,28 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
       );
     }
 
+    if (feedError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <LinearGradient colors={['#FEE2E2', '#FECACA']} style={styles.emptyIconCircle}>
+            <Ionicons name="cloud-offline-outline" size={34} color={ds.color.maroon} />
+          </LinearGradient>
+          <Text maxFontSizeMultiplier={1.2} style={styles.emptyTitle}>
+            Unable to Load Stories
+          </Text>
+          <Text maxFontSizeMultiplier={1.2} style={styles.emptySubtitle}>
+            {feedError}
+          </Text>
+          <PressableScale style={styles.emptyActionBtn} onPress={() => fetchFeed()}>
+            <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            <Text maxFontSizeMultiplier={1.2} style={styles.emptyActionBtnText}>
+              Retry
+            </Text>
+          </PressableScale>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.emptyContainer}>
         <LinearGradient
@@ -340,7 +370,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              fetchFeed();
+              fetchFeed(true);
             }}
             tintColor={ds.color.maroon}
             colors={[ds.color.maroon]}

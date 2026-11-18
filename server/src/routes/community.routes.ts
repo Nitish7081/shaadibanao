@@ -1,16 +1,27 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { CommunityService } from '../services/community.service';
+import { TokenService } from '../services/token.service';
 import { requireAuth } from '../middleware/auth.middleware';
 import { requireApproved } from '../middleware/approval.middleware';
 import { ApiResponse } from '@bandhansetu/shared';
 
 export const communityRouter = Router();
 
-// GET /api/v1/community/feed (Public/Authenticated: Approved posts only)
+// GET /api/v1/community/feed (Public/Authenticated: Approved stories + caller's own pending stories)
 communityRouter.get('/feed', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { page, limit, category } = req.query;
-    const currentUserId = (req as any).user?.id;
+    let currentUserId = (req as any).user?.id || (req as any).user?.userId;
+
+    // Optionally decode Bearer token so likes & author's own stories work on public feed
+    if (!currentUserId && req.headers.authorization?.startsWith('Bearer ')) {
+      try {
+        const payload = TokenService.verifyAccessToken(req.headers.authorization.split(' ')[1]);
+        currentUserId = payload.userId;
+      } catch {
+        // Ignore expired/invalid token for public feed read
+      }
+    }
 
     const feed = await CommunityService.getPublicFeed(
       currentUserId,
@@ -29,10 +40,10 @@ communityRouter.get('/feed', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// POST /api/v1/community/posts (Create post - requires approved user)
+// POST /api/v1/community/posts (Create story - requires approved user)
 communityRouter.post('/posts', requireAuth, requireApproved, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const userId = (req as any).user.id;
+    const userId = (req as any).user.id || (req as any).user.userId;
     const { mediaUrl, publicId, caption, category } = req.body;
 
     if (!mediaUrl || !caption) {
@@ -53,7 +64,7 @@ communityRouter.post('/posts', requireAuth, requireApproved, async (req: Request
 
     const response: ApiResponse = {
       success: true,
-      message: 'Your story has been submitted for moderation and will appear publicly once approved.',
+      message: 'Your story has been published and is now visible in the community feed!',
       data: post,
     };
     res.status(201).json(response);

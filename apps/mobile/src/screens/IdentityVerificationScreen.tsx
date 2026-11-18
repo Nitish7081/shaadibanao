@@ -8,16 +8,68 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { IdentityDocumentType } from '@bandhansetu/shared';
 import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
-import { API_BASE } from '../services/authSession';
-import { getAuthHeader, getSessionToken } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
+import { getAuthHeader, getSessionToken, syncCurrentUserWithBackend } from '../services/authSession';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAsset } from '../services/imageUpload';
 
+const DOCUMENT_OPTIONS: Array<{
+  key: IdentityDocumentType;
+  label: string;
+  inputLabel: string;
+  placeholder: string;
+  keyboardType: 'number-pad' | 'default';
+  maxLength: number;
+}> = [
+  {
+    key: 'aadhaar_card',
+    label: 'Aadhaar Card',
+    inputLabel: '12-Digit Aadhaar Number',
+    placeholder: 'XXXX XXXX XXXX',
+    keyboardType: 'number-pad',
+    maxLength: 14,
+  },
+  {
+    key: 'pan_card',
+    label: 'PAN Card',
+    inputLabel: '10-Character PAN Number',
+    placeholder: 'e.g. ABCDE1234F',
+    keyboardType: 'default',
+    maxLength: 12,
+  },
+  {
+    key: 'voter_id',
+    label: 'Voter ID Card',
+    inputLabel: 'Voter ID (EPIC) Number',
+    placeholder: 'e.g. ABC1234567',
+    keyboardType: 'default',
+    maxLength: 20,
+  },
+  {
+    key: 'passport',
+    label: 'Passport',
+    inputLabel: 'Passport Number',
+    placeholder: 'e.g. A1234567',
+    keyboardType: 'default',
+    maxLength: 20,
+  },
+  {
+    key: 'bank_passbook',
+    label: 'Bank Passbook',
+    inputLabel: 'Bank Account / Passbook Number',
+    placeholder: 'Enter account number on passbook',
+    keyboardType: 'default',
+    maxLength: 24,
+  },
+];
+
 export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
-  const [docType, setDocType] = useState<'aadhaar_card' | 'passport' | 'voter_id'>('aadhaar_card');
+  const [docType, setDocType] = useState<IdentityDocumentType>('aadhaar_card');
   const [docNumber, setDocNumber] = useState('');
   const [consentGranted, setConsentGranted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -26,6 +78,8 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
   // Selected document photo (local only until submit; uploaded privately to Cloudinary)
   const [docAsset, setDocAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
+
+  const selectedDocConfig = DOCUMENT_OPTIONS.find((d) => d.key === docType) || DOCUMENT_OPTIONS[0];
 
   const pickDocument = async (fromCamera: boolean) => {
     try {
@@ -58,8 +112,7 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
   const fetchStatus = async () => {
     try {
       const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/verification/status`, { headers });
-      const json = await res.json();
+      const json = await apiClient<any>('/verification/status', { headers });
       if (json.success && json.data) {
         setCurrentStatus(json.data);
       }
@@ -103,12 +156,9 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
       });
 
       const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/verification/identity`, {
+      const json = await apiClient<any>('/verification/identity', {
         method: 'POST',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           documentType: docType,
           documentReferenceNumber: docNumber.trim(),
@@ -118,12 +168,13 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
         }),
       });
 
-      const json = await res.json();
       if (json.success) {
         setDocAsset(null);
+        setDocNumber('');
+        await syncCurrentUserWithBackend().catch(() => {});
         Alert.alert(
           'Verification Submitted! 🛡️',
-          'Your identity proof has been securely recorded. Our trust & safety team will verify your document and issue your verified profile badge.',
+          `Your ${selectedDocConfig.label} has been sent securely to the Admin Panel. Once verified by Admin, your ShaadiBanao account will automatically unlock for login.`,
           [{ text: 'OK', onPress: () => fetchStatus() }]
         );
       } else {
@@ -131,8 +182,8 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
       }
     } catch (e: any) {
       Alert.alert(
-        e?.name === 'UploadError' ? 'Upload Problem' : 'Network Error',
-        e?.name === 'UploadError' ? e.message : 'Please check your connection and try again.'
+        e?.name === 'UploadError' ? 'Upload Problem' : 'Submission Error',
+        e?.message || 'Please check your connection and try again.'
       );
     } finally {
       setSubmitting(false);
@@ -193,24 +244,20 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* Document Type Selector */}
-        <Text style={styles.sectionLabel}>Select Government Identity Document</Text>
-        <View style={styles.typeRow}>
-          {[
-            { key: 'aadhaar_card', label: 'Aadhaar Card' },
-            { key: 'passport', label: 'Passport' },
-            { key: 'voter_id', label: 'Voter ID' },
-          ].map((item) => {
+        {/* Document Type Selector (All 5 Supported Documents) */}
+        <Text style={styles.sectionLabel}>Select Identity Proof Document</Text>
+        <View style={styles.typeWrapRow}>
+          {DOCUMENT_OPTIONS.map((item) => {
             const isSelected = docType === item.key;
             return (
               <TouchableOpacity
                 key={item.key}
-                style={[styles.typeBtn, isSelected && styles.typeBtnActive]}
-                onPress={() => setDocType(item.key as any)}
+                style={[styles.docTypeChip, isSelected && styles.typeBtnActive]}
+                onPress={() => setDocType(item.key)}
                 activeOpacity={0.75}
               >
                 {isSelected && (
-                  <Ionicons name="checkmark-circle" size={13} color={colors.royalMaroon} style={{ marginRight: 4 }} />
+                  <Ionicons name="checkmark-circle" size={14} color={colors.royalMaroon} style={{ marginRight: 4 }} />
                 )}
                 <Text style={[styles.typeBtnText, isSelected && styles.typeBtnTextActive]}>
                   {item.label}
@@ -221,20 +268,19 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
         </View>
 
         {/* Document Number Input */}
-        <Text style={styles.sectionLabel}>
-          {docType === 'aadhaar_card' ? '12-Digit Aadhaar Number' : 'Document Number'}
-        </Text>
+        <Text style={styles.sectionLabel}>{selectedDocConfig.inputLabel}</Text>
         <TextInput
           style={styles.textInput}
           value={docNumber}
           onChangeText={setDocNumber}
-          placeholder={docType === 'aadhaar_card' ? 'XXXX XXXX XXXX' : 'Enter document number'}
-          keyboardType={docType === 'aadhaar_card' ? 'number-pad' : 'default'}
-          maxLength={docType === 'aadhaar_card' ? 14 : 20}
+          placeholder={selectedDocConfig.placeholder}
+          keyboardType={selectedDocConfig.keyboardType}
+          autoCapitalize="characters"
+          maxLength={selectedDocConfig.maxLength}
         />
 
         {/* Document Photo (private upload) */}
-        <Text style={styles.sectionLabel}>Upload Document Photo</Text>
+        <Text style={styles.sectionLabel}>Upload Clear Photo of {selectedDocConfig.label}</Text>
         <View style={styles.typeRow}>
           <TouchableOpacity style={styles.typeBtn} onPress={() => pickDocument(false)} activeOpacity={0.75}>
             <Ionicons name="images-outline" size={14} color={colors.royalMaroon} style={{ marginRight: 4 }} />
@@ -246,9 +292,12 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
           </TouchableOpacity>
         </View>
         {docAsset && (
-          <Text style={styles.maskedDoc}>
-            ✓ Document photo selected (kept private, visible only to you and our verification team)
-          </Text>
+          <View style={styles.docPreviewBox}>
+            <Image source={{ uri: docAsset.uri }} style={styles.docPreviewImg} resizeMode="cover" />
+            <Text style={styles.maskedDoc}>
+              ✓ {selectedDocConfig.label} photo selected (encrypted private vault — visible only to Admin verification team)
+            </Text>
+          </View>
         )}
         {uploadPct !== null && <Text style={styles.maskedDoc}>Uploading securely... {uploadPct}%</Text>}
 
@@ -363,6 +412,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
+  },
+  typeWrapRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  docTypeChip: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#E8E2D8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docPreviewBox: {
+    marginBottom: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E8E2D8',
+  },
+  docPreviewImg: {
+    width: '100%',
+    height: 170,
+    borderRadius: 8,
+    backgroundColor: '#F3ECE2',
   },
   typeBtn: {
     flex: 1,

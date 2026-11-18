@@ -34,6 +34,9 @@ export interface IProfile extends Document {
   occupation: string;
   annualIncomeBand?: string;
   showIncomeBand: boolean;
+  hideProfile?: boolean;
+  showLastSeen?: boolean;
+  showOnlineStatus?: boolean;
   photos: IProfilePhoto[];
   photoPrivacy: PhotoPrivacy;
   aboutMe: string;
@@ -117,6 +120,9 @@ const ProfileSchema = new Schema<IProfile>(
     occupation: { type: String, required: true },
     annualIncomeBand: { type: String },
     showIncomeBand: { type: Boolean, default: true },
+    hideProfile: { type: Boolean, default: false },
+    showLastSeen: { type: Boolean, default: false },
+    showOnlineStatus: { type: Boolean, default: false },
     photos: { type: [ProfilePhotoSchema], default: [] },
     photoPrivacy: {
       type: String,

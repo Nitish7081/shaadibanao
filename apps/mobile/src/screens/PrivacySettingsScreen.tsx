@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -15,6 +16,9 @@ import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { StatusNotice } from '../components/common/StatusNotice';
+import { apiClient } from '../services/apiClient';
+import { getSessionToken, performLogout } from '../services/authSession';
+import { getMyProfile, upsertMyProfile } from '../services/profileService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PrivacySettings'>;
 
@@ -26,26 +30,117 @@ export const PrivacySettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [contactOnlyWithConsent, setContactOnlyWithConsent] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [smsAlerts, setSmsAlerts] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [profileData, setProfileData] = useState<any>(null);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const token = getSessionToken();
+      if (!token) return;
+      const res = await getMyProfile(token);
+      if (res?.data) {
+        setProfileData(res.data);
+        if (typeof res.data.showIncomeBand === 'boolean') setShowIncomeBand(res.data.showIncomeBand);
+        if (typeof res.data.hideProfile === 'boolean') setHideProfile(res.data.hideProfile);
+        if (typeof res.data.showLastSeen === 'boolean') setShowLastSeen(res.data.showLastSeen);
+        if (typeof res.data.showOnlineStatus === 'boolean') setShowOnlineStatus(res.data.showOnlineStatus);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSavePrivacy = async () => {
+    const token = getSessionToken();
+    if (!token) {
+      Alert.alert('Session Expired', 'Please sign in again.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (profileData) {
+        await upsertMyProfile(token, {
+          ...profileData,
+          showIncomeBand,
+          hideProfile,
+          showLastSeen,
+          showOnlineStatus,
+        });
+      }
+      Alert.alert('Settings Saved', 'Your privacy preferences have been updated successfully.');
+    } catch (err: any) {
+      Alert.alert('Save Failed', err?.message || 'Could not update privacy settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleDownloadData = () => {
+    if (!profileData) {
+      Alert.alert('Data Export', 'No profile data found to export.');
+      return;
+    }
+    const summary = `Name: ${profileData.firstName} ${profileData.lastName || ''}\nGender: ${profileData.gender}\nDOB: ${profileData.dateOfBirth}\nReligion: ${profileData.religion || 'Hindu'}\nCommunity: ${profileData.caste || 'N/A'}\nCity: ${profileData.city || 'N/A'}\nProfession: ${profileData.occupation || 'N/A'}\nIncome Band: ${profileData.annualIncomeBand || 'N/A'}\nVerification: ${profileData.isVerified ? 'Verified' : 'Pending'}`;
     Alert.alert(
-      'Download Data Request',
-      'Under the Digital Personal Data Protection Act, your complete profile and interaction history archive will be compiled and sent to your registered email address.'
+      'Your Personal Data Summary (DPDP Act)',
+      summary,
+      [{ text: 'Done' }]
     );
   };
 
   const handleDeleteAccount = () => {
     Alert.alert(
-      'Delete Account',
-      'Are you sure you want to permanently delete your account? Your profile, photos, and active chats will be purged. (Legal transaction logs are archived in accordance with statutory regulations).',
+      'Permanently Delete Account',
+      'Are you sure you want to permanently delete your account and personal data? This action is irreversible. Your profile, photos, active chats, and biodata will be completely removed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Confirm Deletion',
           style: 'destructive',
-          onPress: () => {
-            Alert.alert('Account Closed', 'You have been signed out.');
-            navigation.navigate('Welcome');
+          onPress: async () => {
+            const token = getSessionToken();
+            if (!token) {
+              await performLogout();
+              navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+              return;
+            }
+
+            setDeleting(true);
+            try {
+              await apiClient('/auth/me', {
+                method: 'DELETE',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+
+              await performLogout();
+              Alert.alert(
+                'Account Deleted',
+                'Your account and associated profile data have been permanently removed.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
+                    },
+                  },
+                ]
+              );
+            } catch (err: any) {
+              Alert.alert('Deletion Failed', err?.message || 'Unable to delete account. Please try again.');
+            } finally {
+              setDeleting(false);
+            }
           },
         },
       ]
@@ -171,6 +266,16 @@ export const PrivacySettingsScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </Card>
 
+        {/* Save Privacy Settings Button */}
+        <Button
+          title={saving ? 'Saving Changes...' : 'Save Privacy Settings'}
+          onPress={handleSavePrivacy}
+          loading={saving}
+          disabled={saving}
+          variant="primary"
+          style={{ marginTop: spacing.sm, marginBottom: spacing.md }}
+        />
+
         {/* Data Rights & Deletion */}
         <Text style={styles.sectionTitle}>Data Rights & Account Control</Text>
         <Card style={styles.card}>
@@ -181,8 +286,9 @@ export const PrivacySettingsScreen: React.FC<Props> = ({ navigation }) => {
             style={{ marginBottom: spacing.md }}
           />
           <Button
-            title="Delete Account Permanently"
+            title={deleting ? 'Deleting Account...' : 'Delete Account Permanently'}
             onPress={handleDeleteAccount}
+            disabled={deleting}
             variant="text"
             textStyle={{ color: colors.alertRed }}
           />

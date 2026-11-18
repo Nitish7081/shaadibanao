@@ -22,6 +22,7 @@ adminRouter.post('/approvals/:id/request-changes', AdminController.requestChange
 
 // 4. User Accounts Management
 adminRouter.get('/users', AdminController.getUsers);
+adminRouter.get('/users/:id/details', AdminController.getUserDetails);
 adminRouter.patch('/users/:id/status', AdminController.updateUserStatus);
 adminRouter.patch('/users/:id/role', AdminController.updateUserRole);
 

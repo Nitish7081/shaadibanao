@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { RASHI_LIST, NAKSHATRA_LIST, KundliMatchingResult } from '@bandhansetu/shared';
 import { ds, PressableScale, Skeleton } from '../design';
-import { API_BASE } from '../services/authSession';
+import { API_BASE, getCachedUserProfile } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
 
 export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
@@ -26,6 +26,9 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState<'kundli' | 'matching'>(
     route?.params?.initialTab || 'kundli'
   );
+
+  const partnerParam = route?.params?.partner;
+  const partnerName = partnerParam?.name;
 
   useEffect(() => {
     if (route?.params?.initialTab) {
@@ -61,6 +64,21 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
       const json = await res.json();
       if (json.success && json.data) {
         setKundli(json.data);
+        const myData = json.data;
+        const userProfile = getCachedUserProfile();
+        const isMale = userProfile?.gender === 'male';
+
+        if (myData.rashi && myData.nakshatra) {
+          if (isMale) {
+            setBoyRashi(myData.rashi);
+            setBoyNakshatra(myData.nakshatra);
+            setBoyManglik(myData.manglikStatus === 'manglik');
+          } else {
+            setGirlRashi(myData.rashi);
+            setGirlNakshatra(myData.nakshatra);
+            setGirlManglik(myData.manglikStatus === 'manglik');
+          }
+        }
       }
     } catch {
       // offline / mock fallback
@@ -69,6 +87,18 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
       setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (partnerParam) {
+      const userProfile = getCachedUserProfile();
+      const isMale = userProfile?.gender === 'male';
+      if (isMale) {
+        if (partnerParam.manglik) setGirlManglik(true);
+      } else {
+        if (partnerParam.manglik) setBoyManglik(true);
+      }
+    }
+  }, [partnerParam]);
 
   const handleCalculateMatch = async () => {
     setCalculating(true);
@@ -343,6 +373,20 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
           </View>
         ) : (
           <View>
+            {partnerName && (
+              <View style={[styles.card, { backgroundColor: '#FFFDF5', borderColor: ds.color.goldDeep, borderWidth: 1, marginBottom: 12 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Ionicons name="heart" size={18} color={ds.color.maroon} />
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: ds.color.maroon }}>
+                    Kundli Milan with {partnerName}
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 12, color: ds.color.textMuted, marginTop: 4 }}>
+                  Compare your Vedic horoscope compatibility across 36 Gunas and Manglik harmony.
+                </Text>
+              </View>
+            )}
+
             {/* Groom Details Card */}
             <View style={styles.card}>
               <View style={styles.partyHeaderRow}>

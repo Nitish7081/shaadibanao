@@ -73,6 +73,15 @@ export const IDENTITY_VERIFICATION_STATUS = [
 ] as const;
 export type IdentityVerificationStatus = typeof IDENTITY_VERIFICATION_STATUS[number];
 
+export const IDENTITY_DOCUMENT_TYPES = [
+  'aadhaar_card',
+  'pan_card',
+  'voter_id',
+  'passport',
+  'bank_passbook',
+] as const;
+export type IdentityDocumentType = typeof IDENTITY_DOCUMENT_TYPES[number];
+
 export const PHOTO_APPROVAL_STATUS = [
   'none',
   'pending',

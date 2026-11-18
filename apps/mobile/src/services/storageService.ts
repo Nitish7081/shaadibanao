@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { getApiBaseUrl } from './apiClient';
+import { apiClient, getApiBaseUrl } from './apiClient';
 
 export interface UploadIntentInput {
   purpose: 'profile_photo' | 'identity_document' | 'community_post' | 'kundli_chart';
@@ -26,25 +26,25 @@ export interface UploadResponse {
 }
 
 /**
- * Request cryptographically signed upload intent from backend
+ * Request cryptographically signed upload intent from backend (uses apiClient for auto token refresh & Render retry)
  */
 export async function requestUploadIntent(
   token: string,
   input: UploadIntentInput
 ): Promise<UploadIntentResult> {
-  const baseUrl = getApiBaseUrl();
-  const res = await fetch(`${baseUrl}/storage/upload-intent`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(input),
-  });
+  const json = await apiClient<{ success: boolean; data: UploadIntentResult; message?: string }>(
+    '/storage/upload-intent',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(input),
+    }
+  );
 
-  const json = await res.json();
-  if (!res.ok || !json.success) {
-    throw new Error(json.error?.message || json.message || 'Failed to generate upload intent.');
+  if (!json.success || !json.data) {
+    throw new Error(json.message || 'Failed to generate upload intent.');
   }
 
   return json.data;
@@ -87,9 +87,9 @@ export async function pickImageFromGallery(options?: {
   }
 
   const asset = result.assets[0];
-  // Size validation: max 5MB
-  if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-    throw new Error('Image size exceeds 5MB limit. Please choose a smaller photo.');
+  // Raw camera photos can be 6-15MB before resize/compression in imageUpload.ts; only block extreme >25MB files here
+  if (asset.fileSize && asset.fileSize > 25 * 1024 * 1024) {
+    throw new Error('Image size exceeds 25MB limit. Please choose a smaller photo.');
   }
 
   return asset;
@@ -119,8 +119,8 @@ export async function captureImageWithCamera(options?: {
   }
 
   const asset = result.assets[0];
-  if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-    throw new Error('Captured image exceeds 5MB limit.');
+  if (asset.fileSize && asset.fileSize > 25 * 1024 * 1024) {
+    throw new Error('Captured image exceeds 25MB limit.');
   }
 
   return asset;

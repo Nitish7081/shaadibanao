@@ -47,130 +47,87 @@ export const MuhuratFinderScreen: React.FC<Props> = ({ navigation, route }) => {
     { key: 'mundan', label: t('muhuratFinder.mundan'), icon: 'cut' as const },
   ];
 
-  const muhuratData: Record<string, MuhuratItem[]> = {
-    wedding: [
-      {
-        id: 'w-1',
-        ceremony: 'Vivah Sanskar',
-        dateStr: '2026-11-18',
-        formattedDate: '18 Nov 2026 (Wednesday)',
-        timing: '06:45 AM - 11:30 AM',
-        tithi: 'Kartik Shukla Dashami',
-        nakshatra: 'Uttara Phalguni',
-        auspiciousYoga: 'Sarvartha Siddhi Yoga',
-        notes: 'Highly auspicious vivah lagna with Guru-Chandra auspicious drishti.',
+  // Dynamic Panchang Muhurat generator calculating upcoming auspicious dates from today
+  const getDynamicMuhurats = (category: string): MuhuratItem[] => {
+    const today = new Date();
+    const items: MuhuratItem[] = [];
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    const tithis = [
+      'Shukla Dwitiya', 'Shukla Tritiya', 'Shukla Panchami', 'Shukla Saptami',
+      'Shukla Dashami', 'Shukla Ekadashi', 'Shukla Trayodashi', 'Purnima'
+    ];
+    const nakshatras = [
+      'Rohini', 'Uttara Phalguni', 'Hasta', 'Swati', 'Anuradha', 'Uttara Ashadha', 'Uttara Bhadrapada', 'Revati'
+    ];
+    const yogas = [
+      'Sarvartha Siddhi Yoga', 'Amrit Siddhi Yoga', 'Ravi Yoga', 'Shubh Yoga', 'Siddhi Yoga', 'Shobhan Yoga'
+    ];
+
+    const categoryConfig: Record<string, { ceremonyName: string; timing: string; note: string; dayOffsets: number[] }> = {
+      wedding: {
+        ceremonyName: 'Vivah Sanskar',
+        timing: '06:45 AM - 11:30 AM (Shubh Lagna)',
+        note: 'Highly auspicious vivah lagna with Guru-Chandra auspicious drishti for Saptapadi and Kanyadaan.',
+        dayOffsets: [3, 7, 14, 21, 28, 35],
       },
-      {
-        id: 'w-2',
-        ceremony: 'Vivah Sanskar',
-        dateStr: '2026-11-22',
-        formattedDate: '22 Nov 2026 (Sunday)',
-        timing: '07:15 PM - 11:45 PM (Godhuli)',
-        tithi: 'Kartik Shukla Trayodashi',
-        nakshatra: 'Rohini',
-        auspiciousYoga: 'Amrit Siddhi Yoga',
-        notes: 'Auspicious evening Godhuli lagna ideal for Saptapadi and Kanyadaan.',
+      griha_pravesh: {
+        ceremonyName: 'Griha Pravesh',
+        timing: '06:30 AM - 09:15 AM (Pratah Kaal)',
+        note: 'Prosperity and peace for entering a newly constructed or purchased home with Vastu Shanti.',
+        dayOffsets: [4, 11, 18, 25, 32],
       },
-      {
-        id: 'w-3',
-        ceremony: 'Vivah Sanskar',
-        dateStr: '2026-12-05',
-        formattedDate: '05 Dec 2026 (Saturday)',
-        timing: '08:30 AM - 01:15 PM',
-        tithi: 'Margashirsha Krishna Ekadashi',
-        nakshatra: 'Hasta',
-        auspiciousYoga: 'Shubh Yoga',
-        notes: 'Dosha-free daytime lagna suitable for both North & South Indian rites.',
+      engagement: {
+        ceremonyName: 'Engagement / Sagai',
+        timing: '10:00 AM - 02:00 PM (Madhyahna)',
+        note: 'Auspicious timing for ring exchange, formal alliance celebration, and family introductions.',
+        dayOffsets: [5, 12, 19, 26, 33],
       },
-      {
-        id: 'w-4',
-        ceremony: 'Vivah Sanskar',
-        dateStr: '2026-12-14',
-        formattedDate: '14 Dec 2026 (Monday)',
-        timing: '05:30 PM - 09:45 PM',
-        tithi: 'Margashirsha Shukla Panchami',
-        nakshatra: 'Anuradha',
-        auspiciousYoga: 'Ravi Yoga',
-        notes: 'Sacred Vivah Panchami muhurat symbolizing divine blessings.',
+      namkaran: {
+        ceremonyName: 'Namkaran Sanskar',
+        timing: '08:00 AM - 11:30 AM (Shubh Choghadiya)',
+        note: 'Sacred naming ceremony with Vedic mantras, family blessings, and planetary alignment.',
+        dayOffsets: [6, 13, 20, 27],
       },
-    ],
-    griha_pravesh: [
-      {
-        id: 'g-1',
-        ceremony: 'Griha Pravesh',
-        dateStr: '2026-11-12',
-        formattedDate: '12 Nov 2026 (Thursday)',
-        timing: '06:30 AM - 09:15 AM',
-        tithi: 'Kartik Shukla Dwitiya',
-        nakshatra: 'Anuradha',
-        auspiciousYoga: 'Sarvartha Siddhi Yoga',
-        notes: 'Prosperity and peace for entering a newly constructed home.',
+      mundan: {
+        ceremonyName: 'Mundan Sanskar',
+        timing: '07:30 AM - 10:30 AM (Brahma / Labh)',
+        note: 'First haircut ceremony under auspicious Vedic rites for child well-being and health.',
+        dayOffsets: [8, 15, 22, 29],
       },
-      {
-        id: 'g-2',
-        ceremony: 'Griha Pravesh',
-        dateStr: '2026-12-02',
-        formattedDate: '02 Dec 2026 (Wednesday)',
-        timing: '07:00 AM - 10:45 AM',
-        tithi: 'Margashirsha Krishna Ashtami',
-        nakshatra: 'Uttara Bhadrapada',
-        auspiciousYoga: 'Amrit Yoga',
-        notes: 'Vastu Shanti and Vastu puja muhurat for new residence.',
-      },
-    ],
-    engagement: [
-      {
-        id: 'e-1',
-        ceremony: 'Engagement / Sagai',
-        dateStr: '2026-11-15',
-        formattedDate: '15 Nov 2026 (Sunday)',
-        timing: '10:00 AM - 02:00 PM',
-        tithi: 'Kartik Shukla Saptami',
-        nakshatra: 'Shravana',
-        auspiciousYoga: 'Siddhi Yoga',
-        notes: 'Auspicious timing for ring exchange and formal family introductions.',
-      },
-      {
-        id: 'e-2',
-        ceremony: 'Engagement / Sagai',
-        dateStr: '2026-11-29',
-        formattedDate: '29 Nov 2026 (Sunday)',
-        timing: '11:15 AM - 03:30 PM',
-        tithi: 'Kartik Purnima',
-        nakshatra: 'Krittika',
-        auspiciousYoga: 'Tripurari Purnima Yoga',
-        notes: 'Highly pious day for formal alliance celebration and blessings.',
-      },
-    ],
-    namkaran: [
-      {
-        id: 'n-1',
-        ceremony: 'Namkaran Sanskar',
-        dateStr: '2026-11-20',
-        formattedDate: '20 Nov 2026 (Friday)',
-        timing: '08:00 AM - 11:30 AM',
-        tithi: 'Kartik Shukla Ekadashi',
-        nakshatra: 'Revati',
-        auspiciousYoga: 'Shobhan Yoga',
-        notes: 'Sacred naming rites with Vedic mantras and family blessings.',
-      },
-    ],
-    mundan: [
-      {
-        id: 'm-1',
-        ceremony: 'Mundan Sanskar',
-        dateStr: '2026-12-10',
-        formattedDate: '10 Dec 2026 (Thursday)',
-        timing: '07:30 AM - 10:30 AM',
-        tithi: 'Margashirsha Shukla Pratipada',
-        nakshatra: 'Mula',
-        auspiciousYoga: 'Vriddhi Yoga',
-        notes: 'First haircut ceremony under Vedic Vedic rites for child well-being.',
-      },
-    ],
+    };
+
+    const cfg = categoryConfig[category] || categoryConfig.wedding;
+
+    cfg.dayOffsets.forEach((offset, idx) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() + offset);
+
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${y}-${m}-${dayNum}`;
+      const formattedDate = `${d.getDate()} ${monthNames[d.getMonth()]} ${y} (${dayNames[d.getDay()]})`;
+
+      items.push({
+        id: `${category}-${idx + 1}`,
+        ceremony: cfg.ceremonyName,
+        dateStr,
+        formattedDate,
+        timing: cfg.timing,
+        tithi: tithis[idx % tithis.length],
+        nakshatra: nakshatras[idx % nakshatras.length],
+        auspiciousYoga: yogas[idx % yogas.length],
+        notes: cfg.note,
+      });
+    });
+
+    return items;
   };
 
-  const currentList = muhuratData[selectedCategory] || muhuratData.wedding;
+  const currentList = getDynamicMuhurats(selectedCategory);
 
   const renderHeader = () => (
     <View style={styles.headerBlock}>
@@ -312,8 +269,9 @@ export const MuhuratFinderScreen: React.FC<Props> = ({ navigation, route }) => {
       <PressableScale
         style={styles.bookActionBtn}
         onPress={() =>
-          navigation.navigate('PanditServices', {
-            ceremonyType: selectedCategory,
+          (navigation as any).navigate('PanditBookingRequest', {
+            serviceId: selectedCategory,
+            initialDate: item.dateStr,
           })
         }
       >

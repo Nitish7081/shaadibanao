@@ -74,6 +74,13 @@ export interface PendingApprovalItem {
   identityVerificationStatus?: string;
   identityDocumentType?: string;
   identityDocumentReferenceMasked?: string;
+  latestVerification?: {
+    id: string;
+    documentType: string;
+    documentReferenceMasked: string;
+    status: string;
+    createdAt?: string;
+  } | null;
   photoApprovalStatus?: string;
   rejectionReason?: string;
   moderationRemarks?: string;
@@ -169,6 +176,9 @@ export interface UserProfile {
   occupation: string;
   annualIncomeBand?: string;
   showIncomeBand: boolean;
+  hideProfile?: boolean;
+  showLastSeen?: boolean;
+  showOnlineStatus?: boolean;
   photos: PhotoData[];
   photoPrivacy: 'everyone' | 'after_interest_accepted' | 'blurred';
   aboutMe: string;
@@ -197,6 +207,7 @@ export interface PublicProfile {
   motherTongue: string;
   religion: string;
   caste?: string;
+  manglik?: string;
   city: string;
   state: string;
   education: string;

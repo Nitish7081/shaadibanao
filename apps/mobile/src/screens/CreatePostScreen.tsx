@@ -16,7 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { ds, PressableScale } from '../design';
-import { API_BASE, getAuthHeader, getSessionToken } from '../services/authSession';
+import { getAuthHeader, getSessionToken } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
 import {
   pickImageFromGallery,
   captureImageWithCamera,
@@ -92,14 +93,11 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
       });
       const uploadedMediaUrl = uploadRes.url;
 
-      setUploadProgressMsg('Publishing story for review...');
+      setUploadProgressMsg('Publishing your story...');
       const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/community/posts`, {
+      const json = await apiClient<any>('/community/posts', {
         method: 'POST',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           mediaUrl: uploadedMediaUrl,
           publicId: uploadRes.publicId,
@@ -108,12 +106,11 @@ export const CreatePostScreen: React.FC<any> = ({ navigation }) => {
         }),
       });
 
-      const json = await res.json();
       if (json.success) {
         Alert.alert(
-          'Story Submitted! 🎉',
-          'Your community photo story has been submitted. It will appear on the public feed once approved by our moderation team.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
+          'Story Published! 🎉',
+          'Your community photo story is now live and visible to everyone.',
+          [{ text: 'View Story', onPress: () => navigation.goBack() }]
         );
       } else {
         Alert.alert('Submission Notice', json.error?.message || json.message || 'Story submission failed.');

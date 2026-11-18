@@ -151,4 +151,27 @@ export class AuthController {
       next(error);
     }
   }
+
+  /**
+   * DELETE /api/v1/auth/me
+   * Allows authenticated member to delete their account and associated data
+   */
+  public static async deleteAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Authentication required' });
+        return;
+      }
+
+      await AuthService.deleteAccount(userId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Your account and associated profile data have been permanently deleted.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

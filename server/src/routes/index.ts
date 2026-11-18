@@ -17,6 +17,7 @@ import { bookingRouter } from './booking.routes';
 import { consultationRouter } from './consultation.routes';
 import { communityRouter } from './community.routes';
 import { bannerRouter } from './banner.routes';
+import { reportRouter } from './report.routes';
 
 export const apiV1Router = Router();
 
@@ -38,4 +39,5 @@ apiV1Router.use('/bookings', bookingRouter);
 apiV1Router.use('/consultations', consultationRouter);
 apiV1Router.use('/community', communityRouter);
 apiV1Router.use('/banners', bannerRouter);
+apiV1Router.use('/reports', reportRouter);
 

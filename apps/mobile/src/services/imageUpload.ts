@@ -95,6 +95,8 @@ export interface UploadResult {
 export const MAX_DIMENSION = 1600;
 export const COMPRESS_QUALITY = 0.75;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
+export const MAX_RAW_CAMERA_BYTES = 25 * 1024 * 1024;
 const IMAGE_TYPES = [
   'image/jpeg',
   'image/jpg',
@@ -128,7 +130,9 @@ export function validateAsset(asset: UploadableAsset, allowPdf = false): string 
   if (!ok) {
     throw new UploadError('INVALID_TYPE');
   }
-  if (asset.fileSize && asset.fileSize > MAX_IMAGE_BYTES) {
+  // PDFs cannot be compressed client-side, so enforce exact limit upfront; raw camera images are compressed next
+  const rawLimit = mime === 'application/pdf' ? MAX_DOCUMENT_BYTES : MAX_RAW_CAMERA_BYTES;
+  if (asset.fileSize && asset.fileSize > rawLimit) {
     throw new UploadError('TOO_LARGE');
   }
   return mime;
@@ -209,6 +213,10 @@ export async function uploadAsset(params: {
 
   const ext = prepared.mime === 'application/pdf' ? 'pdf' : prepared.mime === 'image/png' ? 'png' : prepared.mime === 'image/webp' ? 'webp' : 'jpg';
   const sizeBytes = Math.ceil((prepared.base64.length * 3) / 4);
+  const maxAllowedBytes = allowPdf ? MAX_DOCUMENT_BYTES : MAX_IMAGE_BYTES;
+  if (sizeBytes > maxAllowedBytes) {
+    throw new UploadError('TOO_LARGE');
+  }
 
   let intent;
   try {

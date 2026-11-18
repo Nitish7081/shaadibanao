@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import { CommunityPostModel, ICommunityPost } from '../models/community-post.model';
 import { UserModel } from '../models/user.model';
+import { ProfileModel } from '../models/profile.model';
 import { AuditLogModel } from '../models/audit-log.model';
+import { presentPhotoUrl } from './photoPrivacy';
 
 export interface CreatePostInput {
   userId: string;
@@ -13,10 +15,14 @@ export interface CreatePostInput {
 
 export class CommunityService {
   /**
-   * Create a new community post (enters pending moderation queue)
+   * Create a new community story/post (publishes immediately for approved members;
+   * admins can still inspect, moderate, or reject/remove any post anytime from the Admin Panel)
    */
   static async createPost(input: CreatePostInput) {
-    const user = await UserModel.findById(input.userId);
+    const [user, profile] = await Promise.all([
+      UserModel.findById(input.userId),
+      ProfileModel.findOne({ userId: input.userId }).select('firstName lastName photos').lean(),
+    ]);
     if (!user) throw new Error('User not found.');
 
     // Security check: Never allow identity documents / vault paths to be posted publicly
@@ -34,24 +40,47 @@ export class CommunityService {
       throw new Error('mediaUrl must be a hosted image URL. Upload the image first.');
     }
 
+    const prof: any = profile;
+    const authorName =
+      user.displayName?.trim() ||
+      (prof ? `${prof.firstName || ''} ${prof.lastName || ''}`.trim() : '') ||
+      'Community Member';
+
+    const mainProfPhoto = prof?.photos?.find((p: any) => p.isMain && p.url)?.url || prof?.photos?.[0]?.url;
+    const authorAvatar = user.avatarUrl || presentPhotoUrl(mainProfPhoto, 'avatar');
+
     const post = await CommunityPostModel.create({
       userId: user._id,
-      authorName: user.displayName || 'Community Member',
-      authorAvatar: user.avatarUrl,
+      authorName,
+      authorAvatar,
       mediaUrl: input.mediaUrl,
       publicId: input.publicId,
       caption: input.caption.trim(),
       category: input.category || 'wedding_story',
-      moderationStatus: 'pending', // Strictly pending admin review
+      moderationStatus: 'approved', // Publish immediately so user & community can view right away; admin can still reject anytime
       likes: [],
       reportsCount: 0,
     });
 
-    return post;
+    return {
+      id: post._id.toString(),
+      userId: post.userId.toString(),
+      authorName: post.authorName,
+      authorAvatar: post.authorAvatar,
+      mediaUrl: post.mediaUrl,
+      publicId: post.publicId,
+      caption: post.caption,
+      category: post.category,
+      moderationStatus: post.moderationStatus,
+      likesCount: 0,
+      isLikedByMe: false,
+      reportsCount: 0,
+      createdAt: post.createdAt?.toISOString(),
+    };
   }
 
   /**
-   * Public Feed: Approved posts only
+   * Public Feed: Approved stories/posts (+ current user's own pending posts if any)
    */
   static async getPublicFeed(currentUserId?: string, page = 1, limit = 20, category?: string) {
     const skip = (page - 1) * limit;
@@ -78,7 +107,15 @@ export class CommunityService {
       };
     }
 
-    const query: any = { moderationStatus: 'approved' };
+    const query: any = currentUserId && mongoose.Types.ObjectId.isValid(currentUserId)
+      ? {
+          $or: [
+            { moderationStatus: 'approved' },
+            { userId: new mongoose.Types.ObjectId(currentUserId), moderationStatus: 'pending' },
+          ],
+        }
+      : { moderationStatus: 'approved' };
+
     if (category && category !== 'all') {
       query.category = category;
     }

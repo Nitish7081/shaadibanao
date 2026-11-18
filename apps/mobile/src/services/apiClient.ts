@@ -98,9 +98,10 @@ export function registerTokenRefresher(refresher: () => Promise<string | null>):
 
 export async function apiClient<T = any>(
   endpoint: string,
-  options: ApiClientOptions & { _isRetry?: boolean } = {}
+  options: ApiClientOptions & { _isRetry?: boolean; _gatewayRetry?: boolean } = {}
 ): Promise<T> {
-  const { timeoutMs = 45000, headers, _isRetry, ...restOptions } = options;
+  const { timeoutMs = 60000, headers, _isRetry, _gatewayRetry, ...restOptions } = options;
+  const method = (restOptions.method || 'GET').toUpperCase();
 
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = `${BASE_URL}${cleanEndpoint}`;
@@ -121,14 +122,24 @@ export async function apiClient<T = any>(
 
     clearTimeout(timeoutId);
 
+    // Render free-tier wake-up often emits transient 502/503/504 while booting: retry GET once automatically
+    if (
+      method === 'GET' &&
+      !_gatewayRetry &&
+      (response.status === 502 || response.status === 503 || response.status === 504)
+    ) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return apiClient<T>(endpoint, { ...options, _gatewayRetry: true });
+    }
+
     const isJson = response.headers.get('content-type')?.includes('application/json');
     const data = isJson ? await response.json() : await response.text();
 
     if (!response.ok) {
       const errorMessage =
-        (typeof data === 'object' && data?.message) ||
+        (typeof data === 'object' && (data?.error?.message || data?.message)) ||
         `HTTP Error ${response.status}: ${response.statusText}`;
-      const errorCode = (typeof data === 'object' && data?.error?.code) || 'API_ERROR';
+      const errorCode = (typeof data === 'object' && (data?.error?.code || data?.code)) || 'API_ERROR';
 
       const isUnauthenticatedAuthRoute =
         cleanEndpoint.includes('/auth/refresh') ||

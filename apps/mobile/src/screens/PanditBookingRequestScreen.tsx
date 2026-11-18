@@ -50,10 +50,13 @@ const TIME_SLOTS = [
   '06:00 PM – 09:00 PM',
 ];
 
-export const PanditBookingRequestScreen: React.FC<any> = ({ navigation }) => {
+export const PanditBookingRequestScreen: React.FC<any> = ({ navigation, route }) => {
   const { i18n } = useTranslation();
   const isHindi = i18n.language === 'hi';
   const bookingLimits = getBookingDateLimits();
+
+  const initialDateParam = route?.params?.initialDate;
+  const serviceIdParam = route?.params?.serviceId;
 
   // Pre-filled fields
   const [fullName, setFullName] = useState('');
@@ -62,9 +65,9 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation }) => {
   const [state, setState] = useState('');
 
   // Booking details
-  const [serviceType, setServiceType] = useState('wedding');
+  const [serviceType, setServiceType] = useState(serviceIdParam || 'wedding');
   const [otherService, setOtherService] = useState('');
-  const [bookingDate, setBookingDate] = useState('');
+  const [bookingDate, setBookingDate] = useState(initialDateParam || '');
   const [timeSlot, setTimeSlot] = useState(TIME_SLOTS[2]);
   const [venueAddress, setVenueAddress] = useState('');
   const [guestCount, setGuestCount] = useState('');

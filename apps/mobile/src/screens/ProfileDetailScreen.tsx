@@ -431,7 +431,20 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
             <PressableScale
               style={styles.kundliMatchPill}
-              onPress={() => navigation.navigate('KundliForm')}
+              onPress={() => {
+                (navigation as any).navigate('MainTabs', {
+                  screen: 'Astrology',
+                  params: {
+                    initialTab: 'matching',
+                    partner: {
+                      id: profileId,
+                      name: displayName,
+                      gender: profile?.gender,
+                      manglik: profile?.manglik === 'yes',
+                    },
+                  },
+                });
+              }}
             >
               <Ionicons name="sparkles" size={16} color={ds.color.maroon} />
               <Text maxFontSizeMultiplier={1.2} style={styles.kundliMatchPillText}>

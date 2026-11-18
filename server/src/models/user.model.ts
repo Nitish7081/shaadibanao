@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { PROFILE_CREATED_FOR, ProfileCreatedFor } from '@bandhansetu/shared';
+import { PROFILE_CREATED_FOR, ProfileCreatedFor, IDENTITY_DOCUMENT_TYPES } from '@bandhansetu/shared';
 
 export interface IUser extends Document {
   mobile?: string;
@@ -120,7 +120,7 @@ const UserSchema = new Schema<IUser>(
     },
     identityDocumentType: {
       type: String,
-      enum: ['aadhaar_card', 'passport', 'voter_id'],
+      enum: IDENTITY_DOCUMENT_TYPES,
       required: false,
     },
     identityDocumentReferenceMasked: {

@@ -85,6 +85,9 @@ export const upsertProfileSchema = z.object({
   occupation: z.string().trim().min(2, 'Occupation or job title is required'),
   annualIncomeBand: z.string().trim().optional(),
   showIncomeBand: z.boolean().default(true),
+  hideProfile: z.boolean().optional(),
+  showLastSeen: z.boolean().optional(),
+  showOnlineStatus: z.boolean().optional(),
 
   // 6. Photos
   photos: z.array(photoItemSchema).default([]),

@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { VerificationService } from '../services/verification.service';
 import { requireAuth } from '../middleware/auth.middleware';
 import { StorageService } from '../services/storage.service';
-import { ApiResponse } from '@bandhansetu/shared';
+import { ApiResponse, IDENTITY_DOCUMENT_TYPES } from '@bandhansetu/shared';
 
 export const verificationRouter = Router();
 
@@ -32,6 +32,17 @@ verificationRouter.post('/identity', requireAuth, async (req: Request, res: Resp
       res.status(400).json({
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'documentType, documentReferenceNumber, and documentStorageKey are required.' },
+      });
+      return;
+    }
+
+    if (!IDENTITY_DOCUMENT_TYPES.includes(documentType)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_DOCUMENT_TYPE',
+          message: 'Please select a valid document: Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook.',
+        },
       });
       return;
     }

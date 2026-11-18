@@ -114,6 +114,28 @@ export class InterestService {
 
     const isDbConnected = mongoose.connection.readyState === 1;
 
+    // Enforce compulsory matrimonial opposite-gender rule when both profiles exist
+    let senderGender: string | undefined;
+    let receiverGender: string | undefined;
+    if (isDbConnected) {
+      const [sProf, rProf] = await Promise.all([
+        ProfileModel.findOne({ userId: senderId }).select('gender').lean(),
+        ProfileModel.findOne({ userId: receiverId }).select('gender').lean(),
+      ]);
+      senderGender = (sProf as any)?.gender?.toLowerCase?.();
+      receiverGender = (rProf as any)?.gender?.toLowerCase?.();
+    } else {
+      senderGender = this.findInMemoryProfile(senderId)?.gender?.toLowerCase?.();
+      receiverGender = this.findInMemoryProfile(receiverId)?.gender?.toLowerCase?.();
+    }
+    if (senderGender && receiverGender && senderGender === receiverGender) {
+      throw new AppError(
+        'Interests can only be sent to opposite-gender matrimonial profiles.',
+        400,
+        'OPPOSITE_GENDER_REQUIRED'
+      );
+    }
+
     if (isDbConnected) {
       const existing = await InterestModel.findOne({
         senderId,

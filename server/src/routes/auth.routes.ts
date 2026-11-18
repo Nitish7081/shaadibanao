@@ -61,3 +61,10 @@ authRouter.post(
   requireAuth,
   AuthController.logout
 );
+
+// 6. Delete Account (DPDP & Play Store compliance)
+authRouter.delete(
+  '/me',
+  requireAuth,
+  AuthController.deleteAccount
+);

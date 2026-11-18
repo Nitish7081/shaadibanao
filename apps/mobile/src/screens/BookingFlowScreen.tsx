@@ -13,18 +13,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { DatePickerField } from '../components/common/DatePickerField';
 import { isValidBookingDate, getBookingDateLimits, formatApiDate } from '../utils/dateTimeHelpers';
-import { API_BASE } from '../services/authSession';
+import { API_BASE, getCachedUserProfile } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
 
 export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
   const { panditId, serviceId, serviceName, priceInr } = route.params || {};
 
   // Form State
+  const cachedUser = getCachedUserProfile();
+  const defaultLocation = cachedUser?.city ? `${cachedUser.city}${cachedUser.state ? `, ${cachedUser.state}` : ''}` : '';
   const bookingLimits = getBookingDateLimits();
   const [bookingDate, setBookingDate] = useState(formatApiDate(new Date()));
   const [timeSlot, setTimeSlot] = useState('10:00 AM - 01:00 PM');
   const [mode, setMode] = useState<'in_person' | 'online'>('in_person');
-  const [venueAddress, setVenueAddress] = useState('Sector 62, Noida, Uttar Pradesh');
+  const [venueAddress, setVenueAddress] = useState(defaultLocation);
   const [kundliSharedConsent, setKundliSharedConsent] = useState(true);
   const [specialRequests, setSpecialRequests] = useState('');
   const [submitting, setSubmitting] = useState(false);

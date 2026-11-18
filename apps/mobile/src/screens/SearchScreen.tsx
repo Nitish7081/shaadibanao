@@ -26,8 +26,9 @@ import {
   addShortlist,
   sendInterest,
   getSessionToken,
+  getMyProfile,
 } from '../services';
-import { getCachedUserProfile, isViewerPaywallRestrictedFor } from '../services/authSession';
+import { getCachedUserProfile, setCachedUserProfile, isViewerPaywallRestrictedFor } from '../services/authSession';
 import { SearchResultProfile, SearchFilterInput } from '@bandhansetu/shared';
 import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
@@ -106,14 +107,36 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
 
       try {
         const token = getSessionToken();
+
+        // Ensure viewer gender is ALWAYS known before searching (compulsory boy->girl / girl->boy rule)
+        let userProfile = getCachedUserProfile();
+        if (!userProfile?.gender && token) {
+          try {
+            const profRes = await getMyProfile(token);
+            if (profRes?.data) {
+              userProfile = profRes.data;
+              setCachedUserProfile(profRes.data);
+            }
+          } catch {
+            // Backend SearchService also enforces viewer gender server-side
+          }
+        }
+
         const filters = buildFilterParams(chipId, pageNum);
+        const viewerGender = userProfile?.gender?.toLowerCase?.();
+        const requiredOpposite =
+          viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : undefined;
+        if (requiredOpposite) {
+          filters.gender = requiredOpposite;
+        }
+
         const res = await searchProfiles(token, filters);
 
         if (res.data) {
           const items = res.data.items;
-          const userProfile = getCachedUserProfile();
-          const requiredOpposite = userProfile?.gender === 'male' ? 'female' : (userProfile?.gender === 'female' ? 'male' : undefined);
-          const strictlyFiltered = requiredOpposite ? items.filter((p: any) => p.gender === requiredOpposite) : items;
+          const strictlyFiltered = requiredOpposite
+            ? items.filter((p: any) => String(p.gender || '').toLowerCase() === requiredOpposite)
+            : items;
 
           if (pageNum === 1) {
             setResults(strictlyFiltered);
@@ -142,6 +165,13 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     fetchProfiles(selectedFilter, 1);
   }, [selectedFilter, fetchProfiles]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchProfiles(selectedFilter, 1);
+    });
+    return unsubscribe;
+  }, [navigation, selectedFilter, fetchProfiles]);
 
   const handleFilterSelect = (chipId: string) => {
     setSelectedFilter(chipId);

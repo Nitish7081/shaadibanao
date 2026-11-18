@@ -138,7 +138,7 @@ storageRouter.post('/upload', async (req: Request, res: Response, next: NextFunc
 
     // Validate actual file content via magic bytes (never trust the client-declared type)
     const detectedFormat = StorageService.detectFileFormat(buffer);
-    const allowedFormats = isPrivate ? ['jpeg', 'png', 'pdf'] : ['jpeg', 'png', 'webp'];
+    const allowedFormats = isPrivate ? ['jpeg', 'png', 'webp', 'pdf'] : ['jpeg', 'png', 'webp'];
     if (!allowedFormats.includes(detectedFormat)) {
       res.status(400).json({
         success: false,

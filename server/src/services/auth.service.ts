@@ -638,6 +638,52 @@ export class AuthService {
     authLog('info', 'logout.success', { userId: String(user._id || user.id), allSessions: !refreshToken });
   }
 
+  /**
+   * Permanently deletes user account, profile, photos, and associated data
+   * in compliance with Google Play Store & statutory DPDP regulations.
+   */
+  public static async deleteAccount(userId: string): Promise<void> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    if (isDbConnected) {
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        throw new AppError('User account not found.', 404, 'USER_NOT_FOUND');
+      }
+
+      // 1. Scramble sensitive identifying details
+      const scrambledMobile = `del_${user._id.toString()}_${Date.now()}`;
+      await UserModel.findByIdAndUpdate(userId, {
+        $set: {
+          status: 'deleted',
+          approvalStatus: 'rejected',
+          mobile: scrambledMobile,
+          email: undefined,
+          displayName: 'Deleted User',
+          phoneVerified: false,
+          refreshTokens: [],
+        },
+      });
+
+      // 2. Remove profile, preferences, kundli, and interests
+      const { ProfileModel } = await import('../models/profile.model');
+      const { PartnerPreferenceModel } = await import('../models/preference.model');
+      const { KundliModel } = await import('../models/kundli.model');
+      const { InterestModel } = await import('../models/interest.model');
+
+      await ProfileModel.deleteMany({ userId });
+      await PartnerPreferenceModel.deleteMany({ userId });
+      await KundliModel.deleteMany({ userId });
+      await InterestModel.deleteMany({
+        $or: [{ senderId: userId }, { receiverId: userId }],
+      });
+    } else {
+      inMemoryUserStore.delete(userId);
+    }
+
+    authLog('info', 'account_deleted', { userId });
+  }
+
 
   /**
    * Refreshes access token using a valid, unexpired refresh token

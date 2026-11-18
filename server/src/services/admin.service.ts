@@ -89,6 +89,30 @@ export class AdminService {
       role: 'admin',
     });
 
+    // Persist hashed refresh token so the admin portal can transparently refresh its session
+    const refreshEntry = {
+      tokenHash: TokenService.hashToken(tokens.refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      createdAt: new Date(),
+      device: 'admin_portal',
+    };
+    if (isDbConnected && adminUser._id) {
+      try {
+        await UserModel.findByIdAndUpdate(adminUser._id, {
+          $push: {
+            refreshTokens: {
+              $each: [refreshEntry],
+              $slice: -10,
+            },
+          },
+        });
+      } catch {
+        // Non-blocking refresh token persistence
+      }
+    } else {
+      adminUser.refreshTokens = [...(adminUser.refreshTokens || []).slice(-9), refreshEntry];
+    }
+
     const userSummary: UserSummary = {
       id: userId,
       mobile: adminUser.mobile,
@@ -293,29 +317,60 @@ export class AdminService {
       UserModel.countDocuments(filter),
     ]);
 
-    // Attach profile and membership information
+    // Attach profile (including signed photos) and membership information
     const userIds = users.map((u) => u._id);
     const [profiles, memberships] = await Promise.all([
-      ProfileModel.find({ userId: { $in: userIds } }).select('userId firstName lastName isVerified gender city state'),
-      MembershipModel.find({ userId: { $in: userIds }, status: 'active' }).select('userId planId expiresAt'),
+      ProfileModel.find({ userId: { $in: userIds } })
+        .select('userId firstName lastName isVerified photoChecked gender dateOfBirth city state education occupation completenessPercent photos')
+        .lean(),
+      MembershipModel.find({ userId: { $in: userIds }, status: 'active' }).select('userId planId expiresAt').lean(),
     ]);
 
     const profileMap = new Map(
       profiles
-        .filter((p) => p && p.userId)
-        .map((p) => [p.userId.toString(), p])
+        .filter((p: any) => p && p.userId)
+        .map((p: any) => [p.userId.toString(), p])
     );
     const membershipMap = new Map(
       memberships
-        .filter((m) => m && m.userId)
-        .map((m) => [m.userId.toString(), m])
+        .filter((m: any) => m && m.userId)
+        .map((m: any) => [m.userId.toString(), m])
     );
 
     const enrichedUsers = users.map((u) => {
       const idStr = u._id.toString();
+      const rawProfile: any = profileMap.get(idStr) || null;
+      let enrichedProfile: any = null;
+
+      if (rawProfile) {
+        const signedPhotos = (rawProfile.photos || []).map((ph: any) => ({
+          ...ph,
+          id: ph._id?.toString() || ph.id,
+          ...presentPhoto(ph.url, ph.publicId),
+        }));
+        const mainPh = signedPhotos.find((ph: any) => ph.isMain) || signedPhotos[0];
+        enrichedProfile = {
+          ...rawProfile,
+          age: rawProfile.dateOfBirth
+            ? Math.floor((Date.now() - new Date(rawProfile.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
+            : undefined,
+          photos: signedPhotos,
+          photosCount: signedPhotos.length,
+          mainPhotoUrl: mainPh?.variants?.avatar || mainPh?.url || null,
+        };
+      }
+
+      const rawUser = u.toObject();
+      const mainPhotoUrl =
+        enrichedProfile?.mainPhotoUrl ||
+        presentPhotoUrl(rawUser.avatarUrl, 'avatar') ||
+        null;
+
       return {
-        ...u.toObject(),
-        profile: profileMap.get(idStr) || null,
+        ...rawUser,
+        mainPhotoUrl,
+        photosCount: enrichedProfile?.photosCount || 0,
+        profile: enrichedProfile,
         membership: membershipMap.get(idStr) || { planId: 'free', status: 'active' },
       };
     });
@@ -326,6 +381,193 @@ export class AdminService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Retrieves complete live user biodata, signed photos, preferences, kundli,
+   * membership, verification requests, and safety reports for admin inspection.
+   * Always available regardless of approvalStatus (pending, approved, rejected, changes_requested).
+   */
+  public static async getUserDetails(targetUserId: string): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    if (!isDbConnected) {
+      const u = inMemoryAdminStore.get(targetUserId);
+      if (!u) {
+        throw new AppError('User account not found.', 404, 'NOT_FOUND');
+      }
+      const p = inMemoryProfileStore.get(targetUserId) || u.profile || null;
+      return {
+        id: u._id?.toString() || u.id,
+        mobile: u.mobile,
+        email: u.email,
+        displayName: u.displayName || (p ? `${p.firstName} ${p.lastName}`.trim() : 'Member'),
+        avatarUrl: u.avatarUrl,
+        role: u.role || 'member',
+        status: u.status || 'active',
+        approvalStatus: u.approvalStatus || 'pending',
+        phoneVerified: u.phoneVerified ?? !!u.mobile,
+        identityVerificationStatus: u.identityVerificationStatus || 'none',
+        identityDocumentType: u.identityDocumentType,
+        identityDocumentReferenceMasked: u.identityDocumentReferenceMasked,
+        photoApprovalStatus: u.photoApprovalStatus || 'none',
+        rejectionReason: u.rejectionReason,
+        moderationRemarks: u.moderationRemarks,
+        approvedBy: u.approvedBy,
+        approvedAt: u.approvedAt?.toISOString?.() || u.approvedAt,
+        createdAt: u.createdAt?.toISOString?.() || new Date().toISOString(),
+        hasProfile: !!p || !!u.hasProfile,
+        profile: p,
+        preferences: u.preferences || null,
+        kundli: u.kundli || null,
+        membership: u.membership || { planId: 'free', status: 'active' },
+        verifications: [],
+        reports: [],
+      };
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+      throw new AppError('Invalid user ID.', 400, 'INVALID_ID');
+    }
+
+    const u = await UserModel.findById(targetUserId).select('-passwordHash -refreshTokens');
+    if (!u) {
+      throw new AppError('User account not found.', 404, 'NOT_FOUND');
+    }
+
+    const [p, pref, kun, membership, verifications, reports]: any[] = await Promise.all([
+      ProfileModel.findOne({ userId: u._id }).lean(),
+      PartnerPreferenceModel.findOne({ userId: u._id }).lean(),
+      KundliModel.findOne({ userId: u._id }).lean(),
+      MembershipModel.findOne({ userId: u._id, status: 'active' }).lean(),
+      VerificationRequestModel.find({ userId: u._id }).sort({ createdAt: -1 }).limit(10).lean(),
+      ReportModel.find({ reportedUserId: u._id })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('reporterId', 'displayName email mobile')
+        .lean(),
+    ]);
+
+    const signedPhotos = (p?.photos || []).map((ph: any) => ({
+      ...ph,
+      id: ph._id?.toString() || ph.id,
+      ...presentPhoto(ph.url, ph.publicId),
+    }));
+    const mainPhoto = signedPhotos.find((ph: any) => ph.isMain) || signedPhotos[0];
+
+    return {
+      id: u._id.toString(),
+      mobile: u.mobile,
+      email: u.email,
+      displayName: u.displayName || (p ? `${p.firstName} ${p.lastName}`.trim() : 'Member'),
+      avatarUrl:
+        mainPhoto?.variants?.avatar ||
+        mainPhoto?.url ||
+        presentPhotoUrl(u.avatarUrl, 'avatar'),
+      role: u.role,
+      status: u.status,
+      approvalStatus: u.approvalStatus || 'pending',
+      phoneVerified: u.phoneVerified ?? !!u.mobile,
+      identityVerificationStatus: u.identityVerificationStatus || 'none',
+      identityDocumentType: u.identityDocumentType,
+      identityDocumentReferenceMasked: u.identityDocumentReferenceMasked,
+      photoApprovalStatus:
+        u.photoApprovalStatus ||
+        (signedPhotos.length ? (signedPhotos.some((ph: any) => ph.approved !== false) ? 'approved' : 'rejected') : 'none'),
+      rejectionReason: u.rejectionReason,
+      moderationRemarks: u.moderationRemarks,
+      approvedBy: u.approvedBy?.toString(),
+      approvedAt: u.approvedAt?.toISOString(),
+      createdAt: u.createdAt.toISOString(),
+      hasProfile: u.hasProfile || !!p,
+      profile: p
+        ? {
+            id: p._id.toString(),
+            firstName: p.firstName,
+            lastName: p.lastName,
+            gender: p.gender,
+            age: p.dateOfBirth
+              ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
+              : undefined,
+            dateOfBirth: p.dateOfBirth?.toISOString ? p.dateOfBirth.toISOString() : p.dateOfBirth,
+            maritalStatus: p.maritalStatus,
+            heightCm: p.heightCm,
+            motherTongue: p.motherTongue,
+            religion: p.religion,
+            caste: p.caste,
+            gotra: p.gotra,
+            manglik: p.manglik,
+            city: p.city,
+            state: p.state,
+            country: p.country,
+            familyValues: p.familyValues,
+            familyType: p.familyType,
+            fatherOccupation: p.fatherOccupation,
+            motherOccupation: p.motherOccupation,
+            education: p.education,
+            employedIn: p.employedIn,
+            occupation: p.occupation,
+            annualIncomeBand: p.annualIncomeBand,
+            showIncomeBand: p.showIncomeBand,
+            completenessPercent: p.completenessPercent,
+            isVerified: p.isVerified,
+            photoChecked: p.photoChecked,
+            photoPrivacy: p.photoPrivacy,
+            aboutMe: p.aboutMe,
+            photos: signedPhotos,
+          }
+        : null,
+      preferences: pref
+        ? {
+            minAge: pref.minAge,
+            maxAge: pref.maxAge,
+            minHeightCm: pref.minHeightCm,
+            maxHeightCm: pref.maxHeightCm,
+            maritalStatuses: pref.maritalStatuses,
+            religions: pref.religions,
+            motherTongues: pref.motherTongues,
+            educations: pref.educations,
+            occupations: pref.occupations,
+            cities: pref.cities,
+            manglikPreference: pref.manglikPreference,
+          }
+        : null,
+      kundli: kun
+        ? {
+            rashi: kun.rashi,
+            nakshatra: kun.nakshatra,
+            charan: kun.charan,
+            timeOfBirth: kun.timeOfBirth,
+            isApproximateTime: kun.isApproximateTime,
+            birthPlace: kun.birthPlace,
+            manglikStatus: kun.manglikStatus,
+            visibility: kun.visibility,
+          }
+        : null,
+      membership: membership
+        ? {
+            planId: membership.planId,
+            status: membership.status,
+            expiresAt: membership.expiresAt?.toISOString?.() || membership.expiresAt,
+          }
+        : { planId: 'free', status: 'active' },
+      verifications: (verifications || []).map((v: any) => ({
+        id: v._id.toString(),
+        documentType: v.documentType,
+        documentReferenceMasked: v.documentReferenceMasked,
+        status: v.status,
+        rejectionReason: v.rejectionReason,
+        createdAt: v.createdAt?.toISOString?.() || v.createdAt,
+      })),
+      reports: (reports || []).map((r: any) => ({
+        id: r._id.toString(),
+        category: r.category,
+        reason: r.reason || r.description,
+        status: r.status,
+        reporterName: r.reporterId?.displayName || r.reporterId?.email || r.reporterId?.mobile || 'Member',
+        createdAt: r.createdAt?.toISOString?.() || r.createdAt,
+      })),
     };
   }
 
@@ -426,10 +668,11 @@ export class AdminService {
     ]);
 
     const userIds = users.map((u) => u._id);
-    const [profiles, preferences, kundlis] = await Promise.all([
+    const [profiles, preferences, kundlis, verifications] = await Promise.all([
       ProfileModel.find({ userId: { $in: userIds } }).lean(),
       PartnerPreferenceModel.find({ userId: { $in: userIds } }).lean(),
       KundliModel.find({ userId: { $in: userIds } }).lean(),
+      VerificationRequestModel.find({ userId: { $in: userIds } }).sort({ createdAt: -1 }).lean(),
     ]);
 
     const profileMap = new Map(
@@ -447,11 +690,25 @@ export class AdminService {
         .filter((k: any) => k && k.userId)
         .map((k: any) => [k.userId.toString(), k])
     );
+    const verifMap = new Map<string, any>();
+    for (const v of verifications as any[]) {
+      const uid = v?.userId?.toString();
+      if (uid && !verifMap.has(uid)) {
+        verifMap.set(uid, {
+          id: v._id.toString(),
+          documentType: v.documentType,
+          documentReferenceMasked: v.documentReferenceMasked,
+          status: v.status,
+          createdAt: v.createdAt?.toISOString?.() || v.createdAt,
+        });
+      }
+    }
 
     const items: PendingApprovalItem[] = users.map((u) => {
       const p: any = profileMap.get(u._id.toString());
       const pref: any = prefMap.get(u._id.toString());
       const kun: any = kundliMap.get(u._id.toString());
+      const latestVerif: any = verifMap.get(u._id.toString()) || null;
 
       return {
         id: u._id.toString(),
@@ -464,8 +721,9 @@ export class AdminService {
         approvalStatus: u.approvalStatus || 'pending',
         phoneVerified: u.phoneVerified ?? !!u.mobile,
         identityVerificationStatus: u.identityVerificationStatus || 'none',
-        identityDocumentType: u.identityDocumentType,
-        identityDocumentReferenceMasked: u.identityDocumentReferenceMasked,
+        identityDocumentType: u.identityDocumentType || latestVerif?.documentType,
+        identityDocumentReferenceMasked: u.identityDocumentReferenceMasked || latestVerif?.documentReferenceMasked,
+        latestVerification: latestVerif,
         photoApprovalStatus: u.photoApprovalStatus || (p?.photos?.length ? (p.photos.some((ph: any) => ph.approved) ? 'approved' : 'pending') : 'none'),
         rejectionReason: u.rejectionReason,
         moderationRemarks: u.moderationRemarks,
@@ -667,6 +925,13 @@ export class AdminService {
         user.approvalStatus = 'rejected';
         user.rejectionReason = reason.trim();
         user.moderationRemarks = remarks?.trim() || '';
+        delete user.approvedBy;
+        delete user.approvedAt;
+      }
+      const prof = inMemoryProfileStore.get(targetUserId);
+      if (prof) {
+        prof.isVerified = false;
+        prof.photoChecked = false;
       }
       return user || { id: targetUserId, approvalStatus: 'rejected', rejectionReason: reason };
     }
@@ -676,10 +941,23 @@ export class AdminService {
       throw new AppError('Target user account not found.', 404, 'NOT_FOUND');
     }
 
+    const previousStatus = user.approvalStatus;
     user.approvalStatus = 'rejected';
     user.rejectionReason = reason.trim();
     user.moderationRemarks = remarks?.trim() || '';
+    user.approvedBy = undefined;
+    user.approvedAt = undefined;
     await user.save();
+
+    // Revoke verified trust badges on profile while keeping all user data & images intact for admin review
+    try {
+      await ProfileModel.findOneAndUpdate(
+        { userId: user._id },
+        { $set: { isVerified: false, photoChecked: false } }
+      );
+    } catch {
+      // Non-blocking
+    }
 
     // Audit Log Entry
     try {
@@ -692,6 +970,7 @@ export class AdminService {
         targetUserEmail: user.email,
         targetUserMobile: user.mobile,
         details: {
+          previousStatus,
           reason: user.rejectionReason,
           remarks: user.moderationRemarks,
         },
@@ -965,12 +1244,31 @@ export class AdminService {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('userId', 'email mobile status role approvalStatus createdAt'),
+        .populate('userId', 'displayName email mobile status role approvalStatus photoApprovalStatus createdAt')
+        .lean(),
       ProfileModel.countDocuments(filter),
     ]);
 
+    const enrichedProfiles = profiles.map((p: any) => {
+      const signedPhotos = (p.photos || []).map((ph: any) => ({
+        ...ph,
+        id: ph._id?.toString() || ph.id,
+        ...presentPhoto(ph.url, ph.publicId),
+      }));
+      const mainPhoto = signedPhotos.find((ph: any) => ph.isMain) || signedPhotos[0];
+      return {
+        ...p,
+        age: p.dateOfBirth
+          ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000))
+          : undefined,
+        photos: signedPhotos,
+        photosCount: signedPhotos.length,
+        mainPhotoUrl: mainPhoto?.variants?.avatar || mainPhoto?.url || null,
+      };
+    });
+
     return {
-      profiles,
+      profiles: enrichedProfiles,
       total,
       page,
       limit,

@@ -94,7 +94,12 @@ export function setSessionAuth(
   }
 
   // Reset currentUserId and currentUser to prevent previous account data bleed
-  currentUserId = userId ?? null;
+  const nextUserId = userId ?? null;
+  if (nextUserId !== currentUserId) {
+    cachedUserProfile = null;
+    cachedUserMembership = null;
+  }
+  currentUserId = nextUserId;
   currentUser = user ?? null;
 
   // Persist to AsyncStorage asynchronously
@@ -248,6 +253,8 @@ export function clearSessionAuth(): void {
   currentRefreshToken = null;
   currentUserId = null;
   currentUser = null;
+  cachedUserProfile = null;
+  cachedUserMembership = null;
 
   AsyncStorage.multiRemove([
     STORAGE_KEY_ACCESS,
