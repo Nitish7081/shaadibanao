@@ -9,12 +9,20 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { IdentityDocumentType } from '@bandhansetu/shared';
 import { colors, typography, spacing, borderRadius, fonts, shadows } from '../constants/theme';
 import { apiClient } from '../services/apiClient';
-import { getAuthHeader, getSessionToken, syncCurrentUserWithBackend } from '../services/authSession';
+import {
+  getAuthHeader,
+  getSessionToken,
+  getSessionUser,
+  performLogout,
+  syncCurrentUserWithBackend,
+} from '../services/authSession';
+import { isUserAdminVerified } from '../navigation/authRouting';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadAsset } from '../services/imageUpload';
 
@@ -68,7 +76,10 @@ const DOCUMENT_OPTIONS: Array<{
   },
 ];
 
-export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
+export const IdentityVerificationScreen: React.FC<any> = ({ navigation, route }) => {
+  const sessionUser = getSessionUser();
+  const isMandatory = Boolean(route?.params?.mandatory) || !isUserAdminVerified(sessionUser);
+
   const [docType, setDocType] = useState<IdentityDocumentType>('aadhaar_card');
   const [docNumber, setDocNumber] = useState('');
   const [consentGranted, setConsentGranted] = useState(false);
@@ -80,6 +91,39 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
   const [uploadPct, setUploadPct] = useState<number | null>(null);
 
   const selectedDocConfig = DOCUMENT_OPTIONS.find((d) => d.key === docType) || DOCUMENT_OPTIONS[0];
+
+  // Prevent skipping mandatory KYC via Android hardware back button
+  useEffect(() => {
+    if (!isMandatory) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (currentStatus?.identityVerificationStatus === 'pending') {
+        navigation.replace('ApprovalPending');
+        return true;
+      }
+      Alert.alert(
+        'ID Verification Mandatory',
+        'Uploading one of Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook is compulsory before creating your profile. Do you want to Sign Out instead?',
+        [
+          { text: 'Stay & Upload', style: 'cancel' },
+          {
+            text: 'Sign Out',
+            style: 'destructive',
+            onPress: async () => {
+              await performLogout();
+              navigation.replace('LoginOtp');
+            },
+          },
+        ]
+      );
+      return true;
+    });
+    return () => sub.remove();
+  }, [isMandatory, currentStatus?.identityVerificationStatus, navigation]);
+
+  const handleSignOut = async () => {
+    await performLogout();
+    navigation.replace('LoginOtp');
+  };
 
   const pickDocument = async (fromCamera: boolean) => {
     try {
@@ -173,9 +217,20 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
         setDocNumber('');
         await syncCurrentUserWithBackend().catch(() => {});
         Alert.alert(
-          'Verification Submitted! 🛡️',
-          `Your ${selectedDocConfig.label} has been sent securely to the Admin Panel. Once verified by Admin, your ShaadiBanao account will automatically unlock for login.`,
-          [{ text: 'OK', onPress: () => fetchStatus() }]
+          'ID Document Uploaded! 🛡️',
+          `Your ${selectedDocConfig.label} has been securely submitted to the Admin Panel.\n\nOnce verified by Admin, your profile creation will unlock automatically.`,
+          [
+            {
+              text: isMandatory ? 'Check Verification Status' : 'OK',
+              onPress: () => {
+                if (isMandatory) {
+                  navigation.replace('ApprovalPending');
+                } else {
+                  fetchStatus();
+                }
+              },
+            },
+          ]
         );
       } else {
         Alert.alert('Error', json.error?.message || json.message || 'Submission failed.');
@@ -195,13 +250,39 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Identity Verification</Text>
+        {!isMandatory ? (
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 4 }}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <Ionicons name="shield-checkmark" size={24} color="#FFD700" style={{ padding: 4 }} />
+        )}
+        <Text style={[styles.headerTitle, { flex: 1 }]}>
+          {isMandatory ? 'Step 1: Mandatory ID Proof' : 'Identity Verification'}
+        </Text>
+        {isMandatory && (
+          <TouchableOpacity onPress={handleSignOut} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
+            <Text style={{ color: '#FFE4B5', fontSize: 12, fontWeight: '700' }}>Sign Out</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Mandatory Registration Gate Notice */}
+        {isMandatory && (
+          <View style={[styles.infoBox, { backgroundColor: '#FFF4E5', borderColor: '#F59E0B' }]}>
+            <Ionicons name="alert-circle" size={22} color="#B45309" />
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400E', marginBottom: 4 }}>
+                Compulsory Document Upload Before Profile Creation
+              </Text>
+              <Text style={[styles.infoText, { marginLeft: 0, color: '#78350F' }]}>
+                To keep ShaadiBanao 100% genuine, every new member must upload a clear photo of ANY ONE document: Aadhaar Card, PAN Card, Voter ID Card, Passport, or Bank Passbook. Once Admin verifies your ID, your profile creation form will unlock automatically.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Verification Status Card */}
         {currentStatus && (
           <View style={styles.statusCard}>
@@ -232,6 +313,14 @@ export const IdentityVerificationScreen: React.FC<any> = ({ navigation }) => {
               <Text style={styles.maskedDoc}>
                 Reference: {currentStatus.identityDocumentReferenceMasked}
               </Text>
+            )}
+            {isMandatory && currentStatus.identityVerificationStatus === 'pending' && (
+              <TouchableOpacity
+                style={[styles.submitBtn, { marginTop: 12, backgroundColor: '#1E293B', minHeight: 42, paddingVertical: 10 }]}
+                onPress={() => navigation.replace('ApprovalPending')}
+              >
+                <Text style={styles.submitBtnText}>⏳ View Admin Verification Status</Text>
+              </TouchableOpacity>
             )}
           </View>
         )}

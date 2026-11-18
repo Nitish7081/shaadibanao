@@ -27,6 +27,7 @@ import { ds, PressableScale } from '../design';
 import { LegalConsentRow } from '../components/common/LegalConsentRow';
 import { requestOtp, verifyOtp, registerUser, loginWithFirebase } from '../services/authService';
 import { setSessionAuth } from '../services/authSession';
+import { getNextRouteForUser } from '../navigation/authRouting';
 import {
   isFirebaseNativeAvailable,
   isGoogleSignInNativeAvailable,
@@ -57,10 +58,55 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
   const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(30);
+  const [resendTimer, setResendTimer] = useState(0);
   const [phoneConfirmation, setPhoneConfirmation] = useState<PhoneConfirmResult | null>(null);
 
   const cleanMobile = mobileNumber.replace(/\D/g, '');
+
+  // Live 1-second OTP resend countdown timer
+  useEffect(() => {
+    if (!otpSent || resendTimer <= 0) return;
+    const interval = setInterval(() => {
+      setResendTimer((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [otpSent, resendTimer > 0]);
+
+  const formatCountdown = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const navigateAfterAuth = (user: any, showWelcomeNotice = false) => {
+    const next = getNextRouteForUser(user);
+    if (next.screen === 'IdentityVerification') {
+      if (showWelcomeNotice) {
+        Alert.alert(
+          'Step 1: Mandatory ID Verification 🪪',
+          'Account created! Please upload a clear photo of your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook. Once Admin verifies your ID, you can create your matrimonial profile.',
+          [
+            {
+              text: 'Upload ID Document',
+              onPress: () => navigation.replace('IdentityVerification', { mandatory: true }),
+            },
+          ]
+        );
+      } else {
+        navigation.replace('IdentityVerification', { mandatory: true });
+      }
+      return;
+    }
+    if (next.screen === 'ApprovalPending') {
+      navigation.replace('ApprovalPending');
+      return;
+    }
+    if (next.screen === 'ProfileCreation') {
+      navigation.replace('ProfileCreation');
+      return;
+    }
+    navigation.replace('MainTabs');
+  };
 
   const handleSendOtp = async () => {
     if (cleanMobile.length !== 10) {
@@ -82,22 +128,31 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       try {
         const confirmation = await sendFirebasePhoneOtp(cleanMobile);
         setPhoneConfirmation(confirmation);
+        setOtp('');
         setLoading(false);
         setOtpSent(true);
         setResendTimer(60);
         Alert.alert(
-          'Firebase OTP Dispatched',
-          `A 6-digit SMS verification code was sent to +91 ${cleanMobile} via Firebase.`
+          'Firebase OTP Sent ✅',
+          `A 6-digit SMS verification code has been sent to +91 ${cleanMobile}. Please enter it below.`
         );
         return;
       } catch (fbErr: any) {
-        console.warn('[LoginOtpScreen] Firebase phone auth failed, attempting backend fallback:', fbErr);
-        // If Firebase phone auth fails (e.g. BILLING_NOT_ENABLED), fall back to backend OTP service
+        console.warn('[LoginOtpScreen] Firebase phone auth failed:', fbErr);
+        // In production APKs, backend server-side SMS OTP is disabled (503).
+        // Show the real, actionable Firebase error directly instead of swallowing it.
+        if (!__DEV__) {
+          setLoading(false);
+          Alert.alert('OTP Failed', describeFirebaseAuthError(fbErr));
+          return;
+        }
+        // In __DEV__ / local testing, allow fallback to backend dev mock OTP (123456)
       }
     }
 
     try {
       const response = await requestOtp(cleanMobile);
+      setOtp('');
       setLoading(false);
       setOtpSent(true);
       setResendTimer(30);
@@ -133,16 +188,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         if (res.data?.tokens && res.data?.user) {
           setSessionAuth(res.data.tokens, res.data.user.id, res.data.user);
           setLoading(false);
-
-          if (res.data.isNewUser || !res.data.user.hasProfile) {
-            Alert.alert('Account Verified', 'Authentication successful! Let us create your matrimonial profile.', [
-              { text: 'Create Profile', onPress: () => navigation.navigate('ProfileCreation') },
-            ]);
-          } else if (res.data.user.approvalStatus && res.data.user.approvalStatus !== 'approved') {
-            navigation.replace('ApprovalPending');
-          } else {
-            navigation.navigate('MainTabs');
-          }
+          navigateAfterAuth(res.data.user, true);
         }
       } catch (fbErr: any) {
         setLoading(false);
@@ -157,14 +203,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         const authData = verifyRes.data.auth;
         setSessionAuth(authData.tokens, authData.user.id, authData.user);
         setLoading(false);
-
-        if (!authData.user.hasProfile) {
-          navigation.navigate('ProfileCreation');
-        } else if (authData.user.approvalStatus && authData.user.approvalStatus !== 'approved') {
-          navigation.replace('ApprovalPending');
-        } else {
-          navigation.navigate('MainTabs');
-        }
+        navigateAfterAuth(authData.user, false);
         return;
       }
 
@@ -180,7 +219,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
         if (regRes.data?.tokens && regRes.data?.user) {
           setSessionAuth(regRes.data.tokens, regRes.data.user.id, regRes.data.user);
           setLoading(false);
-          navigation.navigate('ProfileCreation');
+          navigateAfterAuth(regRes.data.user, true);
           return;
         }
       }
@@ -213,13 +252,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
       setPendingGoogleIdToken(null);
       if (res.data?.tokens && res.data?.user) {
         setSessionAuth(res.data.tokens, res.data.user.id, res.data.user);
-        if (res.data.isNewUser || !res.data.user.hasProfile) {
-          navigation.navigate('ProfileCreation');
-        } else if (res.data.user.approvalStatus && res.data.user.approvalStatus !== 'approved') {
-          navigation.replace('ApprovalPending');
-        } else {
-          navigation.navigate('MainTabs');
-        }
+        navigateAfterAuth(res.data.user, !!res.data.isNewUser);
       }
     } catch (gErr: any) {
       if (gErr?.code === 'CONSENT_REQUIRED') {
@@ -386,16 +419,23 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                     placeholder="• • • • • •"
                     placeholderTextColor={ds.color.textMuted}
                     keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete="sms-otp"
                     maxLength={6}
                     value={otp}
-                    onChangeText={setOtp}
+                    onChangeText={(val) => setOtp(val.replace(/\D/g, ''))}
                     autoFocus
                   />
                 </View>
 
                 <View style={styles.resendRow}>
                   <PressableScale
-                    onPress={() => setOtpSent(false)}
+                    onPress={() => {
+                      setOtpSent(false);
+                      setOtp('');
+                      setPhoneConfirmation(null);
+                      setResendTimer(0);
+                    }}
                     style={styles.changeNumberBtn}
                   >
                     <Ionicons name="create-outline" size={14} color={ds.color.maroon} />
@@ -415,7 +455,7 @@ export const LoginOtpScreen: React.FC<Props> = ({ navigation }) => {
                         resendTimer > 0 && styles.resendTextDisabled,
                       ]}
                     >
-                      {resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend OTP'}
+                      {resendTimer > 0 ? `⏱️ Resend in ${formatCountdown(resendTimer)}` : 'Resend OTP'}
                     </Text>
                   </PressableScale>
                 </View>

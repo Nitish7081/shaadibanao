@@ -4,6 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, typography, spacing } from '../constants/theme';
 import { loadSessionFromStorage, hasActiveSession, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
+import { getNextRouteForUser } from '../navigation/authRouting';
 import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
 import { VedicDivider } from '../components/royal/VedicOrnament';
 import { hasChosenLanguage } from '../i18n';
@@ -37,10 +38,11 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
         if (!isMounted) return;
         if (hasStoredSession && hasActiveSession()) {
           const user = getSessionUser();
-          if (user?.approvalStatus && user.approvalStatus !== 'approved') {
-            navigation.replace('ApprovalPending');
+          const next = getNextRouteForUser(user);
+          if (next.screen === 'IdentityVerification') {
+            navigation.replace('IdentityVerification', next.params);
           } else {
-            navigation.replace('MainTabs');
+            navigation.replace(next.screen);
           }
         } else {
           // If the user previously selected a language, advance directly to Welcome

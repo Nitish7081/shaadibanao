@@ -278,4 +278,97 @@ describe('Stories Visibility, Compulsory Opposite-Gender & 5-Document Verificati
     expect((updatedUser as any).approvalStatus).toBe('approved');
     expect((updatedUser as any).identityVerificationStatus).toBe('verified');
   });
+
+  it('5. Compulsory KYC before profile creation: blocks new profile until ID uploaded & Admin verified', async () => {
+    const prevFlag = process.env.ENFORCE_KYC_BEFORE_PROFILE;
+    process.env.ENFORCE_KYC_BEFORE_PROFILE = 'true';
+
+    try {
+      const freshUser = await UserModel.create({
+        email: 'fresh.kyc@example.com',
+        mobile: '9444444444',
+        displayName: 'Fresh Member',
+        role: 'member',
+        status: 'active',
+        approvalStatus: 'pending',
+        identityVerificationStatus: 'none',
+        hasProfile: false,
+      });
+      const freshUserId = freshUser._id.toString();
+      const freshToken = TokenService.generateTokens({
+        userId: freshUserId,
+        email: freshUser.email,
+        role: 'member',
+      }).accessToken;
+
+      const sampleProfile = {
+        firstName: 'Rohan',
+        lastName: 'Gupta',
+        gender: 'male',
+        dateOfBirth: '1996-05-15',
+        maritalStatus: 'never_married',
+        heightCm: 175,
+        motherTongue: 'Hindi',
+        religion: 'Hindu',
+        country: 'India',
+        state: 'Uttar Pradesh',
+        city: 'Lucknow',
+        familyValues: 'moderate',
+        familyType: 'nuclear',
+        education: 'B.Tech',
+        employedIn: 'private',
+        occupation: 'Software Engineer',
+        photoPrivacy: 'everyone',
+        photos: [],
+        aboutMe: 'Looking for a genuine and caring life partner.',
+      };
+
+      // Step A: Before uploading any ID document, profile creation MUST be rejected with 403
+      const blockedBeforeUpload = await request(app)
+        .put('/api/v1/profiles/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send(sampleProfile);
+      expect(blockedBeforeUpload.status).toBe(403);
+      expect(blockedBeforeUpload.body.error.code).toBe('IDENTITY_VERIFICATION_REQUIRED');
+
+      // Step B: User uploads mandatory Aadhaar Card document
+      const uploadRes = await request(app)
+        .post('/api/v1/verification/identity')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send({
+          documentType: 'aadhaar_card',
+          documentReferenceNumber: '1234 5678 9012',
+          documentStorageKey: `shaadibanao/private/identity_document/${freshUserId}/aadhaar_front`,
+          consentGranted: true,
+        });
+      expect(uploadRes.status).toBe(201);
+      const reqId = uploadRes.body.data.requestId;
+
+      // Step C: Even after upload, profile creation MUST stay blocked until Admin verifies
+      const blockedWhilePending = await request(app)
+        .put('/api/v1/profiles/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send(sampleProfile);
+      expect(blockedWhilePending.status).toBe(403);
+      expect(blockedWhilePending.body.error.code).toBe('IDENTITY_VERIFICATION_REQUIRED');
+
+      // Step D: Admin verifies the uploaded document from Admin Panel
+      const adminApprove = await request(app)
+        .post(`/api/v1/admin/verifications/${reqId}/approve`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(adminApprove.status).toBe(200);
+
+      // Step E: Now user CAN create their matrimonial profile, and it is automatically marked verified!
+      const allowedCreate = await request(app)
+        .put('/api/v1/profiles/me')
+        .set('Authorization', `Bearer ${freshToken}`)
+        .send(sampleProfile);
+      expect(allowedCreate.status).toBe(200);
+      expect(allowedCreate.body.success).toBe(true);
+      expect(allowedCreate.body.data.isVerified).toBe(true);
+    } finally {
+      if (prevFlag === undefined) delete process.env.ENFORCE_KYC_BEFORE_PROFILE;
+      else process.env.ENFORCE_KYC_BEFORE_PROFILE = prevFlag;
+    }
+  });
 });

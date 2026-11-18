@@ -21,7 +21,7 @@ export type RootStackParamList = {
   MyBookings: undefined;
   VideoConsultation: { bookingId: string; ceremonyName: string; panditName: string };
   KundliForm: undefined;
-  IdentityVerification: undefined;
+  IdentityVerification: { mandatory?: boolean } | undefined;
   CreatePost: undefined;
   Search: undefined;
   Chat: undefined;

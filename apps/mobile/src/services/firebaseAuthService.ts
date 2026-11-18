@@ -255,9 +255,12 @@ export async function confirmFirebasePhoneOtp(
  * Converts raw Firebase / Google Sign-In native errors into actionable, non-sensitive messages.
  */
 export function describeFirebaseAuthError(err: any): string {
-  const code: string = err?.code || '';
+  const code: string = String(err?.code || '');
   const msg: string = err?.message || '';
 
+  if (code === 'auth/billing-not-enabled' || msg.includes('BILLING_NOT_ENABLED')) {
+    return 'Firebase Phone SMS requires the Blaze billing plan to be active on the Firebase project (saadibaano). You can also sign in immediately using "Continue with Google".';
+  }
   if (code === 'auth/operation-not-allowed' || msg.includes('operation-not-allowed')) {
     return 'SMS to this region is blocked by the Firebase SMS region policy (or Phone sign-in is disabled). The administrator must allow India (+91) in Firebase Console > Authentication > Settings > SMS region policy.';
   }
@@ -265,19 +268,35 @@ export function describeFirebaseAuthError(err: any): string {
     return 'This phone number is not valid. Enter a 10-digit Indian mobile number.';
   }
   if (code === 'auth/too-many-requests' || code === 'auth/quota-exceeded') {
-    return 'Too many verification attempts or SMS quota exceeded. Please wait and try again later.';
+    return 'Too many verification attempts or SMS quota exceeded. Please wait a few minutes and try again, or use Continue with Google.';
   }
-  if (code === 'auth/app-not-authorized' || msg.includes('Play Integrity') || msg.includes('app-not-authorized')) {
-    return 'This app build is not authorised for Firebase. The signing SHA-1/SHA-256 certificate must be registered in Firebase project settings.';
+  if (
+    code === 'auth/app-not-authorized' ||
+    code === 'auth/missing-client-identifier' ||
+    code === 'auth/captcha-check-failed' ||
+    msg.includes('Play Integrity') ||
+    msg.includes('app-not-authorized') ||
+    msg.includes('reCAPTCHA')
+  ) {
+    return 'Device verification failed for Firebase SMS. Ensure Google Play Services is updated, your internet connection is active, and SHA-1/SHA-256 keys are registered in Firebase.';
+  }
+  if (code === '10' || code === 'DEVELOPER_ERROR' || msg.includes('DEVELOPER_ERROR')) {
+    return 'Google Sign-In configuration mismatch (DEVELOPER_ERROR). Ensure this app build uses the registered SHA-1 signing certificate in Firebase.';
+  }
+  if (code === 'PLAY_SERVICES_NOT_AVAILABLE' || msg.includes('PLAY_SERVICES_NOT_AVAILABLE')) {
+    return 'Google Play Services is not available or needs an update on this device.';
+  }
+  if (code === 'IN_PROGRESS') {
+    return 'Google Sign-In is already in progress. Please wait a moment.';
   }
   if (code === 'auth/network-request-failed') {
     return 'Network error while contacting Firebase. Check your internet connection.';
   }
   if (code === 'auth/invalid-verification-code') {
-    return 'The verification code is incorrect.';
+    return 'The verification code is incorrect. Please check the 6-digit SMS code and try again.';
   }
   if (code === 'auth/code-expired' || code === 'auth/session-expired') {
-    return 'The verification code has expired. Request a new code.';
+    return 'The verification code has expired. Tap "Resend OTP" to request a new code.';
   }
   return msg || 'Firebase authentication failed.';
 }

@@ -19,14 +19,12 @@ import { colors, typography, spacing, borderRadius, fonts } from '../constants/t
 import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
 import {
   getSessionUser,
-  setSessionAuth,
-  clearSessionAuth,
   performLogout,
-  getSessionToken,
   hasActiveSession,
   syncCurrentUserWithBackend,
   onUserUpdated,
 } from '../services/authSession';
+import { isUserAdminVerified } from '../navigation/authRouting';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ApprovalPending'>;
 
@@ -36,7 +34,30 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
   const isNavigatingRef = useRef(false);
 
   const approvalStatus = user?.approvalStatus || 'pending';
+  const idStatus = user?.identityVerificationStatus || 'none';
   const isSuspended = user?.status === 'suspended';
+  const needsMandatoryIdUpload = !isSuspended && !isUserAdminVerified(user) && (idStatus === 'none' || idStatus === 'rejected');
+
+  const routeVerifiedUser = (updatedUser: any, isSilent: boolean) => {
+    isNavigatingRef.current = true;
+    const targetScreen = updatedUser.hasProfile ? 'MainTabs' : 'ProfileCreation';
+    if (!isSilent) {
+      Alert.alert(
+        updatedUser.hasProfile ? 'Account Approved! 🎉' : 'ID Verified by Admin! 🎉',
+        updatedUser.hasProfile
+          ? 'Congratulations! Your matrimonial profile has been approved. You now have full access to search and matching.'
+          : 'Your identity document has been verified by Admin. You can now create your ShaadiBanao matrimonial profile!',
+        [
+          {
+            text: updatedUser.hasProfile ? 'Enter ShaadiBanao' : 'Create My Profile',
+            onPress: () => navigation.replace(targetScreen),
+          },
+        ]
+      );
+    } else {
+      navigation.replace(targetScreen);
+    }
+  };
 
   const handleRefreshStatus = async (isSilent = false) => {
     if (isNavigatingRef.current) return;
@@ -52,30 +73,20 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
       if (updatedUser) {
         setUser(updatedUser);
 
-        if (updatedUser.approvalStatus === 'approved' && updatedUser.status !== 'suspended') {
-          isNavigatingRef.current = true;
-          if (!isSilent) {
-            Alert.alert(
-              'Account Approved! 🎉',
-              'Congratulations! Your matrimonial profile has been approved. You now have full access to search and matching.',
-              [
-                {
-                  text: 'Enter ShaadiBanao',
-                  onPress: () => navigation.replace('MainTabs'),
-                },
-              ]
-            );
-          } else {
-            navigation.replace('MainTabs');
-          }
+        if (isUserAdminVerified(updatedUser) && updatedUser.status !== 'suspended') {
+          routeVerifiedUser(updatedUser, isSilent);
           return;
         }
 
         if (!isSilent) {
-          Alert.alert(
-            'Verification Status',
-            `Account Approval: ${updatedUser.approvalStatus.toUpperCase()}\nPhoto Review: ${(updatedUser.photoApprovalStatus || 'none').toUpperCase()}\nIdentity: ${(updatedUser.identityVerificationStatus || 'none').toUpperCase()}`
-          );
+          const latestIdStatus = updatedUser.identityVerificationStatus || 'none';
+          const statusMsg =
+            latestIdStatus === 'none'
+              ? 'ID Proof NOT uploaded yet. Please upload Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook.'
+              : latestIdStatus === 'rejected'
+              ? `Your ID document was rejected.${updatedUser.rejectionReason ? ` Reason: ${updatedUser.rejectionReason}` : ''} Please re-upload a clear photo.`
+              : `Your ID document is under Admin review.\nAccount Approval: ${updatedUser.approvalStatus.toUpperCase()}\nIdentity Status: ${latestIdStatus.toUpperCase()}`;
+          Alert.alert('Verification Status', statusMsg);
         }
       }
     } catch (err: any) {
@@ -91,10 +102,10 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
     // 1. Initial check on mount
     handleRefreshStatus(true);
 
-    // 2. Poll every 8 seconds while waiting for admin review
+    // 2. Poll every 6 seconds while waiting for admin review
     const interval = setInterval(() => {
       handleRefreshStatus(true);
-    }, 8000);
+    }, 6000);
 
     // 3. Listen to AppState foregrounding
     const appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
@@ -106,9 +117,8 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
     // 4. Listen to authSession events
     const unsubUser = onUserUpdated((updatedUser) => {
       setUser(updatedUser);
-      if (updatedUser && updatedUser.approvalStatus === 'approved' && updatedUser.status !== 'suspended') {
-        isNavigatingRef.current = true;
-        navigation.replace('MainTabs');
+      if (updatedUser && isUserAdminVerified(updatedUser) && updatedUser.status !== 'suspended') {
+        routeVerifiedUser(updatedUser, true);
       }
     });
 
@@ -128,6 +138,15 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
     if (isSuspended) {
       return { label: 'Account Suspended', bg: 'rgba(239, 68, 68, 0.15)', text: colors.alertRed };
     }
+    if (idStatus === 'none') {
+      return { label: '🪪 ID Proof Required', bg: 'rgba(239, 68, 68, 0.15)', text: colors.alertRed };
+    }
+    if (idStatus === 'rejected') {
+      return { label: '✕ ID Document Rejected', bg: 'rgba(239, 68, 68, 0.15)', text: colors.alertRed };
+    }
+    if (idStatus === 'pending' && !user?.hasProfile) {
+      return { label: '⏳ Waiting for Admin ID Verification', bg: 'rgba(245, 158, 11, 0.15)', text: colors.softGold };
+    }
     switch (approvalStatus) {
       case 'approved':
         return { label: '✓ Approved', bg: 'rgba(16, 185, 129, 0.15)', text: colors.verifiedGreen };
@@ -136,7 +155,7 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
       case 'changes_requested':
         return { label: '💬 Changes Requested', bg: 'rgba(245, 158, 11, 0.15)', text: colors.softGold };
       default:
-        return { label: '⏳ Profile Under Review', bg: 'rgba(245, 158, 11, 0.15)', text: colors.softGold };
+        return { label: '⏳ Verification Under Review', bg: 'rgba(245, 158, 11, 0.15)', text: colors.softGold };
     }
   };
 
@@ -161,22 +180,69 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.headline}>
             {isSuspended
               ? 'Account Restricted'
+              : idStatus === 'none'
+              ? 'Upload Compulsory ID Document'
+              : idStatus === 'rejected'
+              ? 'ID Document Needs Re-upload'
+              : !user?.hasProfile
+              ? 'ID Submitted — Waiting for Admin Verification'
               : approvalStatus === 'rejected'
               ? 'Profile Did Not Meet Guidelines'
               : approvalStatus === 'changes_requested'
               ? 'Profile Updates Required'
-              : 'Your Profile is Under Review'}
+              : 'Your Account is Under Review'}
           </Text>
 
           <Text style={styles.description}>
             {isSuspended
               ? 'Your account has been suspended by administration. Access to search, matching, and conversations is restricted.'
+              : idStatus === 'none'
+              ? 'Before creating your ShaadiBanao profile, you must upload a clear photo of ANY ONE document: Aadhaar Card, PAN Card, Voter ID Card, Passport, or Bank Passbook.'
+              : idStatus === 'rejected'
+              ? 'Our admin team could not verify your submitted ID document. Please upload a clearer photo of your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook.'
+              : !user?.hasProfile
+              ? 'Thank you! Your identity document has been submitted to the Admin Panel. As soon as Admin verifies your ID, your profile creation form will unlock automatically.'
               : approvalStatus === 'rejected'
               ? 'Our moderation team reviewed your profile and could not approve it based on community guidelines.'
               : approvalStatus === 'changes_requested'
               ? 'Our moderation team reviewed your profile and requested specific changes before your account can be approved.'
-              : 'Thank you for registering on ShaadiBanao. To maintain authentic, verified matches for Indian families, every new profile is verified by an administrator before unlocking partner search and messaging.'}
+              : 'Thank you for registering on ShaadiBanao. Every member is verified by an administrator before unlocking partner search and messaging.'}
           </Text>
+
+          {/* Identity Document Status Box */}
+          {!isSuspended && (
+            <View style={styles.photoStatusBox}>
+              <Ionicons
+                name={
+                  idStatus === 'verified'
+                    ? 'shield-checkmark'
+                    : idStatus === 'rejected' || idStatus === 'none'
+                    ? 'alert-circle'
+                    : 'hourglass-outline'
+                }
+                size={18}
+                color={
+                  idStatus === 'verified'
+                    ? colors.verifiedGreen
+                    : idStatus === 'rejected' || idStatus === 'none'
+                    ? colors.alertRed
+                    : colors.royalMaroon
+                }
+              />
+              <Text style={styles.photoStatusText}>
+                Identity Document:{' '}
+                <Text style={{ fontWeight: '700' }}>
+                  {idStatus === 'verified'
+                    ? 'Verified by Admin ✓'
+                    : idStatus === 'pending'
+                    ? 'Uploaded — Pending Admin Review ⏳'
+                    : idStatus === 'rejected'
+                    ? 'Rejected (Please Re-upload)'
+                    : 'Not Uploaded (Compulsory)'}
+                </Text>
+              </Text>
+            </View>
+          )}
 
           {/* Photo Moderation Status Box */}
           {user?.photoApprovalStatus && user.photoApprovalStatus !== 'none' && (
@@ -251,7 +317,19 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
-            {approvalStatus === 'pending' && !isSuspended && (
+            {needsMandatoryIdUpload && (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                activeOpacity={0.8}
+                onPress={() => navigation.replace('IdentityVerification', { mandatory: true })}
+              >
+                <Text style={styles.primaryBtnText}>
+                  🪪 {idStatus === 'rejected' ? 'Re-upload Mandatory ID Proof' : 'Upload Mandatory ID Proof'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {!needsMandatoryIdUpload && approvalStatus === 'pending' && !isSuspended && (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 activeOpacity={0.8}
@@ -261,40 +339,31 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
                 {loading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.primaryBtnText}>⟳ Check / Refresh Status</Text>
+                  <Text style={styles.primaryBtnText}>⟳ Check / Refresh Admin Verification</Text>
                 )}
               </TouchableOpacity>
             )}
 
-            {(approvalStatus === 'rejected' || approvalStatus === 'changes_requested') && !isSuspended && (
+            {!isSuspended && !needsMandatoryIdUpload && (
               <TouchableOpacity
-                style={styles.primaryBtn}
+                style={[styles.secondaryBtn, { borderColor: colors.softGold, backgroundColor: '#FAF6ED' }]}
                 activeOpacity={0.8}
-                onPress={() => navigation.navigate('ProfileCreation')}
-              >
-                <Text style={styles.primaryBtnText}>✏️ Edit & Resubmit Profile</Text>
-              </TouchableOpacity>
-            )}
-
-            {!isSuspended && (
-              <TouchableOpacity
-                style={[styles.secondaryBtn, { borderColor: colors.softGold, backgroundColor: '#FAF6ED', marginBottom: 8 }]}
-                activeOpacity={0.8}
-                onPress={() => navigation.navigate('IdentityVerification')}
+                onPress={() => navigation.navigate('IdentityVerification', { mandatory: true })}
               >
                 <Text style={[styles.secondaryBtnText, { color: colors.royalMaroon, fontWeight: '700' }]}>
-                  🪪 Verify ID (Aadhaar / PAN / Voter ID / Passport / Passbook)
+                  🪪 Re-upload ID (Aadhaar / PAN / Voter ID / Passport / Passbook)
                 </Text>
               </TouchableOpacity>
             )}
 
-            {approvalStatus === 'pending' && !isSuspended && (
+            {/* Existing profile edits are ONLY allowed if the user already has a profile AND is verified */}
+            {user?.hasProfile && isUserAdminVerified(user) && (approvalStatus === 'rejected' || approvalStatus === 'changes_requested') && !isSuspended && (
               <TouchableOpacity
                 style={styles.secondaryBtn}
                 activeOpacity={0.8}
                 onPress={() => navigation.navigate('ProfileCreation')}
               >
-                <Text style={styles.secondaryBtnText}>Update My Submitted Details</Text>
+                <Text style={styles.secondaryBtnText}>✏️ Edit & Resubmit Profile</Text>
               </TouchableOpacity>
             )}
 

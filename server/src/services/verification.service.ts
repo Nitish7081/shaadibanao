@@ -68,6 +68,7 @@ export class VerificationService {
     user.identityVerificationStatus = 'pending';
     user.identityDocumentType = input.documentType;
     user.identityDocumentReferenceMasked = maskedRef;
+    user.rejectionReason = undefined;
     user.identityConsent = {
       hasConsent: true,
       agreedAt: new Date(),
@@ -219,9 +220,23 @@ export class VerificationService {
     request.verifiedAt = new Date();
     await request.save();
 
-    await UserModel.findByIdAndUpdate(request.userId, {
-      identityVerificationStatus: 'rejected',
-    });
+    const targetUser = await UserModel.findById(request.userId);
+    if (targetUser) {
+      targetUser.identityVerificationStatus = 'rejected';
+      targetUser.rejectionReason = reason.trim();
+      await targetUser.save();
+
+      SocketService.emitToUser(targetUser._id.toString(), 'user:approval_status_changed', {
+        approvalStatus: targetUser.approvalStatus,
+        identityVerificationStatus: 'rejected',
+        rejectionReason: reason.trim(),
+      });
+    } else {
+      await UserModel.findByIdAndUpdate(request.userId, {
+        identityVerificationStatus: 'rejected',
+        rejectionReason: reason.trim(),
+      });
+    }
 
     await ProfileModel.findOneAndUpdate(
       { userId: request.userId },

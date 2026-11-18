@@ -72,4 +72,17 @@ export const config = {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean),
   },
+  /**
+   * Compulsory Identity Verification Gate before Profile Creation
+   * Active by default in development and production.
+   * In test mode (NODE_ENV=test), enable explicitly with ENFORCE_KYC_BEFORE_PROFILE=true.
+   */
+  kyc: {
+    get requireVerifiedIdentityForProfile(): boolean {
+      return (
+        process.env.ENFORCE_KYC_BEFORE_PROFILE === 'true' ||
+        (process.env.NODE_ENV !== 'test' && process.env.ENFORCE_KYC_BEFORE_PROFILE !== 'false')
+      );
+    },
+  },
 };

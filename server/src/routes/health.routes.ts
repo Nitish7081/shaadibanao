@@ -32,6 +32,8 @@ healthRouter.get('/', (req: Request, res: Response) => {
       storage: config.cloudinary.isConfigured ? 'configured' : 'missing',
       cloudinary: config.cloudinary.isConfigured ? 'configured' : 'not configured',
       firebaseAdmin: isFirebaseServiceAccountConfigured() ? 'configured' : 'missing',
+      kycBeforeProfile: config.kyc.requireVerifiedIdentityForProfile,
+      gitCommit: process.env.RENDER_GIT_COMMIT || undefined,
     } as any,
     meta: {
       timestamp: new Date().toISOString(),

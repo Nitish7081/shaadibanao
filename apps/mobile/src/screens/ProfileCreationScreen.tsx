@@ -38,7 +38,8 @@ import { Header } from '../components/common/Header';
 import { getMyProfile, upsertMyProfile } from '../services/profileService';
 import { getMyPreferences, upsertMyPreferences } from '../services/preferenceService';
 import { getMyKundli, upsertMyKundli } from '../services/astrologyService';
-import { getSessionToken, refreshSessionTokens, getSessionUser } from '../services/authSession';
+import { getSessionToken, refreshSessionTokens, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
+import { getNextRouteForUser, isUserAdminVerified } from '../navigation/authRouting';
 import {
   pickImageFromGallery,
   captureImageWithCamera,
@@ -128,6 +129,19 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
   const [prefMinHeight, setPrefMinHeight] = useState('150');
   const [prefMaxHeight, setPrefMaxHeight] = useState('190');
   const [prefCities, setPrefCities] = useState('');
+
+  // Compulsory KYC Gate: block access to ProfileCreation until Admin verifies user's ID document
+  useEffect(() => {
+    const current = getSessionUser();
+    if (current && !isUserAdminVerified(current) && !current.hasProfile) {
+      const next = getNextRouteForUser(current);
+      if (next.screen === 'IdentityVerification') {
+        navigation.replace('IdentityVerification', next.params);
+      } else if (next.screen === 'ApprovalPending') {
+        navigation.replace('ApprovalPending');
+      }
+    }
+  }, [navigation]);
 
   // Pre-load existing saved profile and preferences from MongoDB if authenticated
   useEffect(() => {
@@ -456,8 +470,8 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
       }
 
       setLoading(false);
-      const user = getSessionUser();
-      const isApproved = user?.approvalStatus === 'approved';
+      const syncedUser = (await syncCurrentUserWithBackend().catch(() => null)) || getSessionUser();
+      const isApproved = isUserAdminVerified(syncedUser);
 
       Alert.alert(
         isApproved ? 'Profile Saved Successfully' : 'Profile Submitted for Review',
@@ -469,7 +483,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
             text: isApproved ? 'Explore Matches' : 'View Review Status',
             onPress: () => {
               if (isApproved) {
-                navigation.navigate('MainTabs');
+                navigation.replace('MainTabs');
               } else {
                 navigation.replace('ApprovalPending');
               }
@@ -478,6 +492,28 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
         ]
       );
     } catch (err: any) {
+      if (err?.code === 'IDENTITY_VERIFICATION_REQUIRED' || err?.status === 403) {
+        setLoading(false);
+        const latestUser = (await syncCurrentUserWithBackend().catch(() => null)) || getSessionUser();
+        const next = getNextRouteForUser(latestUser);
+        Alert.alert(
+          'Admin ID Verification Required 🪪',
+          err?.message || 'Please upload your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook and wait for Admin verification before creating your profile.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                if (next.screen === 'IdentityVerification') {
+                  navigation.replace('IdentityVerification', next.params);
+                } else {
+                  navigation.replace('ApprovalPending');
+                }
+              },
+            },
+          ]
+        );
+        return;
+      }
       if (err.status === 401 || err.code === 'TOKEN_EXPIRED') {
         const refreshedToken = await refreshSessionTokens();
         if (refreshedToken) {

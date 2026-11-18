@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { ProfileModel, IProfile } from '../models/profile.model';
 import { UserModel } from '../models/user.model';
+import { config } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
 import { StorageService } from './storage.service';
 import {
@@ -181,6 +182,30 @@ export class ProfileService {
       existingProfile = inMemoryProfileStore.get(userId);
     }
 
+    // Compulsory KYC gate: new users must upload an ID document (Aadhaar, PAN, Voter ID,
+    // Passport, or Bank Passbook) and be verified by Admin before creating a profile.
+    let userIsIdentityVerified = false;
+    if (isDbConnected && mongoose.Types.ObjectId.isValid(userId)) {
+      const ownerUser = await UserModel.findById(userId).select(
+        'role approvalStatus identityVerificationStatus'
+      );
+      if (ownerUser) {
+        userIsIdentityVerified = ownerUser.identityVerificationStatus === 'verified';
+        if (config.kyc.requireVerifiedIdentityForProfile && !existingProfile && ownerUser.role !== 'admin') {
+          const isApprovedOrVerified =
+            ownerUser.approvalStatus === 'approved' ||
+            ownerUser.identityVerificationStatus === 'verified';
+          if (!isApprovedOrVerified) {
+            throw new AppError(
+              'Mandatory identity verification required. Please upload your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook and wait for Admin verification before creating your profile.',
+              403,
+              'IDENTITY_VERIFICATION_REQUIRED'
+            );
+          }
+        }
+      }
+    }
+
     const existingPhotos: any[] = existingProfile?.photos || [];
 
     // Sanitize photos: new photos cannot be self-approved by client
@@ -225,6 +250,7 @@ export class ProfileService {
       dateOfBirth: new Date(input.dateOfBirth),
       completenessPercent,
       userId,
+      ...(userIsIdentityVerified ? { isVerified: true } : {}),
     };
 
     let profileDoc: any = null;

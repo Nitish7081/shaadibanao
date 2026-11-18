@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -29,9 +29,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
   const [otpSent, setOtpSent] = useState(false);
   const [consentAgreed, setConsentAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(30);
+  const [resendTimer, setResendTimer] = useState(0);
 
   const cleanMobile = mobileNumber.replace(/\D/g, '');
+
+  useEffect(() => {
+    if (!otpSent || resendTimer <= 0) return;
+    const interval = setInterval(() => {
+      setResendTimer((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [otpSent, resendTimer > 0]);
 
   const handleSendOtp = () => {
     if (cleanMobile.length !== 10) {
@@ -199,11 +207,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
                     placeholder="• • • • • •"
                     placeholderTextColor={ds.color.textMuted}
                     keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete="sms-otp"
                     maxLength={6}
                     value={otp}
-                    onChangeText={setOtp}
+                    onChangeText={(val) => setOtp(val.replace(/\D/g, ''))}
                     autoFocus
                   />
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <PressableScale
+                    onPress={() => {
+                      setOtpSent(false);
+                      setOtp('');
+                      setResendTimer(0);
+                    }}
+                  >
+                    <Text maxFontSizeMultiplier={1.2} style={{ fontSize: 13, color: ds.color.maroon, fontWeight: '600' }}>
+                      Change Number
+                    </Text>
+                  </PressableScale>
+                  <PressableScale onPress={handleSendOtp} disabled={resendTimer > 0 || loading}>
+                    <Text
+                      maxFontSizeMultiplier={1.2}
+                      style={{
+                        fontSize: 13,
+                        color: resendTimer > 0 ? ds.color.textMuted : ds.color.maroon,
+                        fontWeight: resendTimer > 0 ? '500' : '700',
+                      }}
+                    >
+                      {resendTimer > 0 ? `⏱️ Resend in ${resendTimer}s` : 'Resend OTP'}
+                    </Text>
+                  </PressableScale>
                 </View>
 
                 <PressableScale
