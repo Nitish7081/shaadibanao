@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { PROFILE_CREATED_FOR, ProfileCreatedFor } from '@bandhansetu/shared';
 import { ds, PressableScale } from '../design';
+import { LegalConsentRow } from '../components/common/LegalConsentRow';
 
 interface LoginScreenProps {
   onLoginSuccess: (mobile: string) => void;
@@ -164,19 +165,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onBack
                   />
                 </View>
 
-                <PressableScale
-                  style={styles.consentRow}
-                  onPress={() => setConsentAgreed(!consentAgreed)}
-                >
-                  <Ionicons
-                    name={consentAgreed ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color={ds.color.maroon}
-                  />
-                  <Text maxFontSizeMultiplier={1.2} style={styles.consentText}>
-                    I agree to the Terms of Service & Sanatan Privacy Policy.
-                  </Text>
-                </PressableScale>
+                <LegalConsentRow
+                  checked={consentAgreed}
+                  onToggle={() => setConsentAgreed(!consentAgreed)}
+                />
 
                 <PressableScale
                   style={styles.submitBtn}

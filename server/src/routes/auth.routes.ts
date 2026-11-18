@@ -8,6 +8,7 @@ import {
   registerSchema,
   refreshTokenSchema,
   firebaseLoginSchema,
+  recordConsentSchema,
 } from '@bandhansetu/shared';
 
 export const authRouter = Router();
@@ -55,16 +56,24 @@ authRouter.get(
   AuthController.getMe
 );
 
-// 5. Logout
+// 6. Logout
 authRouter.post(
   '/logout',
   requireAuth,
   AuthController.logout
 );
 
-// 6. Delete Account (DPDP & Play Store compliance)
+// 7. Delete Account (DPDP & Play Store compliance)
 authRouter.delete(
   '/me',
   requireAuth,
   AuthController.deleteAccount
+);
+
+// 8. Record Material Policy Consent / Re-consent (Authenticated)
+authRouter.post(
+  '/consent',
+  requireAuth,
+  validateRequest({ body: recordConsentSchema }),
+  AuthController.recordConsent
 );

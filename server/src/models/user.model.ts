@@ -32,7 +32,9 @@ export interface IUser extends Document {
   consent: {
     agreedAt: Date;
     ipAddress?: string;
+    userAgent?: string;
     termsVersion: string;
+    privacyPolicyVersion?: string;
   };
   refreshTokens: Array<{
     tokenHash: string;
@@ -170,7 +172,9 @@ const UserSchema = new Schema<IUser>(
     consent: {
       agreedAt: { type: Date, default: Date.now },
       ipAddress: { type: String },
-      termsVersion: { type: String, default: 'v1.0' },
+      userAgent: { type: String },
+      termsVersion: { type: String, default: '1.1.0' },
+      privacyPolicyVersion: { type: String, default: '1.1.0' },
     },
     refreshTokens: [
       {

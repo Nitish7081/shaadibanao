@@ -25,8 +25,10 @@ export const registerSchema = z.object({
   verificationToken: z.string().min(1, 'Verification token from verified OTP is required'),
   profileFor: z.enum(PROFILE_CREATED_FOR).default('myself'),
   consentToTerms: z.boolean().refine((val) => val === true, {
-    message: 'You must agree to the Terms & Privacy Policy to create an account',
+    message: 'You must explicitly agree to the Privacy Policy and Terms & Conditions to create an account',
   }),
+  privacyPolicyVersion: z.string().trim().min(1).max(32).optional(),
+  termsVersion: z.string().trim().min(1).max(32).optional(),
 });
 
 export const refreshTokenSchema = z.object({
@@ -36,6 +38,18 @@ export const refreshTokenSchema = z.object({
 export const firebaseLoginSchema = z.object({
   idToken: z.string().min(1, 'Firebase ID token is required'),
   profileFor: z.enum(PROFILE_CREATED_FOR).optional(),
+  consentToTerms: z.boolean().optional(),
+  privacyPolicyVersion: z.string().trim().min(1).max(32).optional(),
+  termsVersion: z.string().trim().min(1).max(32).optional(),
+});
+
+export const recordConsentSchema = z.object({
+  consentToTerms: z.boolean().refine((val) => val === true, {
+    message: 'You must explicitly accept the Privacy Policy and Terms & Conditions',
+  }),
+  privacyPolicyVersion: z.string().trim().min(1).max(32).optional(),
+  termsVersion: z.string().trim().min(1).max(32).optional(),
+  source: z.enum(['mobile_registration', 'mobile_reconsent', 'web_consent']).optional(),
 });
 
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
@@ -43,4 +57,5 @@ export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type FirebaseLoginSchemaInput = z.infer<typeof firebaseLoginSchema>;
+export type RecordConsentInput = z.infer<typeof recordConsentSchema>;
 

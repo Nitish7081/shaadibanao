@@ -20,6 +20,7 @@ import {
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { navigationRef, navigateToLogin } from './src/navigation/navigationRef';
 import { onAuthExpired } from './src/services/authSession';
+import { ReconsentModal } from './src/components/common/ReconsentModal';
 import { colors } from './src/constants/theme';
 import { initI18n } from './src/i18n';
 
@@ -65,6 +66,7 @@ export default function App() {
       <NavigationContainer ref={navigationRef}>
         <StatusBar style="auto" />
         <RootNavigator />
+        <ReconsentModal />
       </NavigationContainer>
     </SafeAreaProvider>
   );

@@ -296,22 +296,20 @@ describe('Subscription Gate Suite (Male/Female Access & Paywall Rules)', () => {
       expect(resMale.status).toBe(200);
       expect(resMale.body.success).toBe(true);
 
-      // Female viewer viewing female profile
+      // Female viewer viewing female profile: blocked by opposite-gender matchmaking rule (not by paywall)
       const resFemale = await request(app)
         .get(`/api/v1/profiles/${femaleTargetUserId}`)
         .set('Authorization', `Bearer ${femaleViewerToken}`);
 
-      expect(resFemale.status).toBe(200);
-      expect(resFemale.body.success).toBe(true);
+      expect(resFemale.status).toBe(404);
     });
 
-    it('5. Male viewer viewing Male profile -> ALLOWED (200 OK) because target is not female', async () => {
+    it('5. Male viewer viewing Male profile -> 404 (opposite-gender rule; never paywalled)', async () => {
       const res = await request(app)
         .get(`/api/v1/profiles/${maleTargetUserId}`)
         .set('Authorization', `Bearer ${maleFreeToken}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
+      expect(res.status).toBe(404);
     });
 
     it('6. Admin viewer -> EXEMPT and ALLOWED (200 OK) on female profile', async () => {

@@ -49,6 +49,9 @@ export class SearchService {
     let candidateProfiles: any[] = [];
     let totalCount = 0;
 
+    // Client-supplied `gender` filter is intentionally ignored; opposite gender is derived ONLY from viewer's saved profile.
+    void gender;
+
     if (isDbConnected) {
       const queryUserId = mongoose.Types.ObjectId.isValid(requestingUserId)
         ? new mongoose.Types.ObjectId(requestingUserId)
@@ -84,23 +87,22 @@ export class SearchService {
 
       // COMPULSORY Matrimonial opposite-gender rule:
       // Boy (male) ONLY sees Girls (female), Girl (female) ONLY sees Boys (male).
-      // Client-sent gender filters can NEVER override this rule.
+      // Derived ONLY from the viewer's saved profile; missing viewer gender returns empty results.
       let targetGender: 'male' | 'female' | undefined;
       if (viewerGender === 'male') {
         targetGender = 'female';
       } else if (viewerGender === 'female') {
         targetGender = 'male';
-      } else if (gender === 'male' || gender === 'female') {
-        targetGender = gender;
-      } else {
-        // Viewer has no profile gender yet and no explicit filter: never leak mixed-gender results
+      }
+
+      if (!targetGender) {
         return {
           items: [],
           pagination: {
             page,
             limit,
             totalCount: 0,
-            totalPages: 0,
+            totalPages: 1,
           },
         };
       }
@@ -183,11 +185,23 @@ export class SearchService {
         viewerGender = String(viewerDoc.gender).trim().toLowerCase();
       }
 
-      let targetGender = gender;
+      let targetGender: 'male' | 'female' | undefined;
       if (viewerGender === 'male') {
         targetGender = 'female';
       } else if (viewerGender === 'female') {
         targetGender = 'male';
+      }
+
+      if (!targetGender) {
+        return {
+          items: [],
+          pagination: {
+            page,
+            limit,
+            totalCount: 0,
+            totalPages: 1,
+          },
+        };
       }
 
       const pool = [
@@ -197,7 +211,7 @@ export class SearchService {
 
       candidateProfiles = pool.filter((p) => {
         if (p.userId === requestingUserId) return false;
-        if (targetGender && String(p.gender || '').toLowerCase() !== targetGender) return false;
+        if (String(p.gender || '').toLowerCase() !== targetGender) return false;
         if (maritalStatus && p.maritalStatus !== maritalStatus) return false;
         if (religion && p.religion?.toLowerCase() !== religion.toLowerCase()) return false;
         if (motherTongue && p.motherTongue?.toLowerCase() !== motherTongue.toLowerCase()) return false;

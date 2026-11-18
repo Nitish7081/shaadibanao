@@ -168,3 +168,34 @@ export const NAKSHATRA_LIST = [
   'Purva Bhadrapada', 'Uttara Bhadrapada', 'Revati'
 ] as const;
 
+/**
+ * Canonical Legal & Consent Policy Versioning
+ * Incrementing CURRENT_PRIVACY_POLICY_VERSION or CURRENT_TERMS_VERSION triggers
+ * an auditable material re-consent prompt across mobile and web clients.
+ */
+export const CURRENT_PRIVACY_POLICY_VERSION = '1.1.0';
+export const CURRENT_TERMS_VERSION = '1.1.0';
+export const POLICY_LAST_UPDATED = '2026-11-16';
+
+export const ACCOUNT_DELETION_REASONS = [
+  'found_match_on_shaadibanao',
+  'found_match_elsewhere',
+  'taking_a_break',
+  'privacy_concerns',
+  'not_satisfied_with_matches',
+  'duplicate_account',
+  'other',
+] as const;
+export type AccountDeletionReason = typeof ACCOUNT_DELETION_REASONS[number];
+
+export const CONTACT_CATEGORIES = [
+  'general_support',
+  'account_access',
+  'privacy_data_request',
+  'safety_abuse_report',
+  'membership_billing',
+  'grievance_officer',
+] as const;
+export type ContactCategory = typeof CONTACT_CATEGORIES[number];
+
+

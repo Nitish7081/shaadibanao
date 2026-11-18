@@ -85,12 +85,7 @@ export const StoriesRow: React.FC<Props> = ({
               </PressableScale>
             );
           })
-        : Array.from({ length: PLACEHOLDERS }).map((_, i) => (
-            <View key={`ph-${i}`} style={styles.item} accessibilityElementsHidden>
-              <GradientRingAvatar size={SIZE} placeholder />
-              <Text style={[styles.label, { color: ds.color.textMuted }]}>Soon</Text>
-            </View>
-          ))}
+        : null}
     </ScrollView>
   );
 };

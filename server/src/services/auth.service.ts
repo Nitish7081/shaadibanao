@@ -1,15 +1,22 @@
 import mongoose from 'mongoose';
 import { UserModel, IUser } from '../models/user.model';
+import { ConsentLogModel } from '../models/consent-log.model';
 import { TokenService } from './token.service';
 import { OtpService } from './otp.service';
 import { verifyFirebaseIdToken } from '../config/firebase';
 import { AppError } from '../middleware/errorHandler';
 import {
   AuthResponse,
+  CURRENT_PRIVACY_POLICY_VERSION,
+  CURRENT_TERMS_VERSION,
+  RecordConsentInput,
   RegisterInput,
   UserSummary,
   VerifyOtpResponse,
 } from '@bandhansetu/shared';
+
+// In-memory consent audit trail for offline dev/test parity
+const inMemoryConsentLogs: Array<Record<string, any>> = [];
 
 // In-memory user store for dev/testing when MongoDB is unconfigured
 const inMemoryUserStore = new Map<string, any>();
@@ -51,6 +58,19 @@ export class AuthService {
     const approvalStatus =
       user.approvalStatus || (user.role === 'admin' ? 'approved' : 'pending');
 
+    const agreedTermsVersion = user.consent?.termsVersion || 'v1.0';
+    const agreedPrivacyVersion = user.consent?.privacyPolicyVersion || 'v1.0';
+    const agreedAtIso =
+      user.consent?.agreedAt?.toISOString?.() ||
+      (typeof user.consent?.agreedAt === 'string' ? user.consent.agreedAt : undefined) ||
+      user.createdAt?.toISOString?.() ||
+      new Date().toISOString();
+
+    const requiresReconsent =
+      user.role !== 'admin' &&
+      (agreedPrivacyVersion !== CURRENT_PRIVACY_POLICY_VERSION ||
+        agreedTermsVersion !== CURRENT_TERMS_VERSION);
+
     return {
       id: user._id?.toString() || user.id,
       mobile: user.mobile,
@@ -71,8 +91,37 @@ export class AuthService {
       firebaseUid: user.firebaseUid,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      consent: {
+        agreedAt: agreedAtIso,
+        termsVersion: agreedTermsVersion,
+        privacyPolicyVersion: agreedPrivacyVersion,
+      },
+      requiresReconsent,
+      currentPrivacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+      currentTermsVersion: CURRENT_TERMS_VERSION,
       createdAt: user.createdAt?.toISOString?.() || new Date().toISOString(),
     };
+  }
+
+  /**
+   * Writes an immutable, auditable consent log entry
+   */
+  private static async writeConsentAuditLog(entry: {
+    userId: string;
+    consentType: 'registration' | 'reconsent';
+    privacyPolicyVersion: string;
+    termsVersion: string;
+    agreedAt: Date;
+    ipAddress?: string;
+    userAgent?: string;
+    authMethod: 'phone_otp' | 'firebase_phone' | 'google_oauth' | 'jwt_session';
+    source: 'mobile_registration' | 'mobile_reconsent' | 'web_consent';
+  }): Promise<void> {
+    if (mongoose.connection.readyState === 1) {
+      await ConsentLogModel.create(entry);
+    } else {
+      inMemoryConsentLogs.push({ ...entry, createdAt: new Date() });
+    }
   }
 
   /**
@@ -82,7 +131,16 @@ export class AuthService {
     if (mongoose.connection.readyState === 1) {
       return UserModel.findOne({ mobile, status: { $ne: 'deleted' } });
     }
-    return inMemoryUserStore.get(mobile) || null;
+    const candidate = inMemoryUserStore.get(mobile);
+    if (candidate && candidate.status !== 'deleted') {
+      return candidate;
+    }
+    for (const user of inMemoryUserStore.values()) {
+      if (user.mobile === mobile && user.status !== 'deleted') {
+        return user;
+      }
+    }
+    return null;
   }
 
   /**
@@ -121,10 +179,10 @@ export class AuthService {
    */
   public static async findUserById(userId: string): Promise<any> {
     if (mongoose.connection.readyState === 1) {
-      return UserModel.findById(userId);
+      return UserModel.findOne({ _id: userId, status: { $ne: 'deleted' } });
     }
     for (const user of inMemoryUserStore.values()) {
-      if (user.id === userId || user._id?.toString() === userId) {
+      if ((user.id === userId || user._id?.toString() === userId) && user.status !== 'deleted') {
         return user;
       }
     }
@@ -137,7 +195,13 @@ export class AuthService {
   public static async loginWithFirebase(
     idToken: string,
     profileFor: string = 'myself',
-    ipAddress?: string
+    ipAddress?: string,
+    consentOptions?: {
+      consentToTerms?: boolean;
+      privacyPolicyVersion?: string;
+      termsVersion?: string;
+      userAgent?: string;
+    }
   ): Promise<AuthResponse> {
     let decoded: Awaited<ReturnType<typeof verifyFirebaseIdToken>>;
     try {
@@ -183,13 +247,32 @@ export class AuthService {
       existingUser = await this.findUserByEmail(decoded.email);
     }
 
+    // Enforce explicit registration consent when consentToTerms is explicitly false for a brand-new user
+    if (!existingUser && consentOptions?.consentToTerms === false) {
+      throw new AppError(
+        'You must explicitly agree to the ShaadiBanao Privacy Policy and Terms & Conditions to create an account.',
+        400,
+        'CONSENT_REQUIRED'
+      );
+    }
+
     if (mongoose.connection.readyState === 1) {
-      return this.loginWithFirebaseDb(decoded, existingUser, cleanMobile, profileFor, ipAddress);
+      return this.loginWithFirebaseDb(
+        decoded,
+        existingUser,
+        cleanMobile,
+        profileFor,
+        ipAddress,
+        consentOptions
+      );
     }
 
     const isDbConnected = false;
     let isNewUser = false;
     let targetUser: any = null;
+    const agreedPrivacyVersion =
+      consentOptions?.privacyPolicyVersion || CURRENT_PRIVACY_POLICY_VERSION;
+    const agreedTermsVersion = consentOptions?.termsVersion || CURRENT_TERMS_VERSION;
 
     if (existingUser) {
       targetUser = existingUser;
@@ -221,6 +304,28 @@ export class AuthService {
         targetUser.avatarUrl = decoded.picture;
       }
 
+      if (consentOptions?.consentToTerms === true) {
+        const agreedAt = new Date();
+        targetUser.consent = {
+          agreedAt,
+          ipAddress,
+          userAgent: consentOptions.userAgent,
+          termsVersion: agreedTermsVersion,
+          privacyPolicyVersion: agreedPrivacyVersion,
+        };
+        await this.writeConsentAuditLog({
+          userId: String(targetUser._id || targetUser.id),
+          consentType: 'reconsent',
+          privacyPolicyVersion: agreedPrivacyVersion,
+          termsVersion: agreedTermsVersion,
+          agreedAt,
+          ipAddress,
+          userAgent: consentOptions.userAgent,
+          authMethod: decoded.email ? 'google_oauth' : 'firebase_phone',
+          source: 'mobile_reconsent',
+        });
+      }
+
       if (isDbConnected) {
         await targetUser.save();
       } else {
@@ -231,6 +336,7 @@ export class AuthService {
       // Create new user
       isNewUser = true;
       const authProvider = cleanMobile && decoded.email ? 'both' : (decoded.email ? 'google' : 'phone');
+      const agreedAt = new Date();
 
       const userData: any = {
         mobile: cleanMobile,
@@ -246,9 +352,11 @@ export class AuthService {
         hasProfile: false,
         profileFor: profileFor || 'myself',
         consent: {
-          agreedAt: new Date(),
+          agreedAt,
           ipAddress,
-          termsVersion: 'v1.0',
+          userAgent: consentOptions?.userAgent,
+          termsVersion: agreedTermsVersion,
+          privacyPolicyVersion: agreedPrivacyVersion,
         },
         refreshTokens: [],
       };
@@ -256,7 +364,7 @@ export class AuthService {
       if (isDbConnected) {
         targetUser = await UserModel.create(userData);
       } else {
-        const tempId = `usr_${Date.now()}`;
+        const tempId = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         targetUser = {
           id: tempId,
           _id: tempId,
@@ -267,6 +375,18 @@ export class AuthService {
         const storeKey = cleanMobile || decoded.email || decoded.uid;
         inMemoryUserStore.set(storeKey, targetUser);
       }
+
+      await this.writeConsentAuditLog({
+        userId: String(targetUser._id || targetUser.id),
+        consentType: 'registration',
+        privacyPolicyVersion: agreedPrivacyVersion,
+        termsVersion: agreedTermsVersion,
+        agreedAt,
+        ipAddress,
+        userAgent: consentOptions?.userAgent,
+        authMethod: decoded.email ? 'google_oauth' : 'firebase_phone',
+        source: 'mobile_registration',
+      });
     }
 
     const userSummary = this.formatUserSummary(targetUser);
@@ -309,11 +429,20 @@ export class AuthService {
     foundUser: any,
     cleanMobile: string | undefined,
     profileFor: string,
-    ipAddress?: string
+    ipAddress?: string,
+    consentOptions?: {
+      consentToTerms?: boolean;
+      privacyPolicyVersion?: string;
+      termsVersion?: string;
+      userAgent?: string;
+    }
   ): Promise<AuthResponse> {
     const provider = decoded.signInProvider || 'unknown';
     const emailVerified = decoded.email && decoded.email_verified === true;
     const cleanEmail = decoded.email ? decoded.email.toLowerCase().trim() : undefined;
+    const agreedPrivacyVersion =
+      consentOptions?.privacyPolicyVersion || CURRENT_PRIVACY_POLICY_VERSION;
+    const agreedTermsVersion = consentOptions?.termsVersion || CURRENT_TERMS_VERSION;
 
     const refetch = async (): Promise<any> => {
       let u: any = null;
@@ -354,6 +483,7 @@ export class AuthService {
         approvalStatus: 'pending',
         status: 'active',
       });
+      const agreedAt = new Date();
       try {
         const created: any = await UserModel.create({
           _id: newId,
@@ -369,8 +499,25 @@ export class AuthService {
           approvalStatus: 'pending',
           hasProfile: false,
           profileFor: profileFor || 'myself',
-          consent: { agreedAt: new Date(), ipAddress, termsVersion: 'v1.0' },
+          consent: {
+            agreedAt,
+            ipAddress,
+            userAgent: consentOptions?.userAgent,
+            termsVersion: agreedTermsVersion,
+            privacyPolicyVersion: agreedPrivacyVersion,
+          },
           refreshTokens: [entry],
+        });
+        await this.writeConsentAuditLog({
+          userId: String(created._id),
+          consentType: 'registration',
+          privacyPolicyVersion: agreedPrivacyVersion,
+          termsVersion: agreedTermsVersion,
+          agreedAt,
+          ipAddress,
+          userAgent: consentOptions?.userAgent,
+          authMethod: cleanEmail ? 'google_oauth' : 'firebase_phone',
+          source: 'mobile_registration',
         });
         authLog('info', 'firebase_login.success', { provider, isNewUser: true, userId: String(created._id) });
         return { user: this.formatUserSummary(created), tokens, isNewUser: true };
@@ -410,6 +557,27 @@ export class AuthService {
     const finalMobile = setFields.mobile || existing.mobile;
     const finalEmail = setFields.email || existing.email;
     if (finalMobile && finalEmail) setFields.authProvider = 'both';
+    if (consentOptions?.consentToTerms === true) {
+      const agreedAt = new Date();
+      setFields.consent = {
+        agreedAt,
+        ipAddress,
+        userAgent: consentOptions.userAgent,
+        termsVersion: agreedTermsVersion,
+        privacyPolicyVersion: agreedPrivacyVersion,
+      };
+      await this.writeConsentAuditLog({
+        userId: String(existing._id),
+        consentType: 'reconsent',
+        privacyPolicyVersion: agreedPrivacyVersion,
+        termsVersion: agreedTermsVersion,
+        agreedAt,
+        ipAddress,
+        userAgent: consentOptions.userAgent,
+        authMethod: cleanEmail ? 'google_oauth' : 'firebase_phone',
+        source: 'mobile_reconsent',
+      });
+    }
 
     const { tokens, entry } = issue({
       _id: existing._id,
@@ -520,8 +688,19 @@ export class AuthService {
   /**
    * Registers a new account after mobile verification
    */
-  public static async register(input: RegisterInput, ipAddress?: string): Promise<AuthResponse> {
-    const { mobile, profileFor } = input;
+  public static async register(
+    input: RegisterInput,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<AuthResponse> {
+    const { mobile, profileFor, consentToTerms } = input;
+    if (consentToTerms !== true) {
+      throw new AppError(
+        'You must explicitly agree to the ShaadiBanao Privacy Policy and Terms & Conditions to create an account.',
+        400,
+        'CONSENT_REQUIRED'
+      );
+    }
 
     // Check if user already exists
     const existing = await this.findUserByMobile(mobile);
@@ -532,6 +711,10 @@ export class AuthService {
         'USER_ALREADY_EXISTS'
       );
     }
+
+    const agreedAt = new Date();
+    const agreedPrivacyVersion = input.privacyPolicyVersion || CURRENT_PRIVACY_POLICY_VERSION;
+    const agreedTermsVersion = input.termsVersion || CURRENT_TERMS_VERSION;
 
     let newUser: any = null;
 
@@ -545,16 +728,19 @@ export class AuthService {
         approvalStatus: 'pending',
         hasProfile: false,
         consent: {
-          agreedAt: new Date(),
+          agreedAt,
           ipAddress,
-          termsVersion: 'v1.0',
+          userAgent,
+          termsVersion: agreedTermsVersion,
+          privacyPolicyVersion: agreedPrivacyVersion,
         },
         refreshTokens: [],
       });
     } else {
+      const tempId = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       newUser = {
-        id: `usr_${Date.now()}`,
-        _id: `usr_${Date.now()}`,
+        id: tempId,
+        _id: tempId,
         mobile,
         phoneVerified: true,
         profileFor,
@@ -563,9 +749,11 @@ export class AuthService {
         approvalStatus: 'pending',
         hasProfile: false,
         consent: {
-          agreedAt: new Date(),
+          agreedAt,
           ipAddress,
-          termsVersion: 'v1.0',
+          userAgent,
+          termsVersion: agreedTermsVersion,
+          privacyPolicyVersion: agreedPrivacyVersion,
         },
         refreshTokens: [],
         createdAt: new Date(),
@@ -573,6 +761,18 @@ export class AuthService {
       };
       inMemoryUserStore.set(mobile, newUser);
     }
+
+    await this.writeConsentAuditLog({
+      userId: String(newUser._id || newUser.id),
+      consentType: 'registration',
+      privacyPolicyVersion: agreedPrivacyVersion,
+      termsVersion: agreedTermsVersion,
+      agreedAt,
+      ipAddress,
+      userAgent,
+      authMethod: 'phone_otp',
+      source: 'mobile_registration',
+    });
 
     const userSummary = this.formatUserSummary(newUser);
     const tokens = TokenService.generateTokens({
@@ -782,6 +982,90 @@ export class AuthService {
     };
   }
 
+  /**
+   * Records explicit re-consent when Privacy Policy or Terms & Conditions change materially
+   */
+  public static async recordPolicyConsent(
+    userId: string,
+    input: RecordConsentInput,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<UserSummary> {
+    const user = await this.findUserById(userId);
+    if (!user) {
+      throw new AppError('User account not found', 404, 'USER_NOT_FOUND');
+    }
+
+    const agreedAt = new Date();
+    const privacyPolicyVersion = input.privacyPolicyVersion || CURRENT_PRIVACY_POLICY_VERSION;
+    const termsVersion = input.termsVersion || CURRENT_TERMS_VERSION;
+
+    const consentPayload = {
+      agreedAt,
+      ipAddress,
+      userAgent,
+      termsVersion,
+      privacyPolicyVersion,
+    };
+
+    let updatedUser = user;
+    if (mongoose.connection.readyState === 1) {
+      updatedUser = await UserModel.findByIdAndUpdate(
+        user._id,
+        { $set: { consent: consentPayload } },
+        { new: true }
+      );
+    } else {
+      user.consent = consentPayload;
+      inMemoryUserStore.set(memoryKey(user), user);
+    }
+
+    await this.writeConsentAuditLog({
+      userId: String(user._id || user.id),
+      consentType: 'reconsent',
+      privacyPolicyVersion,
+      termsVersion,
+      agreedAt,
+      ipAddress,
+      userAgent,
+      authMethod: 'jwt_session',
+      source: input.source || 'mobile_reconsent',
+    });
+
+    return this.formatUserSummary(updatedUser);
+  }
+
+  /**
+   * Returns auditable consent history for a user (used in verification & tests)
+   */
+  public static async getConsentAuditLogsForUser(userId: string): Promise<any[]> {
+    if (mongoose.connection.readyState === 1) {
+      return ConsentLogModel.find({ userId }).sort({ agreedAt: -1 }).lean();
+    }
+    return inMemoryConsentLogs.filter((entry) => String(entry.userId) === String(userId));
+  }
+
+  /**
+   * Anonymizes and purges an account from the dev/test in-memory user store
+   */
+  public static purgeInMemoryUser(userId: string): boolean {
+    let purged = false;
+    for (const [key, user] of inMemoryUserStore.entries()) {
+      if (String(user._id || user.id) === String(userId)) {
+        user.status = 'deleted';
+        user.mobile = undefined;
+        user.email = undefined;
+        user.firebaseUid = undefined;
+        user.displayName = '[Deleted User]';
+        user.avatarUrl = undefined;
+        user.refreshTokens = [];
+        inMemoryUserStore.delete(key);
+        purged = true;
+      }
+    }
+    return purged;
+  }
+
   public static registerInMemoryUserForTesting(user: any): void {
     const id = user._id?.toString() || user.id;
     if (id) inMemoryUserStore.set(id, user);
@@ -791,5 +1075,6 @@ export class AuthService {
 
   public static clearInMemoryUserForTesting(): void {
     inMemoryUserStore.clear();
+    inMemoryConsentLogs.length = 0;
   }
 }

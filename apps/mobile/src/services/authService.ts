@@ -1,11 +1,14 @@
 import { apiClient } from './apiClient';
 import {
+  AccountDeletionReason,
+  AccountDeletionResponse,
   ApiResponse,
-  RequestOtpResponse,
-  VerifyOtpResponse,
   AuthResponse,
+  RecordConsentInput,
   RegisterInput,
+  RequestOtpResponse,
   UserSummary,
+  VerifyOtpResponse,
 } from '@bandhansetu/shared';
 
 /**
@@ -39,11 +42,51 @@ export async function registerUser(input: RegisterInput): Promise<ApiResponse<Au
 
 export async function loginWithFirebase(
   idToken: string,
-  profileFor?: string
+  profileFor?: string,
+  consentOptions?: {
+    consentToTerms?: boolean;
+    privacyPolicyVersion?: string;
+    termsVersion?: string;
+  }
 ): Promise<ApiResponse<AuthResponse>> {
   return apiClient<ApiResponse<AuthResponse>>('/auth/firebase-login', {
     method: 'POST',
-    body: JSON.stringify({ idToken, profileFor }),
+    body: JSON.stringify({
+      idToken,
+      profileFor,
+      ...(consentOptions || {}),
+    }),
+  });
+}
+
+export async function recordPolicyConsent(
+  accessToken: string,
+  input: RecordConsentInput
+): Promise<ApiResponse<{ user: UserSummary }>> {
+  return apiClient<ApiResponse<{ user: UserSummary }>>('/auth/consent', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMyAccount(
+  accessToken: string,
+  reason: AccountDeletionReason = 'other',
+  additionalFeedback?: string
+): Promise<ApiResponse<AccountDeletionResponse>> {
+  return apiClient<ApiResponse<AccountDeletionResponse>>('/public/account-deletion', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      reason,
+      additionalFeedback,
+      confirmPermanentDeletion: true,
+    }),
   });
 }
 

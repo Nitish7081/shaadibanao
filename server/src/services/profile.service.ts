@@ -265,6 +265,17 @@ export class ProfileService {
   /**
    * GET /api/v1/profiles/:profileId (Public View)
    */
+  /** Saved gender of a user's profile (undefined when the profile or gender is missing). */
+  private static async getGenderByUserId(userId: string): Promise<'male' | 'female' | undefined> {
+    let doc: any = null;
+    if (mongoose.connection.readyState === 1) {
+      doc = await ProfileModel.findOne({ userId }).select('gender');
+    } else {
+      doc = inMemoryProfileStore.get(userId);
+    }
+    return doc?.gender === 'male' || doc?.gender === 'female' ? doc.gender : undefined;
+  }
+
   public static async getPublicProfile(profileId: string, viewerId?: string): Promise<PublicProfile> {
     const isDbConnected = mongoose.connection.readyState === 1;
 
@@ -289,6 +300,18 @@ export class ProfileService {
 
     if (!profileDoc) {
       throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
+    }
+
+    // Matchmaking rule: a viewer may only open profiles of the opposite gender. The owner's own
+    // profile is always allowed. Same-gender / missing-gender targets look like "not found".
+    if (viewerId && String(profileDoc.userId) !== String(viewerId)) {
+      const viewerGender = await this.getGenderByUserId(viewerId);
+      if (viewerGender) {
+        const expected = viewerGender === 'male' ? 'female' : 'male';
+        if (profileDoc.gender !== expected) {
+          throw new AppError('Profile not found', 404, 'PROFILE_NOT_FOUND');
+        }
+      }
     }
 
     const acceptedUserIds = await getAcceptedUserIds(viewerId, [profileDoc.userId]);

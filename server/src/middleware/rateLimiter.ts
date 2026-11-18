@@ -88,3 +88,21 @@ export const apiGeneralLimiter = createRateLimiter({
   maxRequests: 300,          // 300 requests per 15 min per IP
   message: 'API rate limit exceeded. Please slow down requests.',
 });
+
+export const publicReadLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 120,          // 120 reads per 15 min per IP
+  message: 'Too many requests to public pages. Please wait a few minutes.',
+});
+
+export const publicWriteLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 10,           // 10 contact/challenge submissions per 15 min per IP
+  message: 'Too many form submissions from this IP address. Please try again in 15 minutes.',
+});
+
+export const accountDeletionLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 6,            // Strict limit on account deletion attempts per IP
+  message: 'Too many account deletion attempts from this IP address. Please wait 15 minutes.',
+});

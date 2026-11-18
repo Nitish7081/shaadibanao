@@ -192,6 +192,15 @@ describe('Photo privacy (server-side)', () => {
           .send(base(o.name, mode));
         expect(res.status).toBe(200);
       }
+
+      // Viewers need a saved gender: matchmaking is derived from the saved profile only
+      for (const id of [strangerId, partnerId]) {
+        const res = await request(app)
+          .put('/api/v1/profiles/me')
+          .set('Authorization', `Bearer ${token(id, '9800000002')}`)
+          .send({ ...base('Viewer', 'everyone'), gender: 'male' });
+        expect(res.status).toBe(200);
+      }
     });
 
     it("'everyone': stranger gets the original URL (profile + search)", async () => {

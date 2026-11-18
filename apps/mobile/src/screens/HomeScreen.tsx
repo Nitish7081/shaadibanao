@@ -86,8 +86,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     let networkDown = false;
 
     // COMPULSORY Matrimonial opposite-gender rule: boy ALWAYS sees girls, girl ALWAYS sees boys.
-    // If cached profile gender isn't known yet (e.g. cold launch / account switch), fetch profile FIRST
-    // so same-gender profiles can NEVER appear or flash during refresh.
+    // Server strictly enforces opposite gender from the saved profile, and client waits for gender if uncached.
     let effectiveProfile = getCachedUserProfile();
     let profileRes: PromiseSettledResult<any> | null = null;
 
@@ -112,7 +111,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     const [freshProfileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
       profileRes ? Promise.resolve(null) : getMyProfile(token),
       requiredOpposite
-        ? searchProfiles(token, { limit: 8, gender: requiredOpposite })
+        ? searchProfiles(token, { limit: 8 })
         : Promise.resolve({ data: { items: [] } } as any),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
@@ -155,9 +154,8 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
         );
         setDailyMatches(strictlyFiltered);
 
-        // If profile gender changed on refresh vs cached gender, immediately re-fetch opposite gender
         if (requiredOpposite !== finalOpposite) {
-          searchProfiles(token, { limit: 8, gender: finalOpposite })
+          searchProfiles(token, { limit: 8 })
             .then((fresh) => {
               if (fresh?.data?.items) {
                 setDailyMatches(

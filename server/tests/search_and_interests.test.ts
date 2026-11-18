@@ -88,6 +88,13 @@ describe('Search, Shortlist & Interest Workflow Suite (/api/v1/search, /shortlis
     const candidateProfile = await ProfileService.upsertMyProfile(user2Id, candidateProfileInput);
     candidateProfileId = candidateProfile.id;
 
+    // Viewer (user1) needs a saved gender: matchmaking is derived from the saved profile only
+    await ProfileService.upsertMyProfile(user1Id, {
+      ...candidateProfileInput,
+      firstName: 'Rohit',
+      gender: 'male',
+    });
+
     // Seed User 1 preferences for factual alignment tests
     await PreferenceService.upsertMyPreferences(user1Id, user1PreferencesInput);
   });

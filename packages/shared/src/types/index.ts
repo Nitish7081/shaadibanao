@@ -58,6 +58,14 @@ export interface UserSummary {
   firebaseUid?: string;
   displayName?: string;
   avatarUrl?: string;
+  consent?: {
+    agreedAt: string;
+    termsVersion: string;
+    privacyPolicyVersion: string;
+  };
+  requiresReconsent?: boolean;
+  currentPrivacyPolicyVersion?: string;
+  currentTermsVersion?: string;
   createdAt: string;
 }
 
@@ -110,6 +118,9 @@ export interface AdminAuditLog {
 export interface FirebaseLoginInput {
   idToken: string;
   profileFor?: string;
+  consentToTerms?: boolean;
+  privacyPolicyVersion?: string;
+  termsVersion?: string;
 }
 
 
@@ -568,4 +579,56 @@ export interface DashboardStatsExtended {
   totalBookings: number;
   pendingCommunityPosts: number;
 }
+
+/**
+ * Public Legal Documents, Account Deletion & Support Contracts
+ */
+export interface LegalSection {
+  id: string;
+  title: string;
+  paragraphs: string[];
+  bullets?: string[];
+}
+
+export interface PublicLegalDocument {
+  documentType: 'privacy_policy' | 'terms_and_conditions';
+  title: string;
+  version: string;
+  effectiveDate: string;
+  lastUpdated: string;
+  appName: string;
+  tagline: string;
+  contactPlaceholdersConfigured: boolean;
+  developerContact: {
+    legalEntityName: string;
+    supportEmail: string;
+    grievanceOfficerName: string;
+    grievanceEmail: string;
+    supportPhone: string;
+    postalAddress: string;
+  };
+  sections: LegalSection[];
+}
+
+export interface AccountDeletionResponse {
+  requestId: string;
+  status: 'completed' | 'scheduled' | 'rejected';
+  identifierType: 'mobile' | 'email' | 'account';
+  maskedIdentifier: string;
+  verificationMethod: 'jwt_session' | 'firebase_id_token' | 'otp_challenge';
+  submittedAt: string;
+  completedAt?: string;
+  deletedDataSummary: string[];
+  retainedDataNotice: string[];
+  message: string;
+}
+
+export interface ContactInquiryResponse {
+  ticketId: string;
+  status: 'received';
+  category: string;
+  submittedAt: string;
+  message: string;
+}
+
 
