@@ -28,6 +28,7 @@ import {
   checkDateOfBirth,
   DATE_OF_BIRTH_MESSAGES,
   NAKSHATRA_LIST,
+  IdentityDocumentType,
 } from '@bandhansetu/shared';
 import { Input } from '../components/common/Input';
 import { DatePickerField } from '../components/common/DatePickerField';
@@ -38,7 +39,7 @@ import { Header } from '../components/common/Header';
 import { getMyProfile, upsertMyProfile } from '../services/profileService';
 import { getMyPreferences, upsertMyPreferences } from '../services/preferenceService';
 import { getMyKundli, upsertMyKundli } from '../services/astrologyService';
-import { getSessionToken, refreshSessionTokens, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
+import { getSessionToken, refreshSessionTokens, getSessionUser, syncCurrentUserWithBackend, getAuthHeader } from '../services/authSession';
 import { getNextRouteForUser, isUserAdminVerified } from '../navigation/authRouting';
 import {
   pickImageFromGallery,
@@ -46,6 +47,59 @@ import {
 } from '../services/storageService';
 import { uploadAsset } from '../services/imageUpload';
 import { cloudinaryUrl, photoSrc } from '../services/cloudinaryUrl';
+import { apiClient } from '../services/apiClient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+
+const ID_DOCUMENT_OPTIONS: Array<{
+  key: IdentityDocumentType;
+  label: string;
+  inputLabel: string;
+  placeholder: string;
+  keyboardType: 'number-pad' | 'default';
+  maxLength: number;
+}> = [
+  {
+    key: 'aadhaar_card',
+    label: 'Aadhaar Card',
+    inputLabel: '12-Digit Aadhaar Number *',
+    placeholder: 'XXXX XXXX XXXX',
+    keyboardType: 'number-pad',
+    maxLength: 14,
+  },
+  {
+    key: 'pan_card',
+    label: 'PAN Card',
+    inputLabel: '10-Character PAN Number *',
+    placeholder: 'ABCDE1234F',
+    keyboardType: 'default',
+    maxLength: 10,
+  },
+  {
+    key: 'voter_id',
+    label: 'Voter ID Card',
+    inputLabel: 'Voter ID (EPIC) Number *',
+    placeholder: 'ABC1234567',
+    keyboardType: 'default',
+    maxLength: 16,
+  },
+  {
+    key: 'passport',
+    label: 'Passport',
+    inputLabel: 'Passport Number *',
+    placeholder: 'A1234567',
+    keyboardType: 'default',
+    maxLength: 12,
+  },
+  {
+    key: 'bank_passbook',
+    label: 'Bank Passbook',
+    inputLabel: 'Bank Account Number *',
+    placeholder: 'Account number on passbook',
+    keyboardType: 'default',
+    maxLength: 20,
+  },
+];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ProfileCreation'>;
 
@@ -120,6 +174,19 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoSuccess, setPhotoSuccess] = useState<string | null>(null);
 
+  // Government ID Verification State (Aadhaar / PAN / Voter ID / Passport / Passbook)
+  const [idDocType, setIdDocType] = useState<IdentityDocumentType>('aadhaar_card');
+  const [idDocNumber, setIdDocNumber] = useState('');
+  const [idDocAsset, setIdDocAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [idDocStorageKey, setIdDocStorageKey] = useState<string | null>(null);
+  const [idConsentGranted, setIdConsentGranted] = useState(true);
+  const [uploadingIdDoc, setUploadingIdDoc] = useState(false);
+  const [idUploadPct, setIdUploadPct] = useState<number | null>(null);
+  const [idVerificationStatus, setIdVerificationStatus] = useState<'none' | 'pending' | 'verified' | 'rejected'>('none');
+  const [idDocMaskedNumber, setIdDocMaskedNumber] = useState<string | null>(null);
+  const [idDocError, setIdDocError] = useState<string | null>(null);
+  const [idDocSuccess, setIdDocSuccess] = useState<string | null>(null);
+
   // Step 7: About
   const [aboutMe, setAboutMe] = useState('');
 
@@ -130,16 +197,11 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
   const [prefMaxHeight, setPrefMaxHeight] = useState('190');
   const [prefCities, setPrefCities] = useState('');
 
-  // Compulsory KYC Gate: block access to ProfileCreation until Admin verifies user's ID document
+  // Compulsory KYC Check: only redirect away if account is suspended
   useEffect(() => {
     const current = getSessionUser();
-    if (current && !isUserAdminVerified(current) && !current.hasProfile) {
-      const next = getNextRouteForUser(current);
-      if (next.screen === 'IdentityVerification') {
-        navigation.replace('IdentityVerification', next.params);
-      } else if (next.screen === 'ApprovalPending') {
-        navigation.replace('ApprovalPending');
-      }
+    if (current?.status === 'suspended') {
+      navigation.replace('ApprovalPending');
     }
   }, [navigation]);
 
@@ -213,6 +275,80 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
           if (pr.maxHeightCm) setPrefMaxHeight(String(pr.maxHeightCm));
           if (pr.cities && pr.cities.length > 0) setPrefCities(pr.cities.join(', '));
         }
+
+        // Also fetch identity verification status from server
+        try {
+          const vHeaders = await getAuthHeader();
+          const vJson = await apiClient<any>('/verification/status', { headers: vHeaders });
+          if (vJson.success && vJson.data) {
+            const vData = vJson.data;
+            if (vData.identityVerificationStatus) {
+              setIdVerificationStatus(vData.identityVerificationStatus);
+            }
+            if (vData.identityDocumentType) {
+              setIdDocType(vData.identityDocumentType);
+            }
+            if (vData.identityDocumentReferenceMasked) {
+              setIdDocMaskedNumber(vData.identityDocumentReferenceMasked);
+            }
+          }
+        } catch {
+          // ignore verification status error
+        }
+
+        // Restore draft from AsyncStorage if present
+        try {
+          const sessionUser = getSessionUser();
+          const draftKey = `@bandhansetu/profile_draft_${sessionUser?.id || (sessionUser as any)?._id || 'current'}`;
+          const draftRaw = await AsyncStorage.getItem(draftKey);
+          if (draftRaw && isMounted) {
+            const draft = JSON.parse(draftRaw);
+            const p = draft.profilePayload;
+            if (p) {
+              if (p.firstName && !firstName) setFirstName(p.firstName);
+              if (p.lastName && !lastName) setLastName(p.lastName);
+              if (p.gender) setGender(p.gender);
+              if (p.dateOfBirth && !dateOfBirth) setDateOfBirth(p.dateOfBirth);
+              if (p.heightCm && !heightCm) setHeightCm(String(p.heightCm));
+              if (p.maritalStatus) setMaritalStatus(p.maritalStatus);
+              if (p.motherTongue && !motherTongue) setMotherTongue(p.motherTongue);
+              if (p.religion && !religion) setReligion(p.religion);
+              if (p.caste && !caste) setCaste(p.caste);
+              if (p.gotra && !gotra) setGotra(p.gotra);
+              if (p.manglik) setManglik(p.manglik);
+              if (p.country && !country) setCountry(p.country);
+              if (p.state && !state) setState(p.state);
+              if (p.city && !city) setCity(p.city);
+              if (p.familyValues) setFamilyValues(p.familyValues);
+              if (p.familyType) setFamilyType(p.familyType);
+              if (p.fatherOccupation && !fatherOccupation) setFatherOccupation(p.fatherOccupation);
+              if (p.motherOccupation && !motherOccupation) setMotherOccupation(p.motherOccupation);
+              if (p.education && !education) setEducation(p.education);
+              if (p.employedIn) setEmployedIn(p.employedIn);
+              if (p.occupation && !occupation) setOccupation(p.occupation);
+              if (p.annualIncomeBand && !annualIncomeBand) setAnnualIncomeBand(p.annualIncomeBand);
+              if (p.aboutMe && !aboutMe) setAboutMe(p.aboutMe);
+              if (p.photos && p.photos.length > 0 && photos.length === 0) {
+                setPhotos(p.photos);
+                const main = p.photos.find((ph: any) => ph.isMain) || p.photos[0];
+                if (main?.url) {
+                  setSelectedPhotoUri(photoSrc(main, 'hero'));
+                  setPhotoApprovalStatus(main.approved ? 'approved' : 'pending');
+                }
+              }
+            }
+            const prDraft = draft.prefPayload;
+            if (prDraft) {
+              if (prDraft.minAge) setPrefMinAge(String(prDraft.minAge));
+              if (prDraft.maxAge) setPrefMaxAge(String(prDraft.maxAge));
+              if (prDraft.minHeightCm) setPrefMinHeight(String(prDraft.minHeightCm));
+              if (prDraft.maxHeightCm) setPrefMaxHeight(String(prDraft.maxHeightCm));
+              if (prDraft.cities && Array.isArray(prDraft.cities)) setPrefCities(prDraft.cities.join(', '));
+            }
+          }
+        } catch {
+          // ignore draft load error
+        }
       } catch {
         // Fallback to initial values
       }
@@ -231,7 +367,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     'Location & Living',
     'Family Details',
     'Education & Profession',
-    'Photos & Privacy Rules',
+    'Photos & Identity Proof',
     'About Myself',
     'Partner Preferences',
   ];
@@ -304,6 +440,169 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     setPhotoApprovalStatus('none');
     setPhotoSuccess(null);
     setPhotoError(null);
+  };
+
+  // Government ID Verification Handlers (Aadhaar, PAN, Voter ID, Passport, Bank Passbook)
+  const handlePickIdDoc = async (fromCamera: boolean) => {
+    try {
+      setIdDocError(null);
+      setIdDocSuccess(null);
+      const perm = fromCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Please allow camera/gallery access to upload your identity document.');
+        return;
+      }
+      const opts: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.85,
+        base64: true,
+      };
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        setIdDocAsset(asset);
+        await uploadIdDocument(asset);
+      }
+    } catch (err: any) {
+      setIdDocError(err?.message || 'Could not select identity document.');
+    }
+  };
+
+  const uploadIdDocument = async (asset: any) => {
+    const token = getSessionToken();
+    if (!token) {
+      setIdDocError('Authentication expired. Please log in again.');
+      return;
+    }
+
+    setUploadingIdDoc(true);
+    setIdUploadPct(0);
+    try {
+      // 1. Upload private asset to Cloudinary private vault
+      const uploadResult = await uploadAsset({
+        token,
+        asset,
+        purpose: 'identity_document',
+        onProgress: setIdUploadPct,
+      });
+
+      setIdDocStorageKey(uploadResult.fileKey);
+
+      // If document number is filled and consent is granted, submit to /verification/identity
+      if (idDocNumber.trim() && idConsentGranted) {
+        const headers = await getAuthHeader();
+        const json = await apiClient<any>('/verification/identity', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            documentType: idDocType,
+            documentReferenceNumber: idDocNumber.trim(),
+            documentStorageKey: uploadResult.fileKey,
+            consentGranted: true,
+            termsVersion: 'v1.0',
+          }),
+        });
+        if (json.success) {
+          setIdVerificationStatus('pending');
+          setIdDocMaskedNumber(json.data?.documentReferenceMasked || idDocNumber.trim());
+          setIdDocSuccess('✓ Document secured in Cloudinary & submitted to Admin Panel! (Pending Review)');
+          await syncCurrentUserWithBackend().catch(() => {});
+        } else {
+          setIdDocSuccess('✓ Document photo uploaded to Cloudinary! Enter document number below & submit.');
+        }
+      } else {
+        setIdDocSuccess('✓ Document photo uploaded to Cloudinary! Enter document number below.');
+      }
+    } catch (err: any) {
+      setIdDocError(err?.message || 'Failed to upload document to secure storage.');
+    } finally {
+      setUploadingIdDoc(false);
+      setIdUploadPct(null);
+    }
+  };
+
+  const handleSubmitIdVerification = async () => {
+    if (!idDocNumber.trim()) {
+      Alert.alert('Required Field', 'Please enter your document number (e.g. 12-digit Aadhaar number).');
+      return;
+    }
+    if (!idDocStorageKey && !idDocAsset) {
+      Alert.alert('Document Required', 'Please upload a clear photo of your document.');
+      return;
+    }
+    if (!idConsentGranted) {
+      Alert.alert('Consent Required', 'Please check the consent box to proceed with verification.');
+      return;
+    }
+
+    setUploadingIdDoc(true);
+    try {
+      const token = getSessionToken();
+      if (!token) {
+        Alert.alert('Session expired', 'Please log in again.');
+        return;
+      }
+
+      let storageKey = idDocStorageKey;
+      if (!storageKey && idDocAsset) {
+        const uploadResult = await uploadAsset({
+          token,
+          asset: idDocAsset,
+          purpose: 'identity_document',
+          onProgress: setIdUploadPct,
+        });
+        storageKey = uploadResult.fileKey;
+        setIdDocStorageKey(storageKey);
+      }
+
+      if (!storageKey) {
+        Alert.alert('Upload Error', 'Could not obtain secure storage key for document.');
+        return;
+      }
+
+      const headers = await getAuthHeader();
+      const json = await apiClient<any>('/verification/identity', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          documentType: idDocType,
+          documentReferenceNumber: idDocNumber.trim(),
+          documentStorageKey: storageKey,
+          consentGranted: true,
+          termsVersion: 'v1.0',
+        }),
+      });
+
+      if (json.success) {
+        setIdVerificationStatus('pending');
+        setIdDocMaskedNumber(json.data?.documentReferenceMasked || idDocNumber.trim());
+        setIdDocSuccess('✓ ID Document secured in Cloudinary & submitted to Admin Panel!');
+        await syncCurrentUserWithBackend().catch(() => {});
+        Alert.alert(
+          'Document Submitted! 🛡️',
+          'Your identity document has been securely uploaded to Cloudinary and submitted to the Admin Panel for review.'
+        );
+      } else {
+        Alert.alert('Submission Error', json.error?.message || json.message || 'Could not submit verification.');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to submit document to server.');
+    } finally {
+      setUploadingIdDoc(false);
+      setIdUploadPct(null);
+    }
+  };
+
+  const handleRemoveIdDoc = () => {
+    setIdDocAsset(null);
+    setIdDocStorageKey(null);
+    setIdDocSuccess(null);
+    setIdDocError(null);
   };
 
   const validateCurrentStep = (): boolean => {
@@ -390,6 +689,32 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     // Step 8: Final Submission to Backend
+    // Validate whether mandatory ID document has been submitted or attached
+    const isIdUploaded =
+      idVerificationStatus === 'pending' ||
+      idVerificationStatus === 'verified' ||
+      Boolean(idDocStorageKey) ||
+      isUserAdminVerified(getSessionUser());
+
+    if (!isIdUploaded) {
+      Alert.alert(
+        'Identity Document Required 🪪',
+        'Mandatory identity verification required. Please upload your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook to complete your profile.',
+        [
+          {
+            text: 'Upload in Step 6',
+            onPress: () => setCurrentStep(6),
+          },
+          {
+            text: 'Open ID Verification Page',
+            onPress: () => navigation.navigate('IdentityVerification', { mandatory: true }),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     setLoading(true);
 
     const profilePayload: UpsertProfileInput = {
@@ -436,6 +761,34 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     try {
+      // Save local draft so user's form inputs are never lost
+      try {
+        const sessionUser = getSessionUser();
+        const draftKey = `@bandhansetu/profile_draft_${sessionUser?.id || (sessionUser as any)?._id || 'current'}`;
+        await AsyncStorage.setItem(draftKey, JSON.stringify({ profilePayload, prefPayload, includeKundli }));
+      } catch {}
+
+      // Auto-submit ID verification if storage key exists and not yet submitted
+      if (idDocStorageKey && idDocNumber.trim() && idVerificationStatus !== 'pending' && idVerificationStatus !== 'verified') {
+        try {
+          const vHeaders = await getAuthHeader();
+          await apiClient<any>('/verification/identity', {
+            method: 'POST',
+            headers: vHeaders,
+            body: JSON.stringify({
+              documentType: idDocType,
+              documentReferenceNumber: idDocNumber.trim(),
+              documentStorageKey: idDocStorageKey,
+              consentGranted: true,
+              termsVersion: 'v1.0',
+            }),
+          });
+          setIdVerificationStatus('pending');
+        } catch {
+          // ignore auto-submit error
+        }
+      }
+
       let authToken = getSessionToken();
       if (!authToken) {
         authToken = (await refreshSessionTokens()) || '';
@@ -492,26 +845,54 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
         ]
       );
     } catch (err: any) {
-      if (err?.code === 'IDENTITY_VERIFICATION_REQUIRED' || err?.status === 403) {
-        setLoading(false);
-        const latestUser = (await syncCurrentUserWithBackend().catch(() => null)) || getSessionUser();
-        const next = getNextRouteForUser(latestUser);
-        Alert.alert(
-          'Admin ID Verification Required 🪪',
-          err?.message || 'Please upload your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook and wait for Admin verification before creating your profile.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                if (next.screen === 'IdentityVerification') {
-                  navigation.replace('IdentityVerification', next.params);
-                } else {
+      setLoading(false);
+      try {
+        const sessionUser = getSessionUser();
+        const draftKey = `@bandhansetu/profile_draft_${sessionUser?.id || (sessionUser as any)?._id || 'current'}`;
+        await AsyncStorage.setItem(draftKey, JSON.stringify({ profilePayload, prefPayload, includeKundli }));
+      } catch {}
+
+      const isIdentityError =
+        err?.code === 'IDENTITY_VERIFICATION_REQUIRED' ||
+        err?.status === 403 ||
+        (typeof err?.message === 'string' &&
+          (err.message.includes('Mandatory identity verification required') ||
+            err.message.includes('wait for Admin verification')));
+
+      if (isIdentityError) {
+        await syncCurrentUserWithBackend().catch(() => {});
+        const latestUser = getSessionUser();
+        const latestIdStatus = latestUser?.identityVerificationStatus || idVerificationStatus;
+
+        if (latestIdStatus === 'pending' || idDocStorageKey) {
+          Alert.alert(
+            'Profile & ID Submitted for Review! 🛡️',
+            'Your matrimonial profile details and identity document have been safely uploaded to Cloudinary and submitted to the Admin Panel.\n\nOnce Admin verifies your document, your profile will be unlocked for matching and chat!',
+            [
+              {
+                text: 'View Review Status',
+                onPress: () => {
                   navigation.replace('ApprovalPending');
-                }
+                },
               },
-            },
-          ]
-        );
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Identity Document Required 🪪',
+            'Please upload your Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook before creating your profile.',
+            [
+              {
+                text: 'Upload in Step 6',
+                onPress: () => setCurrentStep(6),
+              },
+              {
+                text: 'Open ID Verification Page',
+                onPress: () => navigation.navigate('IdentityVerification', { mandatory: true }),
+              },
+            ]
+          );
+        }
         return;
       }
       if (err.status === 401 || err.code === 'TOKEN_EXPIRED') {
@@ -1015,6 +1396,239 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
                     </TouchableOpacity>
                   );
                 })}
+
+                {/* Government ID Verification (Aadhaar / PAN / Voter ID / Passport / Bank Passbook) */}
+                <View style={styles.idDocCard}>
+                  <View style={styles.idDocHeaderRow}>
+                    <View style={styles.idDocHeaderIcon}>
+                      <Ionicons name="shield-checkmark" size={20} color={colors.royalMaroon} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.idDocHeading}>Government ID Document (Compulsory KYC) 🪪</Text>
+                      <Text style={styles.idDocSubText}>
+                        Upload Aadhaar Card, PAN Card, Voter ID, Passport, or Bank Passbook. Admin verifies this document before activating your profile.
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Verification Status Pill */}
+                  <View style={styles.idStatusRow}>
+                    <View
+                      style={[
+                        styles.idStatusPill,
+                        idVerificationStatus === 'verified' && styles.idStatusPillVerified,
+                        idVerificationStatus === 'pending' && styles.idStatusPillPending,
+                        idVerificationStatus === 'rejected' && styles.idStatusPillRejected,
+                      ]}
+                    >
+                      <Ionicons
+                        name={
+                          idVerificationStatus === 'verified'
+                            ? 'checkmark-circle'
+                            : idVerificationStatus === 'rejected'
+                            ? 'close-circle'
+                            : idVerificationStatus === 'pending'
+                            ? 'hourglass-outline'
+                            : 'alert-circle-outline'
+                        }
+                        size={14}
+                        color={
+                          idVerificationStatus === 'verified'
+                            ? '#16a34a'
+                            : idVerificationStatus === 'rejected'
+                            ? '#dc2626'
+                            : idVerificationStatus === 'pending'
+                            ? '#d97706'
+                            : colors.royalMaroon
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.idStatusPillText,
+                          idVerificationStatus === 'verified' && { color: '#16a34a' },
+                          idVerificationStatus === 'pending' && { color: '#d97706' },
+                          idVerificationStatus === 'rejected' && { color: '#dc2626' },
+                        ]}
+                      >
+                        {idVerificationStatus === 'verified'
+                          ? `Verified by Admin ✓ (${idDocMaskedNumber || 'ID Verified'})`
+                          : idVerificationStatus === 'pending'
+                          ? `Uploaded — Pending Admin Review ⏳ (${idDocMaskedNumber || 'Under Review'})`
+                          : idVerificationStatus === 'rejected'
+                          ? 'Document Rejected (Please Re-upload)'
+                          : 'ID Document Required *'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Document Type Selector Chips */}
+                  <Text style={styles.fieldLabel}>Select Document Type *</Text>
+                  <View style={styles.choiceRow}>
+                    {ID_DOCUMENT_OPTIONS.map((docOpt) => (
+                      <TouchableOpacity
+                        key={docOpt.key}
+                        activeOpacity={0.8}
+                        onPress={() => setIdDocType(docOpt.key)}
+                        style={[styles.chip, idDocType === docOpt.key && styles.chipSelected]}
+                      >
+                        <Ionicons
+                          name={idDocType === docOpt.key ? 'checkmark-circle' : 'document-text-outline'}
+                          size={14}
+                          color={idDocType === docOpt.key ? colors.royalMaroon : colors.textMuted}
+                          style={{ marginRight: 4 }}
+                        />
+                        <Text style={[styles.chipText, idDocType === docOpt.key && styles.chipTextSelected]}>
+                          {docOpt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Document Number Input */}
+                  {(() => {
+                    const activeDoc = ID_DOCUMENT_OPTIONS.find((d) => d.key === idDocType) || ID_DOCUMENT_OPTIONS[0];
+                    return (
+                      <Input
+                        label={activeDoc.inputLabel}
+                        placeholder={activeDoc.placeholder}
+                        value={idDocNumber}
+                        onChangeText={setIdDocNumber}
+                        keyboardType={activeDoc.keyboardType}
+                        maxLength={activeDoc.maxLength}
+                        helperText="Your document number is strictly masked & encrypted before storage."
+                      />
+                    );
+                  })()}
+
+                  {/* Document Photo Preview or Empty Box */}
+                  <Text style={styles.fieldLabel}>Document Front Photo *</Text>
+                  {idDocAsset || idDocStorageKey ? (
+                    <View style={styles.idDocPreviewCard}>
+                      {idDocAsset?.uri ? (
+                        <Image
+                          source={{ uri: idDocAsset.uri }}
+                          style={styles.idDocPreviewImg}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                          <Ionicons name="document-text" size={48} color={colors.royalGold} />
+                          <Text style={{ color: '#FFFFFF', marginTop: 8, fontSize: 13, fontFamily: fonts.bodyMedium }}>
+                            Document securely saved in vault
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.idDocPreviewTag}>
+                        <Ionicons name="shield-checkmark" size={12} color="#FFFFFF" />
+                        <Text style={styles.idDocPreviewTagText}>DOCUMENT ATTACHED</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => handlePickIdDoc(false)}
+                      style={styles.emptyIdDocBox}
+                    >
+                      <View style={styles.idUploadIconCircle}>
+                        <Ionicons name="id-card-outline" size={32} color={colors.royalMaroon} />
+                      </View>
+                      <Text style={styles.uploadBoxTitle}>Upload Identity Document Photo</Text>
+                      <Text style={styles.uploadBoxSub}>
+                        Clear photo of front side (Aadhaar / PAN / Voter ID / Passport / Passbook). Uploads to Cloudinary.
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Document Action Buttons */}
+                  <View style={styles.photoActionRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => handlePickIdDoc(false)}
+                      disabled={uploadingIdDoc}
+                      style={styles.photoActionButton}
+                    >
+                      <Ionicons name="images-outline" size={16} color={colors.royalMaroon} />
+                      <Text style={styles.photoActionText}>Choose from Gallery</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => handlePickIdDoc(true)}
+                      disabled={uploadingIdDoc}
+                      style={styles.photoActionButton}
+                    >
+                      <Ionicons name="camera-outline" size={16} color={colors.royalMaroon} />
+                      <Text style={styles.photoActionText}>Take Photo</Text>
+                    </TouchableOpacity>
+
+                    {(idDocAsset || idDocStorageKey) && (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={handleRemoveIdDoc}
+                        disabled={uploadingIdDoc}
+                        style={[styles.photoActionButton, styles.photoActionRemove]}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.alertRed} />
+                        <Text style={[styles.photoActionText, { color: colors.alertRed }]}>Remove</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Upload Progress */}
+                  {uploadingIdDoc && (
+                    <View style={styles.uploadingBox}>
+                      <ActivityIndicator size="small" color={colors.royalMaroon} />
+                      <Text style={styles.uploadingText}>
+                        Securing & uploading document to Cloudinary Private Vault...
+                        {idUploadPct !== null ? ` (${idUploadPct}%)` : ''}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Success & Error messages */}
+                  {idDocSuccess && (
+                    <View style={styles.successMessageBox}>
+                      <Ionicons name="checkmark-circle" size={16} color={colors.verifiedGreen} />
+                      <Text style={styles.successMessageText}>{idDocSuccess}</Text>
+                    </View>
+                  )}
+
+                  {idDocError && (
+                    <View style={styles.errorMessageBox}>
+                      <Ionicons name="alert-circle" size={16} color={colors.alertRed} />
+                      <Text style={styles.errorMessageText}>{idDocError}</Text>
+                    </View>
+                  )}
+
+                  {/* Explicit Verification Consent Switch */}
+                  <View style={[styles.switchRow, { marginTop: 12, borderTopWidth: 1, borderTopColor: '#ECE2D4' }]}>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text style={[styles.fieldLabel, { marginTop: 0 }]}>Identity Verification Consent *</Text>
+                      <Text style={styles.switchDesc}>
+                        I authorize ShaadiBanao administrators to verify this document solely for identity verification and anti-fraud purposes.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={idConsentGranted}
+                      onValueChange={setIdConsentGranted}
+                      trackColor={{ false: '#E0DCD6', true: colors.royalMaroon }}
+                      thumbColor={idConsentGranted ? colors.royalGold : '#FAF7F2'}
+                    />
+                  </View>
+
+                  {/* Submit Document Now Button */}
+                  {(idDocAsset || idDocStorageKey) && idDocNumber.trim().length > 0 && idVerificationStatus !== 'verified' && (
+                    <View style={{ marginTop: 14 }}>
+                      <Button
+                        title={idVerificationStatus === 'pending' ? '✓ Re-submit Document to Admin' : 'Submit ID Document to Admin Panel'}
+                        onPress={handleSubmitIdVerification}
+                        loading={uploadingIdDoc}
+                        variant="primary"
+                        style={{ minHeight: 46 }}
+                      />
+                    </View>
+                  )}
+                </View>
               </>
             )}
 
@@ -1468,5 +2082,125 @@ const styles = StyleSheet.create({
   fullBtn: {
     width: '100%',
     minHeight: 50,
+  },
+  // Identity Document Card & Preview Styles
+  idDocCard: {
+    backgroundColor: '#FAF7F2',
+    borderWidth: 1.2,
+    borderColor: '#ECE2D4',
+    borderRadius: 16,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.base,
+  },
+  idDocHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  idDocHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F3E9DA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  idDocHeading: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 15,
+    color: colors.royalMaroon,
+    marginBottom: 2,
+  },
+  idDocSubText: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 16,
+  },
+  idStatusRow: {
+    marginVertical: 8,
+  },
+  idStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#FAF3F5',
+    borderWidth: 1,
+    borderColor: '#E8D4DC',
+  },
+  idStatusPillVerified: {
+    backgroundColor: '#EDFDF2',
+    borderColor: '#C6F6D5',
+  },
+  idStatusPillPending: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  idStatusPillRejected: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  idStatusPillText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 12,
+    color: colors.royalMaroon,
+  },
+  idDocPreviewCard: {
+    position: 'relative',
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: colors.goldBorder,
+    marginBottom: spacing.md,
+    backgroundColor: '#1C1917',
+  },
+  idDocPreviewImg: {
+    width: '100%',
+    height: '100%',
+  },
+  idDocPreviewTag: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(122, 21, 40, 0.9)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  idDocPreviewTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  emptyIdDocBox: {
+    width: '100%',
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#D8CBBA',
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    marginBottom: spacing.md,
+  },
+  idUploadIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#F7EFE3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
 });

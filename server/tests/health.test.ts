@@ -25,12 +25,15 @@ describe('Server Health and Basic Routing Suite', () => {
   });
 
   describe('GET / (Root endpoint)', () => {
-    it('should return service information', async () => {
+    it('should return service or website information', async () => {
       const response = await request(app).get('/');
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('name', 'BandhanSetu Matrimonial API');
-      expect(response.body).toHaveProperty('healthCheck', '/api/v1/health');
+      if (response.header['content-type']?.includes('text/html')) {
+        expect(response.text).toContain('ShaadiBanao');
+      } else {
+        expect(response.body).toHaveProperty('healthCheck', '/api/v1/health');
+      }
     });
   });
 

@@ -19,12 +19,16 @@ import { colors, typography, spacing, borderRadius, fonts } from '../constants/t
 import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
 import {
   getSessionUser,
+  getSessionToken,
   performLogout,
   hasActiveSession,
   syncCurrentUserWithBackend,
   onUserUpdated,
 } from '../services/authSession';
 import { isUserAdminVerified } from '../navigation/authRouting';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { upsertMyProfile } from '../services/profileService';
+import { upsertMyPreferences } from '../services/preferenceService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ApprovalPending'>;
 
@@ -38,18 +42,41 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
   const isSuspended = user?.status === 'suspended';
   const needsMandatoryIdUpload = !isSuspended && !isUserAdminVerified(user) && (idStatus === 'none' || idStatus === 'rejected');
 
-  const routeVerifiedUser = (updatedUser: any, isSilent: boolean) => {
+  const routeVerifiedUser = async (updatedUser: any, isSilent: boolean) => {
     isNavigatingRef.current = true;
-    const targetScreen = updatedUser.hasProfile ? 'MainTabs' : 'ProfileCreation';
+    let targetScreen: 'MainTabs' | 'ProfileCreation' = updatedUser.hasProfile ? 'MainTabs' : 'ProfileCreation';
+
+    // Auto-save draft profile to backend once Admin verifies ID!
+    if (!updatedUser.hasProfile) {
+      try {
+        const token = getSessionToken();
+        const draftKey = `@bandhansetu/profile_draft_${updatedUser.id || updatedUser._id || 'current'}`;
+        const draftStr = await AsyncStorage.getItem(draftKey);
+        if (draftStr && token) {
+          const draft = JSON.parse(draftStr);
+          if (draft.profilePayload) {
+            await upsertMyProfile(token, draft.profilePayload);
+            if (draft.prefPayload) {
+              await upsertMyPreferences(token, draft.prefPayload).catch(() => {});
+            }
+            await syncCurrentUserWithBackend().catch(() => {});
+            targetScreen = 'MainTabs';
+          }
+        }
+      } catch (autoSaveErr) {
+        console.warn('Auto profile save from draft:', autoSaveErr);
+      }
+    }
+
     if (!isSilent) {
       Alert.alert(
-        updatedUser.hasProfile ? 'Account Approved! 🎉' : 'ID Verified by Admin! 🎉',
-        updatedUser.hasProfile
+        updatedUser.hasProfile || targetScreen === 'MainTabs' ? 'Account Approved! 🎉' : 'ID Verified by Admin! 🎉',
+        updatedUser.hasProfile || targetScreen === 'MainTabs'
           ? 'Congratulations! Your matrimonial profile has been approved. You now have full access to search and matching.'
-          : 'Your identity document has been verified by Admin. You can now create your ShaadiBanao matrimonial profile!',
+          : 'Your identity document has been verified by Admin. You can now save your ShaadiBanao matrimonial profile!',
         [
           {
-            text: updatedUser.hasProfile ? 'Enter ShaadiBanao' : 'Create My Profile',
+            text: updatedUser.hasProfile || targetScreen === 'MainTabs' ? 'Enter ShaadiBanao' : 'Save My Profile',
             onPress: () => navigation.replace(targetScreen),
           },
         ]
