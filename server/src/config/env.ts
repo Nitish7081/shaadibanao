@@ -79,10 +79,7 @@ export const config = {
    */
   kyc: {
     get requireVerifiedIdentityForProfile(): boolean {
-      return (
-        process.env.ENFORCE_KYC_BEFORE_PROFILE === 'true' ||
-        (process.env.NODE_ENV !== 'test' && process.env.ENFORCE_KYC_BEFORE_PROFILE !== 'false')
-      );
+      return process.env.ENFORCE_KYC_BEFORE_PROFILE === 'true';
     },
   },
 };

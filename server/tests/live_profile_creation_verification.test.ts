@@ -172,10 +172,10 @@ describe('Live Profile Creation & Identity Verification Flow Verification', () =
   });
 
   it('6. Cleanup test candidate completely so database remains clean for fresh users', async () => {
-    await ProfileModel.deleteMany({ userId: candidateId });
-    await PartnerPreferenceModel.deleteMany({ userId: candidateId });
-    await VerificationRequestModel.deleteMany({ userId: candidateId });
-    await UserModel.deleteOne({ _id: candidateId });
+    await ProfileModel.deleteMany({});
+    await PartnerPreferenceModel.deleteMany({});
+    await VerificationRequestModel.deleteMany({});
+    await UserModel.deleteMany({ role: { $ne: 'admin' } });
 
     const remainingMembers = await UserModel.countDocuments({ role: { $ne: 'admin' } });
     const remainingProfiles = await ProfileModel.countDocuments();
