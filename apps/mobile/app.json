@@ -2,7 +2,7 @@
   "expo": {
     "name": "ShaadiBanao",
     "slug": "shaadibanao",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "com.shaadibanao.app",
-      "versionCode": 4,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#7A1528",
         "foregroundImage": "./assets/android-icon-foreground.png",
