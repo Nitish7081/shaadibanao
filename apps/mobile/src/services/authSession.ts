@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSummary, AuthTokens, UserProfile, UserMembership } from '@bandhansetu/shared';
+import { FastAppCache } from '../utils/lruCache';
 import {
   refreshTokens as apiRefreshTokens,
   getCurrentUser as apiGetCurrentUser,
@@ -24,6 +25,7 @@ const STORAGE_KEY_ACCESS = '@bandhansetu/access_token';
 const STORAGE_KEY_REFRESH = '@bandhansetu/refresh_token';
 const STORAGE_KEY_USER_ID = '@bandhansetu/user_id';
 const STORAGE_KEY_USER = '@bandhansetu/user_data';
+const STORAGE_KEY_PROFILE = '@bandhansetu/user_profile';
 
 let currentAccessToken: string | null = null;
 let currentRefreshToken: string | null = null;
@@ -146,6 +148,7 @@ export async function loadSessionFromStorage(): Promise<boolean> {
       STORAGE_KEY_REFRESH,
       STORAGE_KEY_USER_ID,
       STORAGE_KEY_USER,
+      STORAGE_KEY_PROFILE,
     ]);
 
     const itemMap = new Map(items);
@@ -153,6 +156,7 @@ export async function loadSessionFromStorage(): Promise<boolean> {
     const refresh = itemMap.get(STORAGE_KEY_REFRESH);
     const uid = itemMap.get(STORAGE_KEY_USER_ID);
     const userStr = itemMap.get(STORAGE_KEY_USER);
+    const profileStr = itemMap.get(STORAGE_KEY_PROFILE);
 
     if (access || refresh) {
       currentAccessToken = access || null;
@@ -161,10 +165,17 @@ export async function loadSessionFromStorage(): Promise<boolean> {
       if (userStr) {
         try {
           currentUser = JSON.parse(userStr);
+          FastAppCache.set('current_user', currentUser, undefined, false);
         } catch {
           currentUser = null;
-  cachedUserProfile = null;
-  cachedUserMembership = null;
+        }
+      }
+      if (profileStr) {
+        try {
+          cachedUserProfile = JSON.parse(profileStr);
+          FastAppCache.set('user_profile', cachedUserProfile, undefined, false);
+        } catch {
+          cachedUserProfile = null;
         }
       }
       return true;
@@ -197,10 +208,17 @@ export function getSessionUser(): UserSummary | null {
 
 export function setCachedUserProfile(profile: UserProfile | null): void {
   cachedUserProfile = profile;
+  if (profile) {
+    FastAppCache.set('user_profile', profile, undefined, false);
+    AsyncStorage.setItem(STORAGE_KEY_PROFILE, JSON.stringify(profile)).catch(() => {});
+  } else {
+    FastAppCache.invalidate('user_profile');
+    AsyncStorage.removeItem(STORAGE_KEY_PROFILE).catch(() => {});
+  }
 }
 
 export function getCachedUserProfile(): UserProfile | null {
-  return cachedUserProfile;
+  return cachedUserProfile || FastAppCache.getMemory<UserProfile>('user_profile') || null;
 }
 
 export function setCachedUserMembership(membership: UserMembership | null): void {
@@ -263,7 +281,9 @@ export function clearSessionAuth(): void {
     STORAGE_KEY_REFRESH,
     STORAGE_KEY_USER_ID,
     STORAGE_KEY_USER,
+    STORAGE_KEY_PROFILE,
   ]).catch(() => {});
+  FastAppCache.clearAll().catch(() => {});
 }
 
 /**
@@ -293,6 +313,7 @@ export async function performLogout(): Promise<void> {
       STORAGE_KEY_REFRESH,
       STORAGE_KEY_USER_ID,
       STORAGE_KEY_USER,
+      STORAGE_KEY_PROFILE,
     ]);
   } catch {
     // best effort; in-memory state is already cleared

@@ -39,16 +39,27 @@ export class ProfileService {
   }
 
   /**
-   * Calculates profile completion score based on filled sections
+   * Calculates profile completion score based on filled sections.
+   * Guarantees 100% when all key matrimonial profile sections are filled.
    */
   public static calculateCompleteness(data: Partial<UpsertProfileInput>): number {
     let score = 0;
-    if (data.firstName && data.lastName && data.dateOfBirth && data.heightCm) score += 25;
+    // 1. Personal & Physical: Name, DOB, Height or Gender (25%)
+    if (data.firstName && data.lastName && data.dateOfBirth && (data.heightCm || data.gender)) score += 25;
+    // 2. Cultural, Location & Religion: City, Religion, Mother Tongue (20%)
     if (data.city && data.religion && data.motherTongue) score += 20;
+    // 3. Education & Career: Education & Occupation (20%)
     if (data.education && data.occupation) score += 20;
+    // 4. Verification Photos: At least one photo uploaded (20%)
     if (data.photos && data.photos.length > 0) score += 20;
-    if (data.aboutMe && data.aboutMe.trim().length >= 30) score += 15;
-    return Math.min(100, score);
+    // 5. Bio or Family Background or Marital Status (15%)
+    const hasBio = typeof data.aboutMe === 'string' && data.aboutMe.trim().length > 0;
+    const hasFamily = Boolean(data.familyValues || data.familyType || data.fatherOccupation || data.motherOccupation);
+    const hasMarital = Boolean(data.maritalStatus);
+    if (hasBio || hasFamily || hasMarital) {
+      score += 15;
+    }
+    return Math.min(100, Math.max(0, score));
   }
 
   /**

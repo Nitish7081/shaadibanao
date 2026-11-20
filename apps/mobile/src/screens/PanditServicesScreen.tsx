@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,23 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
       setSelectedCeremony(route?.params?.ceremonyType);
     }
   }, [route?.params?.ceremonyType]);
+
+  const handleSafeBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs', { screen: 'Home' });
+    }
+  };
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [navigation]);
 
   const ceremonies = [
     { key: 'all', title: t('panditServices.allCeremonies'), icon: 'sparkles' as const },
@@ -74,7 +92,7 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
       <View style={styles.headerTopRow}>
         <PressableScale
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={handleSafeBack}
           accessibilityLabel="Back"
         >
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />

@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +30,23 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleSafeBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs', { screen: 'Home' });
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleSafeBack]);
 
   const fetchConversations = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
@@ -95,7 +113,7 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
 
         <PressableScale
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={handleSafeBack}
           accessibilityLabel="Back"
         >
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />

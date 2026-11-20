@@ -18,22 +18,19 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     let isMounted = true;
 
-    // Wake up Render server asynchronously during splash screen
+    // Non-blocking wake up for server
     fetch('https://shaadibanao.onrender.com/api/v1/health').catch(() => {});
 
     const checkAuthAndNavigate = async () => {
-      const startTime = Date.now();
+      // 1. Fast O(1) Session & Profile Recovery from L1/L2 Cache
       const hasStoredSession = await loadSessionFromStorage();
 
+      // 2. Non-blocking asynchronous sync with MongoDB: never blocks app boot
       if (hasStoredSession && hasActiveSession()) {
-        // Fetch latest approval status from MongoDB
-        await syncCurrentUserWithBackend();
+        syncCurrentUserWithBackend().catch(() => {});
       }
 
-      // Ensure 1.2s - 1.5s splash display for smooth brand experience
-      const elapsed = Date.now() - startTime;
-      const delay = Math.max(0, 1400 - elapsed);
-
+      // 3. Instant Navigation: Sleek 180ms brand display avoids UI flicker and opens immediately
       setTimeout(() => {
         if (!isMounted) return;
         if (hasStoredSession && hasActiveSession()) {
@@ -48,7 +45,7 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
           // If the user previously selected a language, advance directly to Welcome
           navigation.replace(hasChosenLanguage() ? 'Welcome' : 'LanguageSelection');
         }
-      }, delay);
+      }, 180);
     };
 
     checkAuthAndNavigate();

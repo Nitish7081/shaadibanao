@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -222,13 +223,30 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
+  const handleSafeBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs' as any);
+    }
+  };
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [navigation]);
+
   return (
     <SafeAreaView edges={['top']} style={styles.screenBg}>
       {/* Top Header Bar */}
       <View style={styles.headerBar}>
         <PressableScale
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={handleSafeBack}
           accessibilityLabel="Back"
         >
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />

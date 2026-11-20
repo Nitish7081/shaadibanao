@@ -10,6 +10,7 @@ import {
   FlatList,
   Image,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeNavigationProp } from '@react-navigation/native';
@@ -57,6 +58,23 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handleSafeBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs', { screen: 'Home' } as any);
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleSafeBack]);
 
   const filterChips = [
     { id: 'all', label: isHindi ? 'सभी मैच' : 'All Matches', icon: 'sparkles' as const },
@@ -221,7 +239,14 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.headerSection}>
       {/* Title & Subtitle */}
       <View style={styles.titleRow}>
-        <View style={{ flex: 1 }}>
+        <PressableScale
+          onPress={handleSafeBack}
+          style={styles.headerBackBtn}
+          accessibilityLabel="Back"
+        >
+          <Ionicons name="arrow-back" size={22} color={ds.color.maroon} />
+        </PressableScale>
+        <View style={{ flex: 1, marginLeft: ds.space.sm }}>
           <Text style={styles.screenHeading} maxFontSizeMultiplier={1.2}>
             {isHindi ? 'जीवनसाथी खोजें' : 'Discover Matches'}
           </Text>
@@ -230,11 +255,11 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
           </Text>
         </View>
         <PressableScale
-          onPress={() => navigation.navigate('Search')}
+          onPress={() => setSelectedFilter('all')}
           style={styles.headerIconBtn}
-          accessibilityLabel="Search Filters"
+          accessibilityLabel="Reset Filters"
         >
-          <Ionicons name="options-outline" size={20} color={ds.color.maroon} />
+          <Ionicons name="refresh-outline" size={20} color={ds.color.maroon} />
         </PressableScale>
       </View>
 
@@ -571,6 +596,16 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: ds.color.textMuted,
     marginTop: 2,
+  },
+  headerBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: ds.radius.pill,
+    backgroundColor: ds.color.surfaceWarm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: ds.color.border,
   },
   headerIconBtn: {
     width: 42,

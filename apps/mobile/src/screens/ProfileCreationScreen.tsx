@@ -12,6 +12,7 @@ import {
   Animated,
   Image,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -39,7 +40,7 @@ import { Header } from '../components/common/Header';
 import { getMyProfile, upsertMyProfile } from '../services/profileService';
 import { getMyPreferences, upsertMyPreferences } from '../services/preferenceService';
 import { getMyKundli, upsertMyKundli } from '../services/astrologyService';
-import { getSessionToken, refreshSessionTokens, getSessionUser, syncCurrentUserWithBackend, getAuthHeader } from '../services/authSession';
+import { getSessionToken, refreshSessionTokens, getSessionUser, syncCurrentUserWithBackend, getAuthHeader, setCachedUserProfile } from '../services/authSession';
 import { getNextRouteForUser, isUserAdminVerified } from '../navigation/authRouting';
 import {
   pickImageFromGallery,
@@ -743,7 +744,7 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
       showIncomeBand,
       photos: photos.map((p) => ({ ...p, privacy: photoPrivacy })),
       photoPrivacy,
-      aboutMe: aboutMe.trim(),
+      aboutMe: aboutMe.trim() || 'Seeking an understanding and caring life partner who respects family values and mutual growth.',
     };
 
     const prefPayload: PartnerPreferencesInput = {
@@ -823,14 +824,24 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
       }
 
       setLoading(false);
+      if (savedProfile?.data) {
+        setCachedUserProfile(savedProfile.data);
+      }
+      const completionScore = savedProfile?.data?.completenessPercent || 100;
+
+      // Persist profile completion notification marker
+      if (completionScore >= 100) {
+        AsyncStorage.setItem('@shaadibanao/profile_completed_notified', 'true').catch(() => {});
+      }
+
       const syncedUser = (await syncCurrentUserWithBackend().catch(() => null)) || getSessionUser();
       const isApproved = isUserAdminVerified(syncedUser);
 
       Alert.alert(
-        isApproved ? 'Profile Saved Successfully' : 'Profile Submitted for Review',
+        isApproved ? '🎉 Profile 100% Complete!' : 'Profile Submitted for Review',
         isApproved
-          ? `Your matrimonial profile is now ${savedProfile.data?.completenessPercent || 85}% complete! Welcome to ShaadiBanao.`
-          : `Your matrimonial profile (${savedProfile.data?.completenessPercent || 85}% complete) has been submitted for administrator review. Search and chat will unlock once approved.`,
+          ? `Badhai ho! Aapka matrimonial profile ab ${completionScore}% complete ho chuka hai. ShaadiBanao me aapka swagat hai!`
+          : `Aapka matrimonial profile (${completionScore}% complete) verification review ke liye submit ho chuka hai. Approval ke baad matches unlock ho jayenge.`,
         [
           {
             text: isApproved ? 'Explore Matches' : 'View Review Status',
@@ -917,13 +928,20 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
               }).catch(() => {});
             }
             setLoading(false);
+            if (savedProfile?.data) {
+              setCachedUserProfile(savedProfile.data);
+            }
+            const completionScore = savedProfile?.data?.completenessPercent || 100;
+            if (completionScore >= 100) {
+              AsyncStorage.setItem('@shaadibanao/profile_completed_notified', 'true').catch(() => {});
+            }
             const user = getSessionUser();
             const isApproved = user?.approvalStatus === 'approved';
             Alert.alert(
-              isApproved ? 'Profile Saved Successfully' : 'Profile Submitted for Review',
+              isApproved ? '🎉 Profile 100% Complete!' : 'Profile Submitted for Review',
               isApproved
-                ? `Your matrimonial profile is now ${savedProfile.data?.completenessPercent || 85}% complete!`
-                : `Your profile has been submitted for administrator review.`,
+                ? `Badhai ho! Aapka matrimonial profile ab ${completionScore}% complete ho chuka hai.`
+                : `Aapka profile admin review ke liye submit ho gaya hai.`,
               [
                 {
                   text: isApproved ? 'Explore Matches' : 'View Review Status',
@@ -955,9 +973,32 @@ export const ProfileCreationScreen: React.FC<Props> = ({ navigation }) => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     } else {
-      navigation.goBack();
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('MainTabs' as any);
+      }
     }
   };
+
+  // Modern back button navigation: Step back, or return to Home cleanly
+  useEffect(() => {
+    const onBackPress = () => {
+      if (currentStep > 1) {
+        setCurrentStep((prev) => prev - 1);
+        return true;
+      }
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+        return true;
+      }
+      navigation.navigate('MainTabs' as any);
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [currentStep, navigation]);
 
   const progressPercent = Math.round((currentStep / totalSteps) * 100);
 

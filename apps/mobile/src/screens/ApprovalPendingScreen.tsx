@@ -10,6 +10,9 @@ import {
   Alert,
   AppState,
   AppStateStatus,
+  BackHandler,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -41,6 +44,26 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
   const idStatus = user?.identityVerificationStatus || 'none';
   const isSuspended = user?.status === 'suspended';
   const needsMandatoryIdUpload = !isSuspended && !isUserAdminVerified(user) && (idStatus === 'none' || idStatus === 'rejected');
+
+  // Modern Android Back Button: Double tap to exit, prevent abrupt closure
+  useEffect(() => {
+    let lastBackPress = 0;
+    const onBackPress = () => {
+      const now = Date.now();
+      if (now - lastBackPress < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPress = now;
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      }
+      return true;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, []);
 
   const routeVerifiedUser = async (updatedUser: any, isSilent: boolean) => {
     isNavigatingRef.current = true;

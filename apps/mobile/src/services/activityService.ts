@@ -1,14 +1,15 @@
 import { ConversationItem, InterestItem } from '@bandhansetu/shared';
 import { getReceivedInterests, getSentInterests } from './interestService';
 import { getConversations } from './chatService';
+import { getCachedUserProfile } from './authSession';
 
 /**
  * Activity Service
- * Derives real account activity (interests, mutual matches, unread messages)
- * strictly from existing backend endpoints. No hardcoded or demo data.
+ * Derives real account activity (interests, mutual matches, unread messages, profile completion)
+ * strictly from existing backend endpoints and cached profile data.
  */
 
-export type ActivityKind = 'interest_received' | 'interest_accepted' | 'message';
+export type ActivityKind = 'interest_received' | 'interest_accepted' | 'message' | 'profile_completed';
 
 export interface ActivityItem {
   id: string;
@@ -117,6 +118,19 @@ export async function loadActivitySummary(token: string): Promise<ActivitySummar
     });
   } else {
     failedCount += 1;
+  }
+
+  // Profile 100% Completion Notification
+  const cachedProfile = getCachedUserProfile();
+  if (cachedProfile && (cachedProfile.completenessPercent === 100 || (cachedProfile.firstName && cachedProfile.photos?.length))) {
+    feed.push({
+      id: 'profile-completed-100',
+      kind: 'profile_completed',
+      title: '🎉 Profile 100% Complete!',
+      body: 'Badhai ho! Aapka matrimonial profile 100% complete ho chuka hai. Verified proposals aur matching recommendations ab aapko tezi se milenge.',
+      timestamp: cachedProfile.updatedAt || new Date().toISOString(),
+      unread: false,
+    });
   }
 
   feed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +30,7 @@ const KIND_ICON: Record<ActivityKind, keyof typeof Ionicons.glyphMap> = {
   interest_received: 'heart',
   interest_accepted: 'sparkles',
   message: 'chatbubble-ellipses',
+  profile_completed: 'ribbon',
 };
 
 export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
@@ -77,8 +79,27 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
     load();
   }, [load]);
 
+  const handleSafeBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs', { screen: 'Home' });
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [handleSafeBack]);
+
   const handlePress = (item: ActivityItem) => {
-    if (item.kind === 'message' && item.conversationId) {
+    if (item.kind === 'profile_completed') {
+      navigation.navigate('MainTabs', { screen: 'Profile' });
+    } else if (item.kind === 'message' && item.conversationId) {
       navigation.navigate('ChatDetail', {
         conversationId: item.conversationId,
         partnerName: item.partnerName || 'Member',
@@ -93,7 +114,7 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.headerTopRow}>
         <PressableScale
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={handleSafeBack}
           accessibilityLabel="Back"
         >
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />

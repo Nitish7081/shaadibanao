@@ -7,15 +7,21 @@ import {
   Linking,
   FlatList,
   useWindowDimensions,
+  BackHandler,
+  ToastAndroid,
+  Platform,
+  Alert,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { CompositeNavigationProp } from '@react-navigation/native';
+import { CompositeNavigationProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { UserProfile, SearchResultProfile, HomeBanner, bannerActionFor } from '@bandhansetu/shared';
+import { FastAppCache } from '../utils/lruCache';
 import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
 import { loadActivitySummary } from '../services/activityService';
@@ -69,6 +75,28 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const isNetworkError = (err: any): boolean =>
     err?.code === 'CONNECTION_FAILED' || err?.code === 'TIMEOUT_ERROR';
 
+  // Modern Android Back Button: Double tap to exit from Home, single tap stays on Home
+  useFocusEffect(
+    useCallback(() => {
+      let lastBackPress = 0;
+      const onBackPress = () => {
+        const now = Date.now();
+        if (now - lastBackPress < 2000) {
+          BackHandler.exitApp();
+          return true;
+        }
+        lastBackPress = now;
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+        }
+        return true;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }, [])
+  );
+
   const loadAllData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     const token = getSessionToken();
@@ -80,14 +108,31 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    setLoadingMatches(true);
-    setLoadingBanners(true);
-    setMatchesError(null);
     let networkDown = false;
-
-    // COMPULSORY Matrimonial opposite-gender rule: boy ALWAYS sees girls, girl ALWAYS sees boys.
-    // Server strictly enforces opposite gender from the saved profile, and client waits for gender if uncached.
     let effectiveProfile = getCachedUserProfile();
+
+    // Instant DSA Memory/Storage Retrieval (0ms cold-start)
+    if (!profile && effectiveProfile) {
+      setProfile(effectiveProfile);
+    }
+    const cachedMatches = FastAppCache.getMemory<SearchResultProfile[]>('daily_matches');
+    if (cachedMatches && cachedMatches.length > 0 && dailyMatches.length === 0) {
+      setDailyMatches(cachedMatches);
+      setLoadingMatches(false);
+    }
+    const cachedBanners = FastAppCache.getMemory<HomeBanner[]>('home_banners');
+    if (cachedBanners && cachedBanners.length > 0 && banners.length === 0) {
+      setBanners(cachedBanners);
+      setLoadingBanners(false);
+    }
+
+    if (!cachedMatches || cachedMatches.length === 0) {
+      setLoadingMatches(true);
+    }
+    if (!cachedBanners || cachedBanners.length === 0) {
+      setLoadingBanners(true);
+    }
+    setMatchesError(null);
     let profileRes: PromiseSettledResult<any> | null = null;
 
     if (!effectiveProfile?.gender) {
@@ -137,7 +182,9 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
     // 2. Active admin banners
     if (bannersRes.status === 'fulfilled') {
-      setBanners(bannersRes.value || []);
+      const freshBanners = bannersRes.value || [];
+      setBanners(freshBanners);
+      FastAppCache.set('home_banners', freshBanners, 15 * 60 * 1000);
     }
     setLoadingBanners(false);
 
@@ -153,16 +200,17 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           (m: any) => String(m.gender || '').toLowerCase() === finalOpposite
         );
         setDailyMatches(strictlyFiltered);
+        FastAppCache.set('daily_matches', strictlyFiltered, 5 * 60 * 1000);
 
         if (requiredOpposite !== finalOpposite) {
           searchProfiles(token, { limit: 8 })
             .then((fresh) => {
               if (fresh?.data?.items) {
-                setDailyMatches(
-                  fresh.data.items.filter(
-                    (m: any) => String(m.gender || '').toLowerCase() === finalOpposite
-                  )
+                const refreshedFiltered = fresh.data.items.filter(
+                  (m: any) => String(m.gender || '').toLowerCase() === finalOpposite
                 );
+                setDailyMatches(refreshedFiltered);
+                FastAppCache.set('daily_matches', refreshedFiltered, 5 * 60 * 1000);
               }
             })
             .catch(() => {});
@@ -173,6 +221,20 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
     } else {
       if (isNetworkError(searchRes.reason)) networkDown = true;
       setMatchesError(searchRes.reason?.message || t('home.unableToLoad'));
+    }
+
+    // Profile 100% Completion Notification / Dialog Trigger
+    if (effectiveProfile && (effectiveProfile.completenessPercent === 100 || (effectiveProfile.firstName && effectiveProfile.photos?.length))) {
+      AsyncStorage.getItem('@shaadibanao_celebrated_100').then((val) => {
+        if (!val) {
+          AsyncStorage.setItem('@shaadibanao_celebrated_100', 'true').catch(() => {});
+          Alert.alert(
+            '🎉 Profile 100% Complete!',
+            'Badhai ho! Aapka matrimonial profile 100% complete ho chuka hai. Rishton ke matches aur proposals ab aapko tezi se milenge.',
+            [{ text: 'Dhanyawad' }]
+          );
+        }
+      }).catch(() => {});
     }
 
     // 4. Real activity counts

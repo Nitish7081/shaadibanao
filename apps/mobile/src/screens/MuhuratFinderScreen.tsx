@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -129,12 +130,29 @@ export const MuhuratFinderScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const currentList = getDynamicMuhurats(selectedCategory);
 
+  const handleSafeBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs', { screen: 'Astrology' });
+    }
+  };
+
+  React.useEffect(() => {
+    const onBackPress = () => {
+      handleSafeBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [navigation]);
+
   const renderHeader = () => (
     <View style={styles.headerBlock}>
       <View style={styles.topNavRow}>
         <PressableScale
           style={styles.backBtn}
-          onPress={() => navigation.goBack()}
+          onPress={handleSafeBack}
           accessibilityLabel="Back"
         >
           <Ionicons name="arrow-back" size={20} color={ds.color.maroon} />

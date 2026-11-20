@@ -29,6 +29,7 @@ export const MainTabNavigator: React.FC<any> = ({ navigation }) => {
 
   return (
     <Tab.Navigator
+      backBehavior="firstRoute"
       tabBar={(props) => <RoyalTabBar {...props} />}
       screenOptions={{
         headerShown: false,
