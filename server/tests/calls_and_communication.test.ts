@@ -1,6 +1,9 @@
 import request from 'supertest';
+import http from 'http';
+import { io as Client, Socket as ClientSocket } from 'socket.io-client';
 import mongoose from 'mongoose';
 import { createApp } from '../src/app';
+import { SocketService } from '../src/socket/socket.service';
 import { connectDatabase, disconnectDatabase } from '../src/config/database';
 import { UserModel } from '../src/models/user.model';
 import { PanditModel } from '../src/models/pandit.model';
@@ -32,6 +35,8 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
   let panditToken: string;
   let panditDocId: string;
   let sharedConvId: string;
+  let server: http.Server;
+  let serverPort: number;
 
   beforeAll(async () => {
     await connectDatabase();
@@ -197,9 +202,23 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
         { user2Id: { $in: [femaleDevoteeId, maleCandidateId, malePaidCandidateId] } },
       ],
     });
+
+    // 8. Start HTTP Server with Socket.IO
+    server = http.createServer(app);
+    SocketService.init(server);
+    await new Promise<void>((resolve) => {
+      server.listen(0, () => {
+        const addr = server.address() as any;
+        serverPort = addr.port;
+        resolve();
+      });
+    });
   });
 
   afterAll(async () => {
+    if (server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
     await CallSessionModel.deleteMany({ callerId: { $in: [femaleDevoteeId, maleCandidateId, malePaidCandidateId] } });
     await ConversationModel.deleteMany({
       $or: [
@@ -533,6 +552,133 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
       expect(pandit?.isOnline).toBe(true);
       expect(pandit?.isAudioCallAvailable).toBe(false);
       expect(pandit?.isVideoCallAvailable).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // SECTION 7: TWO-DEVICE REAL-TIME WEBRTC CALLING & SIGNALING TEST
+  // =========================================================================
+  describe('7. Two-Device Real-Time WebRTC Calling & Signaling Test', () => {
+    let clientSocketA: ClientSocket;
+    let clientSocketB: ClientSocket;
+    let liveSessionId: string;
+
+    beforeAll((done) => {
+      let connectedCount = 0;
+      const onConnect = () => {
+        connectedCount++;
+        if (connectedCount === 2) done();
+      };
+
+      // Device A (Female Devotee) connects to Socket.IO
+      clientSocketA = Client(`http://localhost:${serverPort}`, {
+        auth: { token: femaleToken },
+        transports: ['websocket'],
+      });
+      clientSocketA.on('connect', onConnect);
+
+      // Device B (Pandit) connects to Socket.IO
+      clientSocketB = Client(`http://localhost:${serverPort}`, {
+        auth: { token: panditToken },
+        transports: ['websocket'],
+      });
+      clientSocketB.on('connect', onConnect);
+    });
+
+    afterAll(() => {
+      clientSocketA?.disconnect();
+      clientSocketB?.disconnect();
+    });
+
+    it('7.1 Both devices connect simultaneously to their private user rooms', () => {
+      expect(clientSocketA.connected).toBe(true);
+      expect(clientSocketB.connected).toBe(true);
+    });
+
+    it('7.2 Device A initiates call and Device B receives WebRTC Offer SDP', (done) => {
+      liveSessionId = 'sess_live_' + Date.now();
+
+      // Device B listens for WebRTC Offer
+      clientSocketB.once('webrtc_offer', (data: any) => {
+        expect(data.sessionId).toBe(liveSessionId);
+        expect(data.fromUserId).toBe(femaleDevoteeId);
+        expect(data.sdp).toBeDefined();
+        expect(data.sdp.type).toBe('offer');
+        expect(data.sdp.sdp).toBe('v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n');
+        done();
+      });
+
+      // Device A emits WebRTC Offer targeted to Pandit
+      clientSocketA.emit('webrtc_offer', {
+        sessionId: liveSessionId,
+        targetUserId: panditUserId,
+        sdp: {
+          type: 'offer',
+          sdp: 'v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n',
+        },
+      });
+    });
+
+    it('7.3 Device B answers call and Device A receives WebRTC Answer SDP', (done) => {
+      // Device A listens for WebRTC Answer
+      clientSocketA.once('webrtc_answer', (data: any) => {
+        expect(data.sessionId).toBe(liveSessionId);
+        expect(data.fromUserId).toBe(panditUserId);
+        expect(data.sdp).toBeDefined();
+        expect(data.sdp.type).toBe('answer');
+        expect(data.sdp.sdp).toBe('v=0\r\no=- 67890 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n');
+        done();
+      });
+
+      // Device B emits WebRTC Answer targeted to Devotee
+      clientSocketB.emit('webrtc_answer', {
+        sessionId: liveSessionId,
+        targetUserId: femaleDevoteeId,
+        sdp: {
+          type: 'answer',
+          sdp: 'v=0\r\no=- 67890 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n',
+        },
+      });
+    });
+
+    it('7.4 WebRTC ICE Candidates are successfully exchanged between devices', (done) => {
+      // Device B listens for ICE candidate
+      clientSocketB.once('webrtc_ice_candidate', (data: any) => {
+        expect(data.sessionId).toBe(liveSessionId);
+        expect(data.fromUserId).toBe(femaleDevoteeId);
+        expect(data.candidate.candidate).toBe('candidate:1 1 UDP 2130706431 192.168.1.100 50000 typ host');
+        done();
+      });
+
+      // Device A emits ICE candidate
+      clientSocketA.emit('webrtc_ice_candidate', {
+        sessionId: liveSessionId,
+        targetUserId: panditUserId,
+        candidate: {
+          candidate: 'candidate:1 1 UDP 2130706431 192.168.1.100 50000 typ host',
+          sdpMid: '0',
+          sdpMLineIndex: 0,
+        },
+      });
+    });
+
+    it('7.5 Audio mute & video toggles are relayed in real time between devices', (done) => {
+      // Device A listens for mute state changes from Device B
+      clientSocketA.once('webrtc_mute_toggle', (data: any) => {
+        expect(data.sessionId).toBe(liveSessionId);
+        expect(data.fromUserId).toBe(panditUserId);
+        expect(data.isMuted).toBe(true);
+        expect(data.isVideoOff).toBe(false);
+        done();
+      });
+
+      // Device B mutes microphone
+      clientSocketB.emit('webrtc_mute_toggle', {
+        sessionId: liveSessionId,
+        targetUserId: femaleDevoteeId,
+        isMuted: true,
+        isVideoOff: false,
+      });
     });
   });
 });
