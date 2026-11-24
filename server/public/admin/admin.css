@@ -1399,3 +1399,165 @@ h1, h2, h3, h4, .brand-name, .stat-value {
   cursor: not-allowed;
 }
 
+
+/* ==========================================================================
+   Expandable Sidebar Menu Groups & Search Filter
+   ========================================================================== */
+.sidebar-search-box {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.sidebar-search-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.sidebar-search-input:focus {
+  border-color: var(--gold-accent);
+}
+
+.menu-group {
+  margin-bottom: 6px;
+}
+
+.menu-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--gold-accent);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease;
+}
+
+.menu-group-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.group-chevron {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.menu-group:not(.expanded) .group-items {
+  display: none;
+}
+
+.menu-group:not(.expanded) .group-chevron {
+  transform: rotate(-90deg);
+}
+
+.group-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.admin-breadcrumbs {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.crumb-root {
+  color: var(--gold-accent-light);
+  font-weight: 600;
+}
+
+.crumb-sep {
+  opacity: 0.5;
+}
+
+.crumb-current {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.btn-lang-toggle {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--gold-accent-light);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn-lang-toggle:hover {
+  background: rgba(212, 175, 55, 0.15);
+  border-color: var(--gold-accent);
+}
+
+.btn-success {
+  background: var(--success-green);
+  color: #fff;
+}
+.btn-success:hover {
+  background: #059669;
+}
+
+
+/* 10-Section Filter Pills */
+.filter-pills-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 8px 0 14px;
+  scrollbar-width: thin;
+}
+
+.filter-pill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-sub);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-pill:hover {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--gold-accent-light);
+  border-color: var(--gold-accent);
+}
+
+.filter-pill.active {
+  background: var(--gold-accent);
+  color: #000;
+  font-weight: 700;
+  border-color: var(--gold-accent);
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+}
+
+.badge-purple {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}

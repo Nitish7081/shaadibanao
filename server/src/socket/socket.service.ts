@@ -3,6 +3,7 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { TokenService } from '../services/token.service';
 import { ChatService } from '../services/chat.service';
+import { CallService } from '../services/call.service';
 import { UserModel } from '../models/user.model';
 import { config } from '../config/env';
 
@@ -71,6 +72,31 @@ export class SocketService {
 
       // Join Personal User Notification Room
       socket.join(`user_${user.userId}`);
+
+      if (user.role === 'admin') {
+        socket.join('admin_room');
+      }
+
+      // Typing indicators
+      socket.on('typing_start', (data: { conversationId: string }) => {
+        if (data?.conversationId) {
+          socket.to(`conv_${data.conversationId}`).emit('user_typing', {
+            conversationId: data.conversationId,
+            userId: user.userId,
+            isTyping: true,
+          });
+        }
+      });
+
+      socket.on('typing_stop', (data: { conversationId: string }) => {
+        if (data?.conversationId) {
+          socket.to(`conv_${data.conversationId}`).emit('user_typing', {
+            conversationId: data.conversationId,
+            userId: user.userId,
+            isTyping: false,
+          });
+        }
+      });
 
       // Join specific conversation room after verifying membership and approval
       socket.on('join_conversation', async (data: { conversationId: string }, callback?: (res: any) => void) => {
@@ -174,6 +200,128 @@ export class SocketService {
           // ignore socket mark read error
         }
       });
+
+      // =========================================================================
+      // WebRTC Audio / Video Calling & Signaling
+      // =========================================================================
+
+      // Initiate Call
+      socket.on(
+        'call_initiate',
+        async (
+          data: { receiverId: string; callType: 'audio' | 'video'; panditId?: string },
+          callback?: (response: { success: boolean; data?: any; error?: string }) => void
+        ) => {
+          try {
+            const { receiverId, callType, panditId } = data || {};
+            const session = await CallService.initiateCall({
+              callerId: user.userId,
+              receiverId,
+              callType: callType || 'audio',
+              panditId,
+            });
+            callback?.({ success: true, data: session });
+          } catch (err: any) {
+            callback?.({ success: false, error: err.message });
+          }
+        }
+      );
+
+      // Accept Call
+      socket.on(
+        'call_accept',
+        async (
+          data: { sessionId: string },
+          callback?: (response: { success: boolean; data?: any; error?: string }) => void
+        ) => {
+          try {
+            const session = await CallService.acceptCall(data.sessionId, user.userId);
+            callback?.({ success: true, data: session });
+          } catch (err: any) {
+            callback?.({ success: false, error: err.message });
+          }
+        }
+      );
+
+      // Reject Call
+      socket.on(
+        'call_reject',
+        async (
+          data: { sessionId: string; reason?: string },
+          callback?: (response: { success: boolean; data?: any; error?: string }) => void
+        ) => {
+          try {
+            const session = await CallService.rejectCall(data.sessionId, user.userId, data.reason);
+            callback?.({ success: true, data: session });
+          } catch (err: any) {
+            callback?.({ success: false, error: err.message });
+          }
+        }
+      );
+
+      // End Call
+      socket.on(
+        'call_end',
+        async (
+          data: { sessionId: string; reason?: string },
+          callback?: (response: { success: boolean; data?: any; error?: string }) => void
+        ) => {
+          try {
+            const session = await CallService.endCall(data.sessionId, user.userId, data.reason);
+            callback?.({ success: true, data: session });
+          } catch (err: any) {
+            callback?.({ success: false, error: err.message });
+          }
+        }
+      );
+
+      // WebRTC Offer SDP Relay
+      socket.on('webrtc_offer', (data: { sessionId: string; targetUserId: string; sdp: any }) => {
+        if (data?.targetUserId && data?.sdp) {
+          io.to(`user_${data.targetUserId}`).emit('webrtc_offer', {
+            sessionId: data.sessionId,
+            fromUserId: user.userId,
+            sdp: data.sdp,
+          });
+        }
+      });
+
+      // WebRTC Answer SDP Relay
+      socket.on('webrtc_answer', (data: { sessionId: string; targetUserId: string; sdp: any }) => {
+        if (data?.targetUserId && data?.sdp) {
+          io.to(`user_${data.targetUserId}`).emit('webrtc_answer', {
+            sessionId: data.sessionId,
+            fromUserId: user.userId,
+            sdp: data.sdp,
+          });
+        }
+      });
+
+      // WebRTC ICE Candidate Relay
+      socket.on('webrtc_ice_candidate', (data: { sessionId: string; targetUserId: string; candidate: any }) => {
+        if (data?.targetUserId && data?.candidate) {
+          io.to(`user_${data.targetUserId}`).emit('webrtc_ice_candidate', {
+            sessionId: data.sessionId,
+            fromUserId: user.userId,
+            candidate: data.candidate,
+          });
+        }
+      });
+
+      // WebRTC Audio/Video Mute State Relay
+      socket.on(
+        'webrtc_mute_toggle',
+        (data: { sessionId: string; targetUserId: string; isMuted?: boolean; isVideoOff?: boolean }) => {
+          if (data?.targetUserId) {
+            io.to(`user_${data.targetUserId}`).emit('webrtc_mute_toggle', {
+              sessionId: data.sessionId,
+              fromUserId: user.userId,
+              isMuted: data.isMuted,
+              isVideoOff: data.isVideoOff,
+            });
+          }
+        }
+      );
 
       socket.on('disconnect', () => {
         // Disconnected

@@ -133,46 +133,26 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       setLoadingBanners(true);
     }
     setMatchesError(null);
-    let profileRes: PromiseSettledResult<any> | null = null;
-
-    if (!effectiveProfile?.gender) {
-      const [firstProf] = await Promise.allSettled([getMyProfile(token)]);
-      profileRes = firstProf;
-      if (firstProf.status === 'fulfilled' && firstProf.value?.data) {
-        effectiveProfile = firstProf.value.data;
-        setProfile(firstProf.value.data);
-        setCachedUserProfile(firstProf.value.data);
-      } else if (firstProf.status === 'rejected' && isNetworkError(firstProf.reason)) {
-        networkDown = true;
-      } else {
-        setProfile(null);
-      }
-    }
 
     const viewerGender = effectiveProfile?.gender?.toLowerCase?.();
     const requiredOpposite =
       viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : undefined;
 
+    // Run all home screen data requirements in a single parallel batch
     const [freshProfileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
-      profileRes ? Promise.resolve(null) : getMyProfile(token),
-      requiredOpposite
-        ? searchProfiles(token, { limit: 8 })
-        : Promise.resolve({ data: { items: [] } } as any),
+      getMyProfile(token),
+      searchProfiles(token, { limit: 8 }),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
     ]);
 
-    // 1. User profile update (when fetched in parallel above)
-    if (!profileRes) {
-      if (freshProfileRes.status === 'fulfilled' && freshProfileRes.value?.data) {
-        effectiveProfile = freshProfileRes.value.data;
-        setProfile(freshProfileRes.value.data);
-        setCachedUserProfile(freshProfileRes.value.data);
-      } else if (freshProfileRes.status === 'rejected' && isNetworkError(freshProfileRes.reason)) {
-        networkDown = true;
-      } else if (freshProfileRes.status === 'rejected') {
-        setProfile(null);
-      }
+    // 1. User profile update
+    if (freshProfileRes.status === 'fulfilled' && freshProfileRes.value?.data) {
+      effectiveProfile = freshProfileRes.value.data;
+      setProfile(freshProfileRes.value.data);
+      setCachedUserProfile(freshProfileRes.value.data);
+    } else if (freshProfileRes.status === 'rejected' && isNetworkError(freshProfileRes.reason)) {
+      networkDown = true;
     }
 
     // Fetch membership asynchronously to keep paywall cache updated

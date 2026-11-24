@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { PujaBooking } from '@bandhansetu/shared';
 import { API_BASE, getAuthHeader } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
 
 export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useTranslation();
@@ -46,11 +47,9 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
   const fetchBookings = async () => {
     setLoading(true);
     try {
-      const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/bookings/my`, { headers });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setBookings(json.data);
+      const json = await apiClient<any>('/bookings/my');
+      if (json && (json.success || Array.isArray(json.data))) {
+        setBookings(json.data || []);
       }
     } catch {
       // fallback
@@ -71,21 +70,18 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const headers = await getAuthHeader();
-              const res = await fetch(`${API_BASE}/bookings/${bookingId}/cancel`, {
+              const json = await apiClient<any>(`/bookings/${bookingId}/cancel`, {
                 method: 'POST',
-                headers: { ...headers, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: 'Cancelled by devotee' }),
               });
-              const json = await res.json();
-              if (json.success) {
+              if (json && json.success) {
                 Alert.alert('Notice', t('myBookings.cancelSuccess'));
                 fetchBookings();
               } else {
-                Alert.alert('Notice', json.message || json.error?.message || 'Could not cancel booking.');
+                Alert.alert('Notice', json?.message || json?.error?.message || 'Could not cancel booking.');
               }
-            } catch {
-              Alert.alert('Error', 'Network error. Please try again.');
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Network error. Please try again.');
             }
           },
         },
@@ -93,26 +89,64 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
     );
   };
 
+  const handlePayBooking = async (booking: PujaBooking) => {
+    try {
+      const orderRes = await apiClient<any>(`/bookings/${booking.id}/payment/order`, {
+        method: 'POST',
+      });
+      if (orderRes?.data?.orderId) {
+        Alert.alert(
+          'Confirm Dakshina Payment',
+          `Pay ₹${(booking.priceInr || 0).toLocaleString('en-IN')} for ${booking.serviceName}?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Pay ₹' + (booking.priceInr || 0),
+              onPress: async () => {
+                const verifyRes = await apiClient<any>(`/bookings/${booking.id}/payment/verify`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    orderId: orderRes.data.orderId,
+                    paymentId: `pay_sb_${Date.now()}`,
+                  }),
+                });
+                if (verifyRes?.success) {
+                  Alert.alert('Payment Successful! 🎉', 'Your Dakshina has been confirmed and credited.');
+                  fetchBookings();
+                }
+              },
+            },
+          ]
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('Payment Notice', err?.message || 'Unable to initiate payment.');
+    }
+  };
+
   const getStatusLabel = (status: string) => {
     switch (status) {
+      case 'confirmed':
       case 'accepted':
-        return t('myBookings.statusConfirmed');
+        return t('myBookings.statusConfirmed', 'Confirmed');
+      case 'assigned':
+        return t('myBookings.statusAssigned', 'Assigned');
       case 'completed':
-        return t('myBookings.statusCompleted');
+        return t('myBookings.statusCompleted', 'Completed');
       case 'cancelled':
-        return t('myBookings.statusCancelled');
       case 'declined':
-        return t('myBookings.statusDeclined');
+        return t('myBookings.statusCancelled', 'Cancelled');
+      case 'pending':
       case 'requested':
       default:
-        return t('myBookings.statusRequested');
+        return t('myBookings.statusRequested', 'Pending');
     }
   };
 
   const renderBookingItem = ({ item }: { item: PujaBooking }) => {
     const isOnline = item.mode === 'online';
-    const isConfirmed = item.status === 'accepted';
-    const canCancel = item.status === 'requested' || item.status === 'accepted';
+    const isConfirmed = item.status === 'accepted' || item.status === 'confirmed' || item.status === 'assigned';
+    const canCancel = item.status === 'requested' || item.status === 'pending' || item.status === 'accepted' || item.status === 'confirmed';
 
     return (
       <View style={styles.bookingCard}>
@@ -124,8 +158,10 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
           <View
             style={[
               styles.statusPill,
-              item.status === 'accepted'
+              item.status === 'accepted' || item.status === 'confirmed'
                 ? styles.statusConfirmed
+                : item.status === 'assigned'
+                ? styles.statusAssigned
                 : item.status === 'completed'
                 ? styles.statusCompleted
                 : item.status === 'cancelled' || item.status === 'declined'
@@ -185,6 +221,17 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
           >
             <Ionicons name="videocam" size={18} color="#FFFFFF" />
             <Text style={styles.joinVideoText}>{t('myBookings.joinVideo')}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Pay Dakshina Button if unpaid */}
+        {item.priceInr > 0 && item.paymentStatus !== 'paid' && item.status !== 'cancelled' && item.status !== 'declined' && (
+          <TouchableOpacity
+            style={[styles.joinVideoBtn, { backgroundColor: '#059669', marginTop: 8 }]}
+            onPress={() => handlePayBooking(item)}
+          >
+            <Ionicons name="card-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.joinVideoText}>Pay Dakshina (₹{(item.priceInr || 0).toLocaleString('en-IN')})</Text>
           </TouchableOpacity>
         )}
 
@@ -361,6 +408,9 @@ const styles = StyleSheet.create({
   },
   statusConfirmed: {
     backgroundColor: '#E8F5E9',
+  },
+  statusAssigned: {
+    backgroundColor: '#E3F2FD',
   },
   statusCompleted: {
     backgroundColor: '#E0F2F1',

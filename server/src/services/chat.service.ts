@@ -3,8 +3,13 @@ import { ConversationModel, IConversation } from '../models/conversation.model';
 import { MessageModel, IMessage } from '../models/message.model';
 import { MatchModel } from '../models/match.model';
 import { ProfileModel } from '../models/profile.model';
-import { getAcceptedUserIds } from './photoPrivacy';
 import { UserModel } from '../models/user.model';
+import { PanditModel } from '../models/pandit.model';
+import { SystemSettingsModel } from '../models/system-settings.model';
+import { AuditLogModel } from '../models/audit-log.model';
+import { MembershipService } from './membership.service';
+import { PushNotificationService } from './push-notification.service';
+import { getAcceptedUserIds } from './photoPrivacy';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
 import { inMemoryProfileRegistry } from './search.service';
 import { inMemoryMatchStore } from './interest.service';
@@ -20,7 +25,7 @@ import {
 // In-Memory Fallback Stores for testing and offline development
 export interface InMemoryConversation {
   id: string;
-  matchId: string;
+  matchId?: string;
   user1Id: string;
   user2Id: string;
   contactExchange: {
@@ -28,6 +33,7 @@ export interface InMemoryConversation {
     requestedBy?: string;
     updatedAt?: Date;
   };
+  isFreeChat?: boolean;
   lastMessageAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -39,6 +45,9 @@ export interface InMemoryMessage {
   senderId: string;
   receiverId: string;
   text: string;
+  attachmentUrl?: string;
+  isFreeChat?: boolean;
+  planTier?: string;
   status: 'sent' | 'delivered' | 'read';
   readAt?: Date;
   createdAt: Date;
@@ -86,6 +95,229 @@ export class ChatService {
     }
 
     return targetId;
+  }
+
+  /**
+   * Helper to resolve a user's verified gender
+   */
+  public static async resolveUserGender(userId: string): Promise<'female' | 'male' | 'other'> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    if (isDbConnected && mongoose.Types.ObjectId.isValid(userId)) {
+      const profile = (await ProfileModel.findOne({ userId }).select('gender').lean()) as any;
+      if (profile?.gender) return profile.gender;
+      const userDoc = (await UserModel.findById(userId).select('gender').lean()) as any;
+      if (userDoc?.gender) return userDoc.gender;
+    }
+
+    if (inMemoryProfileStore.has(userId)) {
+      const p = inMemoryProfileStore.get(userId);
+      if (p.gender) return p.gender;
+    }
+
+    for (const p of inMemoryProfileStore.values()) {
+      if (p.userId === userId || p.id === userId || p._id === userId) {
+        if (p.gender) return p.gender;
+      }
+    }
+
+    return 'male';
+  }
+
+  /**
+   * Check whether chat between sender and receiver is eligible
+   * Enforces:
+   * 1. Female-to-Male Free Chat (0 coins, 0 plan required)
+   * 2. Male User Paid Chat / Plan Required (Plus/Premium plan required unless trial limit applies)
+   * 3. Abusive account block check
+   */
+  public static async checkChatEligibility(
+    senderId: string,
+    receiverId: string,
+    conversationId?: string
+  ): Promise<{
+    allowed: boolean;
+    isFree: boolean;
+    reason?: string;
+    senderGender: string;
+    receiverGender: string;
+    planId?: string;
+  }> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+
+    // 0. Pandit Consultation Check:
+    // If either party is a registered & approved Pandit, permit consultation communication
+    if (isDbConnected && (mongoose.Types.ObjectId.isValid(senderId) || mongoose.Types.ObjectId.isValid(receiverId))) {
+      const isPanditInvolved = await PanditModel.exists({
+        $or: [
+          { userId: senderId, verificationStatus: { $in: ['approved', 'verified'] } },
+          { userId: receiverId, verificationStatus: { $in: ['approved', 'verified'] } },
+        ],
+      });
+      if (isPanditInvolved) {
+        return {
+          allowed: true,
+          isFree: true,
+          reason: 'PANDIT_CONSULTATION_CHAT',
+          senderGender: 'other',
+          receiverGender: 'other',
+        };
+      }
+    }
+
+    // 1. Account Block Check
+    if (isDbConnected && mongoose.Types.ObjectId.isValid(senderId)) {
+      const user = (await UserModel.findById(senderId).select('isChatBlocked chatBlockReason status').lean()) as any;
+      if (user?.isChatBlocked || user?.status === 'suspended') {
+        throw new AppError(
+          user?.chatBlockReason || 'Your messaging privileges have been suspended due to community guidelines violations.',
+          403,
+          'ACCOUNT_CHAT_BLOCKED'
+        );
+      }
+    }
+
+    const senderGender = await this.resolveUserGender(senderId);
+    const receiverGender = await this.resolveUserGender(receiverId);
+
+    // 2. Fetch system settings
+    let femaleFreeChatEnabled = true;
+    let malePaidChatRequired = true;
+    let maleFreeReplyToFemale = true;
+    let maleFreeMessageLimit = 0;
+
+    if (isDbConnected) {
+      try {
+        const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+        if (settings) {
+          femaleFreeChatEnabled = settings.femaleFreeChatEnabled !== false;
+          malePaidChatRequired = settings.malePaidChatRequired !== false;
+          maleFreeReplyToFemale = settings.maleFreeReplyToFemale !== false;
+          maleFreeMessageLimit = settings.maleFreeMessageLimit || 0;
+        }
+      } catch {
+        // Defaults
+      }
+    }
+
+    // 3. Female sender rule: Free chat!
+    if (senderGender === 'female' && femaleFreeChatEnabled) {
+      return {
+        allowed: true,
+        isFree: true,
+        reason: 'FEMALE_FREE_CHAT',
+        senderGender,
+        receiverGender,
+      };
+    }
+
+    // 4. Male sender rule: Plan check
+    if (senderGender === 'male') {
+      if (!malePaidChatRequired) {
+        return {
+          allowed: true,
+          isFree: true,
+          reason: 'PAID_GATE_DISABLED',
+          senderGender,
+          receiverGender,
+        };
+      }
+
+      // Check membership
+      const membership = await MembershipService.getUserMembership(senderId);
+      const isPaid = membership.planId === 'plus' || membership.planId === 'premium';
+      const isActive = membership.status === 'active';
+      let isNotExpired = true;
+      if (membership.expiresAt) {
+        const expTime = new Date(membership.expiresAt).getTime();
+        if (!isNaN(expTime) && expTime <= Date.now()) {
+          isNotExpired = false;
+        }
+      }
+
+      if (isPaid && isActive && isNotExpired) {
+        return {
+          allowed: true,
+          isFree: false,
+          planId: membership.planId,
+          senderGender,
+          receiverGender,
+        };
+      }
+
+      // Check if male is replying to an incoming female message in an existing conversation
+      if (isDbConnected && maleFreeReplyToFemale && receiverGender === 'female') {
+        try {
+          const targetConvId =
+            conversationId ||
+            (
+              await ConversationModel.findOne({
+                $or: [
+                  { user1Id: senderId, user2Id: receiverId },
+                  { user1Id: receiverId, user2Id: senderId },
+                ],
+              }).select('_id')
+            )?._id;
+
+          if (targetConvId) {
+            const hasFemaleMessage = await MessageModel.exists({
+              conversationId: targetConvId,
+              senderId: receiverId,
+            });
+            if (hasFemaleMessage) {
+              return {
+                allowed: true,
+                isFree: true,
+                reason: 'MALE_REPLY_TO_FEMALE_ALLOWED',
+                senderGender,
+                receiverGender,
+              };
+            }
+          }
+        } catch {
+          // continue to next checks
+        }
+      }
+
+      // If unit test / offline fallback without DB, allow
+      if (!isDbConnected) {
+        return {
+          allowed: true,
+          isFree: false,
+          senderGender,
+          receiverGender,
+        };
+      }
+
+      // Check free trial limit
+      if (maleFreeMessageLimit > 0) {
+        const sentCount = await MessageModel.countDocuments({ senderId });
+        if (sentCount < maleFreeMessageLimit) {
+          return {
+            allowed: true,
+            isFree: true,
+            reason: 'MALE_FREE_TRIAL',
+            senderGender,
+            receiverGender,
+          };
+        }
+      }
+
+      return {
+        allowed: false,
+        isFree: false,
+        reason: 'MALE_PLAN_REQUIRED',
+        senderGender,
+        receiverGender,
+      };
+    }
+
+    return {
+      allowed: true,
+      isFree: true,
+      senderGender,
+      receiverGender,
+    };
   }
 
   /**
@@ -219,7 +451,6 @@ export class ChatService {
       };
 
       if (exchangeStatus === 'accepted') {
-        // Disclose contact details only after mutual consent
         if (isDbConnected) {
           const partnerUser = await UserModel.findById(partnerId);
           if (partnerUser) {
@@ -261,7 +492,7 @@ export class ChatService {
 
   /**
    * POST /api/v1/conversations
-   * Creates or gets conversation for a MUTUAL MATCH ONLY
+   * Creates or gets conversation for a MUTUAL MATCH or FEMALE FREE CHAT
    */
   public static async getOrCreateConversation(
     userId: string,
@@ -275,7 +506,12 @@ export class ChatService {
 
     const isDbConnected = mongoose.connection.readyState === 1;
 
-    // STEP 1: Verify valid Mutual Match (Strict Access Control)
+    // Check Genders
+    const senderGender = await this.resolveUserGender(userId);
+    const targetGender = await this.resolveUserGender(targetUserId);
+    const isFemaleFreeChat = senderGender === 'female' && targetGender === 'male';
+
+    // STEP 1: Verify valid Mutual Match (or Female-to-Male Free Chat initiation privilege)
     let matchRecord: any = null;
 
     if (isDbConnected) {
@@ -293,7 +529,7 @@ export class ChatService {
       );
     }
 
-    if (!matchRecord) {
+    if (!matchRecord && !isFemaleFreeChat) {
       throw new AppError(
         'Messaging is restricted to mutual matches. You may only start a conversation after an interest is mutually accepted.',
         403,
@@ -301,7 +537,7 @@ export class ChatService {
       );
     }
 
-    const matchId = matchRecord._id?.toString() || matchRecord.id;
+    const matchId = matchRecord?._id?.toString() || matchRecord?.id || 'free_female_chat';
 
     // STEP 2: Find or create conversation
     let conv: any = null;
@@ -316,10 +552,11 @@ export class ChatService {
 
       if (!conv) {
         conv = await ConversationModel.create({
-          matchId: matchRecord._id,
+          matchId: matchRecord ? matchRecord._id : undefined,
           user1Id: userId,
           user2Id: targetUserId,
           contactExchange: { status: 'none' },
+          isFreeChat: isFemaleFreeChat,
           lastMessageAt: new Date(),
         });
       }
@@ -337,6 +574,7 @@ export class ChatService {
           user1Id: userId,
           user2Id: targetUserId,
           contactExchange: { status: 'none' },
+          isFreeChat: isFemaleFreeChat,
           lastMessageAt: new Date(),
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -354,6 +592,7 @@ export class ChatService {
       participant,
       unreadCount: 0,
       contactExchange: { status: conv.contactExchange?.status || 'none' },
+      isFreeChat: Boolean(conv.isFreeChat),
       createdAt: conv.createdAt?.toISOString?.() || new Date(conv.createdAt).toISOString(),
       updatedAt: conv.updatedAt?.toISOString?.() || new Date(conv.updatedAt).toISOString(),
     };
@@ -425,12 +664,13 @@ export class ChatService {
 
   /**
    * POST /api/v1/conversations/:conversationId/messages
-   * Sends a message in a conversation
+   * Sends a message with female-free chat vs male-paid gate enforcement
    */
   public static async sendMessage(
     userId: string,
     conversationId: string,
-    text: string
+    text: string,
+    attachmentUrl?: string
   ): Promise<ChatMessage> {
     const isDbConnected = mongoose.connection.readyState === 1;
 
@@ -458,6 +698,45 @@ export class ChatService {
 
     const receiverId = user1 === userId ? user2 : user1;
 
+    // STEP 1: Verify Chat Eligibility (Female Free vs Male Paid Plan)
+    const eligibility = await this.checkChatEligibility(userId, receiverId, conversationId);
+    if (!eligibility.allowed) {
+      throw new AppError(
+        'A paid membership plan (Plus or Premium) is required for male users to send messages. Please choose a plan to continue chatting.',
+        402,
+        'SUBSCRIPTION_REQUIRED'
+      );
+    }
+
+    // STEP 2: Content Moderation & Length Validation
+    let maxLength = 1000;
+    let bannedKeywords = ['abuse', 'fraud', 'scam', 'money transfer'];
+
+    if (isDbConnected) {
+      try {
+        const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+        if (settings) {
+          if (settings.maxMessageLength) maxLength = settings.maxMessageLength;
+          if (settings.bannedKeywords && settings.bannedKeywords.length) {
+            bannedKeywords = settings.bannedKeywords;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    if (text.length > maxLength) {
+      throw new AppError(`Message exceeds maximum limit of ${maxLength} characters.`, 400, 'MESSAGE_TOO_LONG');
+    }
+
+    const cleanLower = text.toLowerCase();
+    for (const kw of bannedKeywords) {
+      if (cleanLower.includes(kw.toLowerCase())) {
+        throw new AppError(`Message contains prohibited keyword or violation of content policy: "${kw}".`, 400, 'CONTENT_POLICY_VIOLATION');
+      }
+    }
+
     let savedMessage: ChatMessage;
 
     if (isDbConnected) {
@@ -466,6 +745,10 @@ export class ChatService {
         senderId: userId,
         receiverId,
         text,
+        attachmentUrl: attachmentUrl || undefined,
+        attachmentType: attachmentUrl ? 'image' : 'none',
+        isFreeChat: eligibility.isFree,
+        planTier: eligibility.planId,
         status: 'sent',
       });
 
@@ -479,6 +762,8 @@ export class ChatService {
         senderId: userId,
         text: msg.text,
         status: 'sent',
+        isFreeChat: Boolean(msg.isFreeChat),
+        planTier: msg.planTier,
         createdAt: msg.createdAt.toISOString(),
       };
     } else {
@@ -489,6 +774,9 @@ export class ChatService {
         senderId: userId,
         receiverId,
         text,
+        attachmentUrl,
+        isFreeChat: eligibility.isFree,
+        planTier: eligibility.planId,
         status: 'sent',
         createdAt: now,
         updatedAt: now,
@@ -503,16 +791,31 @@ export class ChatService {
         senderId: userId,
         text: newMsg.text,
         status: 'sent',
+        isFreeChat: Boolean(newMsg.isFreeChat),
+        planTier: newMsg.planTier,
         createdAt: now.toISOString(),
       };
     }
 
-    // Real-Time Socket Emission
+    // STEP 3: Real-Time Socket Emission
     SocketService.emitToConversation(conversationId, 'new_message', savedMessage);
     SocketService.emitToUser(receiverId, 'new_message_notification', {
       conversationId,
       message: savedMessage,
+      isFreeChat: eligibility.isFree,
     });
+
+    // STEP 4: Push notification for offline recipient
+    try {
+      const senderProfile = await this.getPublicProfileByUserId(userId, receiverId);
+      await PushNotificationService.sendToUser(receiverId, {
+        title: senderProfile?.displayName || 'New Message',
+        body: text.length > 80 ? text.slice(0, 77) + '...' : text,
+        data: { conversationId, senderId: userId },
+      });
+    } catch {
+      // Non-blocking
+    }
 
     return savedMessage;
   }
@@ -663,5 +966,112 @@ export class ChatService {
     });
 
     return result;
+  }
+
+  /**
+   * Admin: List Active Conversations & Entitlements (Section 9)
+   */
+  public static async listAdminConversations(query: { page?: number; limit?: number; search?: string }) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { conversations: [], total: 0, page, limit, totalPages: 1 };
+    }
+
+    const [convs, total] = await Promise.all([
+      ConversationModel.find()
+        .sort({ lastMessageAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user1Id', 'displayName email mobile gender isChatBlocked')
+        .populate('user2Id', 'displayName email mobile gender isChatBlocked')
+        .lean(),
+      ConversationModel.countDocuments(),
+    ]);
+
+    const enriched = await Promise.all(
+      convs.map(async (c: any) => {
+        const msgCount = await MessageModel.countDocuments({ conversationId: c._id });
+        const lastMsg = (await MessageModel.findOne({ conversationId: c._id }).sort({ createdAt: -1 }).lean()) as any;
+
+        return {
+          id: c._id.toString(),
+          user1: {
+            id: c.user1Id?._id?.toString(),
+            name: c.user1Id?.displayName || 'User 1',
+            email: c.user1Id?.email,
+            mobile: c.user1Id?.mobile,
+            gender: c.user1Id?.gender,
+            isChatBlocked: Boolean(c.user1Id?.isChatBlocked),
+          },
+          user2: {
+            id: c.user2Id?._id?.toString(),
+            name: c.user2Id?.displayName || 'User 2',
+            email: c.user2Id?.email,
+            mobile: c.user2Id?.mobile,
+            gender: c.user2Id?.gender,
+            isChatBlocked: Boolean(c.user2Id?.isChatBlocked),
+          },
+          messageCount: msgCount,
+          isFreeChat: Boolean(c.isFreeChat),
+          lastMessageAt: c.lastMessageAt,
+          lastMessagePreview: lastMsg?.text ? lastMsg.text.slice(0, 60) : '',
+        };
+      })
+    );
+
+    return {
+      conversations: enriched,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  /**
+   * Admin: Block/Unblock User Chat (Section 9)
+   */
+  public static async setChatBlockStatus(
+    userId: string,
+    isBlocked: boolean,
+    reason: string,
+    adminId: string
+  ) {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { success: true, isBlocked };
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+
+    user.isChatBlocked = isBlocked;
+    if (isBlocked) {
+      user.chatBlockReason = reason || 'Chat privileges restricted by administrator.';
+    } else {
+      user.chatBlockReason = undefined;
+    }
+    await user.save();
+
+    await AuditLogModel.create({
+      adminId,
+      action: isBlocked ? 'BLOCK_USER_CHAT' : 'UNBLOCK_USER_CHAT',
+      targetUserId: user._id.toString(),
+      targetUserEmail: user.email,
+      targetUserMobile: user.mobile,
+      details: { reason },
+    });
+
+    return {
+      success: true,
+      userId,
+      isBlocked,
+      isChatBlocked: isBlocked,
+      message: `User chat access is now ${isBlocked ? 'Blocked' : 'Restored'}.`,
+    };
   }
 }

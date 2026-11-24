@@ -42,6 +42,9 @@ export interface IUser extends Document {
     expiresAt: Date;
     device?: string;
   }>;
+  fcmTokens?: string[];
+  isChatBlocked?: boolean;
+  chatBlockReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -184,6 +187,19 @@ const UserSchema = new Schema<IUser>(
         device: { type: String },
       },
     ],
+    fcmTokens: {
+      type: [String],
+      default: [],
+    },
+    isChatBlocked: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    chatBlockReason: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,

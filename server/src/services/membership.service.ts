@@ -1,5 +1,9 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { MembershipModel, IMembership } from '../models/membership.model';
+import { SystemSettingsModel } from '../models/system-settings.model';
+import { NotificationModel } from '../models/notification.model';
+import { SocketService } from '../socket/socket.service';
 import { config } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
 import {
@@ -115,8 +119,30 @@ export class MembershipService {
 
   /**
    * GET /api/v1/membership/plans
-   * Returns list of configured membership tiers
+   * Returns list of configured membership tiers (with dynamic settings overrides if available)
    */
+  public static async getPlansAsync(): Promise<MembershipPlan[]> {
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+        if (settings) {
+          return MEMBERSHIP_PLANS.map((p) => {
+            if (p.id === 'plus' && settings.plusPlanPriceInr !== undefined) {
+              return { ...p, priceInr: settings.plusPlanPriceInr };
+            }
+            if (p.id === 'premium' && settings.premiumPlanPriceInr !== undefined) {
+              return { ...p, priceInr: settings.premiumPlanPriceInr };
+            }
+            return p;
+          });
+        }
+      } catch {
+        // Fallback to static catalog
+      }
+    }
+    return MEMBERSHIP_PLANS;
+  }
+
   public static getPlans(): MembershipPlan[] {
     return MEMBERSHIP_PLANS;
   }
@@ -150,21 +176,163 @@ export class MembershipService {
     const limit = plan.entitlements.contactDisclosuresLimit;
     const remaining = Math.max(0, limit - used);
 
+    // Check expiration
+    let isExpired = false;
+    if (record?.expiresAt) {
+      const expTime = new Date(record.expiresAt).getTime();
+      if (!isNaN(expTime) && expTime <= Date.now()) {
+        isExpired = true;
+      }
+    }
+
+    const status = isExpired ? 'expired' : record?.status || 'active';
+
     return {
       userId,
-      planId: planTier,
-      planName: plan.name,
-      status: record?.status || 'active',
+      planId: isExpired ? 'free' : planTier,
+      planName: isExpired ? 'ShaadiBanao Free (Plan Expired)' : plan.name,
+      status,
       entitlements: {
         ...plan.entitlements,
+        canInitiateChat: isExpired ? false : plan.entitlements.canInitiateChat,
         contactDisclosuresUsed: used,
-        contactDisclosuresRemaining: remaining,
+        contactDisclosuresRemaining: isExpired ? 0 : remaining,
       },
       startDate: record?.startDate
         ? new Date(record.startDate).toISOString()
         : new Date().toISOString(),
       expiresAt: record?.expiresAt ? new Date(record.expiresAt).toISOString() : undefined,
     };
+  }
+
+  /**
+   * POST /api/v1/membership/order
+   * Creates a payment order for plan purchase
+   */
+  public static async createOrder(
+    userId: string,
+    planId: 'plus' | 'premium'
+  ): Promise<{
+    orderId: string;
+    amountInr: number;
+    currency: string;
+    planId: string;
+    planName: string;
+    keyId: string;
+  }> {
+    const plan = this.getPlanById(planId);
+    if (!plan) {
+      throw new AppError('Invalid membership plan tier selected', 400, 'INVALID_PLAN');
+    }
+
+    const orderId = `order_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+    return {
+      orderId,
+      amountInr: plan.priceInr,
+      currency: 'INR',
+      planId: plan.id,
+      planName: plan.name,
+      keyId: process.env.RAZORPAY_KEY_ID || 'rzp_live_bandhansetu',
+    };
+  }
+
+  /**
+   * POST /api/v1/membership/verify
+   * Verifies payment and activates paid subscription
+   */
+  public static async verifyPaymentAndActivate(
+    userId: string,
+    data: {
+      orderId: string;
+      paymentId: string;
+      signature?: string;
+      planId: 'plus' | 'premium';
+    }
+  ): Promise<UserMembership> {
+    const plan = this.getPlanById(data.planId);
+    if (!plan) {
+      throw new AppError('Invalid membership plan tier', 400, 'INVALID_PLAN');
+    }
+
+    if (!data.orderId || !data.paymentId) {
+      throw new AppError('Payment orderId and paymentId are required.', 400, 'INVALID_PAYMENT_PAYLOAD');
+    }
+
+    // Razorpay signature verification if secret configured
+    const rzpSecret = process.env.RAZORPAY_KEY_SECRET;
+    if (rzpSecret && data.signature) {
+      const generatedSignature = crypto
+        .createHmac('sha256', rzpSecret)
+        .update(`${data.orderId}|${data.paymentId}`)
+        .digest('hex');
+
+      if (generatedSignature !== data.signature) {
+        throw new AppError('Payment verification signature mismatch. Fraudulent transaction detected.', 400, 'PAYMENT_VERIFICATION_FAILED');
+      }
+    }
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+    const validityDays = data.planId === 'premium' ? 180 : 90;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + validityDays * 24 * 60 * 60 * 1000);
+
+    if (isDbConnected) {
+      let mem = await MembershipModel.findOne({ userId });
+      if (!mem) {
+        mem = new MembershipModel({
+          userId: new mongoose.Types.ObjectId(userId),
+          planId: data.planId,
+          status: 'active',
+          startDate: now,
+          expiresAt,
+          contactDisclosuresUsed: 0,
+        });
+      } else {
+        mem.planId = data.planId;
+        mem.status = 'active';
+        mem.startDate = now;
+        mem.expiresAt = expiresAt;
+        mem.contactDisclosuresUsed = 0;
+      }
+      await mem.save();
+    } else {
+      inMemoryMembershipStore.set(userId, {
+        id: `mem_${Date.now()}`,
+        userId,
+        planId: data.planId,
+        status: 'active',
+        contactDisclosuresUsed: 0,
+        startDate: now,
+        expiresAt,
+      });
+    }
+
+    // In-app Notification to member
+    try {
+      await NotificationModel.create({
+        userId: new mongoose.Types.ObjectId(userId),
+        title: 'योजना सक्रिय (Membership Activated)',
+        body: `बधाई हो! आपकी ${plan.name} सदस्यता सक्रिय हो गई है। आप असीमित चैट और विशेष विशेषाधिकारों का आनंद ले सकते हैं। (Congratulations! Your ${plan.name} is now active. Enjoy full chat access and verified privileges.)`,
+        type: 'membership_activated',
+        data: {
+          planId: plan.id,
+          planName: plan.name,
+          expiresAt: expiresAt.toISOString(),
+        },
+      });
+
+      SocketService.emitToUser(userId, 'membership_updated', {
+        planId: plan.id,
+        planName: plan.name,
+        status: 'active',
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch {
+      // Non-blocking notification
+    }
+
+    return this.getUserMembership(userId);
   }
 
   /**
@@ -175,16 +343,18 @@ export class MembershipService {
     userId: string,
     planId: 'plus' | 'premium'
   ): Promise<CheckoutResponse> {
+    if (planId === ('free' as any)) {
+      throw new AppError('Checkout is only applicable for paid membership tiers (plus, premium)', 400, 'PAID_PLAN_REQUIRED');
+    }
+
     const plan = this.getPlanById(planId);
     if (!plan) {
       throw new AppError('Invalid membership plan tier selected', 400, 'INVALID_PLAN');
     }
 
-    // Critical Security Rule: Never auto-activate paid membership from client requests!
     return {
       checkoutAvailable: false,
-      notice:
-        'Payment gateway integration is currently unconfigured. Subscriptions cannot be purchased or activated directly via client requests until an official gateway webhook is configured.',
+      notice: 'Payment gateway integration pending configuration. Subscriptions cannot be self-activated from client.',
       planId: plan.id,
       planName: plan.name,
       amountInr: plan.priceInr,

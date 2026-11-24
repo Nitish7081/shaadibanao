@@ -160,6 +160,16 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
           icon: 'ribbon-outline' as const,
           onPress: () => navigation.navigate('Membership'),
         },
+        {
+          title: 'पंडित डैशबोर्ड (Pandit Portal)',
+          subtitle: 'Manage ceremony bookings, availability & earnings',
+          icon: 'flame-outline' as const,
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) parentNav.navigate('PanditDashboard');
+            else (navigation as any).navigate('PanditDashboard');
+          },
+        },
       ],
     },
     {
@@ -185,7 +195,11 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
           title: t('me.menu.help'),
           subtitle: t('me.menu.helpSub'),
           icon: 'help-buoy-outline' as const,
-          onPress: () => Alert.alert(t('me.supportTitle'), t('me.supportBody')),
+          onPress: () => {
+            const parentNav = navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+            if (parentNav) parentNav.navigate('HelpSupport');
+            else (navigation as any).navigate('HelpSupport');
+          },
         },
       ],
     },

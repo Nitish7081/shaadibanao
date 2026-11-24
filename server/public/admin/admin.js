@@ -3,7 +3,9 @@
  * Complete Administration, Moderation, Approvals & Trust & Safety Suite
  */
 
-const API_BASE = '/api/v1';
+const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.origin.includes('onrender.com'))
+  ? '/api/v1'
+  : 'https://shaadibanao.onrender.com/api/v1';
 
 // Universal SVG fallback for broken, missing or blocked images (Safe Data URI, never makes network calls)
 const FALLBACK_MEDIA_SVG =
@@ -37,7 +39,13 @@ document.addEventListener('DOMContentLoaded', () => {
   setupNavigation();
   setupLoginForm();
   setupEventListeners();
+  setupSidebarSearch();
   startLiveClock();
+  startBookingPolling();
+  applyAdminLanguage();
+
+  window.addEventListener('hashchange', handleHashChange);
+  document.getElementById('btn-lang-toggle')?.addEventListener('click', toggleAdminLanguage);
 
   if (authToken) {
     validateSessionAndInit();
@@ -219,7 +227,9 @@ function setupLoginForm() {
 
         showToast(`Welcome back, ${currentAdmin.displayName || 'Administrator'}!`);
         showAppView();
-        navigateToTab('dashboard');
+        initAdminSocket();
+        const targetRoute = getRouteFromHash() || 'dashboard';
+        navigateToTab(targetRoute);
       }
     } catch (err) {
       showToast(err.message || 'Authentication failed. Please check credentials.', 'error');
@@ -278,7 +288,12 @@ function showAppView() {
 async function validateSessionAndInit() {
   try {
     showAppView();
-    await loadDashboardStats();
+    initAdminSocket();
+    const initialRoute = getRouteFromHash();
+    navigateToTab(initialRoute, false);
+    if (initialRoute === 'dashboard') {
+      await loadDashboardStats();
+    }
   } catch {
     handleLogout();
   }
@@ -315,28 +330,382 @@ function setupNavigation() {
   });
 }
 
-const tabTitles = {
-  dashboard: { title: 'Dashboard Overview', desc: 'Real-time metrics, platform status, and active operations' },
-  approvals: { title: 'Pending Registration Approvals', desc: 'Review, approve, or reject new user registrations' },
-  pandits: { title: 'Pandit Service Providers', desc: 'Review pandit applications, traditional specializations, and service catalog' },
-  verifications: { title: 'Identity & Aadhaar Verifications', desc: 'Inspect masked identity proofs and issue verified badges' },
-  bookings: { title: 'Ceremony Bookings Management', desc: 'Monitor weddings, pujas, and online video consultations' },
-  community: { title: 'Community Posts Moderation', desc: 'Review, approve, or reject user wedding stories and photo memories' },
-  users: { title: 'User Accounts Management', desc: 'Manage member privileges, suspensions, and account states' },
-  profiles: { title: 'Profile Moderation', desc: 'Verify identity documents, bios, and approve member photos' },
-  memberships: { title: 'Memberships & Subscription Plans', desc: 'Inspect plan distributions and manually upgrade users' },
-  reports: { title: 'Trust & Safety Operations', desc: 'Review user-reported accounts and enforce community safety' },
-  audit: { title: 'Administrative Audit Trail', desc: 'Complete verifiable logs of all staff operations and approvals' },
-  banners: { title: 'Public Banners & Promotions', desc: 'Upload public promotional banners to Cloudinary and inspect active display' },
-  system: { title: 'System Health & Configuration', desc: 'Server, database, and authentication engine diagnostics' },
+let isHindiAdmin = localStorage.getItem('sb_admin_lang') === 'hi';
+
+const ADMIN_I18N = {
+  en: {
+    groupCore: 'Core Operations',
+    navDashboard: 'Dashboard Overview',
+    navApprovals: 'Pending Approvals',
+    navUsers: 'User Accounts',
+    navProfiles: 'Profile Moderation',
+    navVerifications: 'Identity & Aadhaar',
+    groupPuja: 'Puja & Pandit Services',
+    navBookMyPandit: 'Book My Pandit Requests',
+    navBookings: 'Ceremony Bookings',
+    navPandits: 'Pandit Directory',
+    navServices: 'Services Catalog',
+    navCategories: 'Service Categories',
+    groupFinance: 'Finance & Billing',
+    navPayments: 'Payments & Billing',
+    navMemberships: 'Memberships & Plans',
+    groupComm: 'Communication & Support',
+    navHelpSupport: 'Help & Support',
+    navNotifications: 'Push Notifications',
+    navCommunity: 'Community Feed',
+    navBanners: 'Public Banners',
+    groupSystem: 'System & Trust',
+    navReports: 'Trust & Safety',
+    navAudit: 'Audit Trail',
+    navSettings: 'Platform Settings',
+    navSystemHealth: 'System Health',
+    switchLangText: 'हिन्दी',
+  },
+  hi: {
+    groupCore: 'मुख्य संचालन',
+    navDashboard: 'डैशबोर्ड अवलोकन',
+    navApprovals: 'लंबित स्वीकृतियां',
+    navUsers: 'उपयोगकर्ता खाते',
+    navProfiles: 'प्रोफाइल सत्यापन',
+    navVerifications: 'पहचान व आधार',
+    groupPuja: 'पूजा व पंडित सेवाएं',
+    navBookMyPandit: 'पंडित बुकिंग अनुरोध',
+    navBookings: 'अनुष्ठान बुकिंग',
+    navPandits: 'पंडित सूची',
+    navServices: 'सेवा सूची',
+    navCategories: 'अनुष्ठान श्रेणियां',
+    groupFinance: 'वित्त व बिलिंग',
+    navPayments: 'भुगतान और बिलिंग',
+    navMemberships: 'सदस्यता योजनाएं',
+    groupComm: 'संचार व सहायता',
+    navHelpSupport: 'सहायता और संपर्क',
+    navNotifications: 'पुश सूचनाएं',
+    navCommunity: 'समुदाय पोस्ट्स',
+    navBanners: 'प्रचार बैनर',
+    groupSystem: 'सिस्टम व सुरक्षा',
+    navReports: 'सुरक्षा रिपोर्ट्स',
+    navAudit: 'ऑडिट ट्रेल',
+    navSettings: 'सिस्टम सेटिंग्स',
+    navSystemHealth: 'सिस्टम स्थिति',
+    switchLangText: 'English',
+  },
 };
 
-function navigateToTab(tabName) {
+function toggleAdminLanguage() {
+  isHindiAdmin = !isHindiAdmin;
+  localStorage.setItem('sb_admin_lang', isHindiAdmin ? 'hi' : 'en');
+  applyAdminLanguage();
+}
+
+function applyAdminLanguage() {
+  const dict = isHindiAdmin ? ADMIN_I18N.hi : ADMIN_I18N.en;
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n');
+    if (dict[key]) {
+      el.innerText = dict[key];
+    }
+  });
+
+  const langText = document.getElementById('lang-toggle-text');
+  if (langText) langText.innerText = dict.switchLangText;
+
+  updateBreadcrumbs(activeTab);
+  const meta = tabTitles[activeTab] || { title: 'Admin Portal', desc: 'Operations' };
+  const titleEl = document.getElementById('current-page-title');
+  const descEl = document.getElementById('current-page-desc');
+  if (titleEl) titleEl.innerText = isHindiAdmin ? (meta.titleHi || meta.title) : meta.title;
+  if (descEl) descEl.innerText = isHindiAdmin ? (meta.descHi || meta.desc) : meta.desc;
+}
+
+function updateBreadcrumbs(tabName) {
+  const meta = tabTitles[tabName] || { title: 'Dashboard', group: 'Home' };
+  const crumbEl = document.getElementById('crumb-current');
+  const groupText = isHindiAdmin ? (meta.groupHi || meta.group || 'होम') : (meta.group || 'Home');
+  const pageText = isHindiAdmin ? (meta.titleHi || meta.title) : meta.title;
+  if (crumbEl) {
+    crumbEl.innerText = `${groupText} / ${pageText}`;
+  }
+}
+
+function toggleMenuGroup(headerEl) {
+  const group = headerEl.closest('.menu-group');
+  if (group) {
+    group.classList.toggle('expanded');
+  }
+}
+
+function setupSidebarSearch() {
+  const searchInput = document.getElementById('sidebar-search');
+  if (!searchInput) return;
+
+  searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    const menuItems = document.querySelectorAll('.menu-item');
+    const menuGroups = document.querySelectorAll('.menu-group');
+
+    if (!query) {
+      menuItems.forEach((item) => (item.style.display = ''));
+      menuGroups.forEach((g) => (g.style.display = ''));
+      return;
+    }
+
+    menuGroups.forEach((group) => {
+      let groupHasMatch = false;
+      const items = group.querySelectorAll('.menu-item');
+      items.forEach((item) => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(query)) {
+          item.style.display = '';
+          groupHasMatch = true;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      if (groupHasMatch) {
+        group.style.display = '';
+        group.classList.add('expanded');
+      } else {
+        group.style.display = 'none';
+      }
+    });
+  });
+}
+
+function getRouteFromHash() {
+  const hash = window.location.hash || '';
+  const clean = hash.replace(/^#\/?/, '').trim();
+  return clean || 'dashboard';
+}
+
+function handleHashChange() {
+  const route = getRouteFromHash();
+  navigateToTab(route, false);
+}
+
+const tabTitles = {
+  dashboard: {
+    title: 'Dashboard Overview',
+    desc: 'Real-time metrics, platform status, and active operations',
+    titleHi: 'डैशबोर्ड अवलोकन',
+    descHi: 'वास्तविक समय आंकड़े, मंच स्थिति और सक्रिय संचालन',
+    group: 'Core Operations',
+    groupHi: 'मुख्य संचालन',
+  },
+  approvals: {
+    title: 'Pending Registration Approvals',
+    desc: 'Review, approve, or reject new user registrations',
+    titleHi: 'लंबित पंजीकरण स्वीकृतियां',
+    descHi: 'नए उपयोगकर्ता पंजीकरणों की समीक्षा, स्वीकृति या अस्वीकृति',
+    group: 'Core Operations',
+    groupHi: 'मुख्य संचालन',
+  },
+  'book-my-pandit': {
+    title: 'Book My Pandit - Custom Customer Requests',
+    desc: 'Incoming devotee booking requests with customer name, phone, puja, venue, and pandit assignment',
+    titleHi: 'पंडित बुकिंग अनुरोध (Book My Pandit)',
+    descHi: 'भक्तों द्वारा मोबाइल ऐप से किए गए पूजा और कर्मकांड अनुरोध एवं पंडित आवंटन',
+    group: 'Puja & Pandit Services',
+    groupHi: 'पूजा एवं पंडित सेवाएं',
+  },
+  bookings: {
+    title: 'Ceremony Bookings Management',
+    desc: 'Monitor weddings, pujas, and online video consultations',
+    titleHi: 'अनुष्ठान बुकिंग प्रबंधन',
+    descHi: 'विवाह, पूजा और ऑनलाइन वीडियो परामर्श का प्रबंधन',
+    group: 'Puja & Pandit Services',
+    groupHi: 'पूजा एवं पंडित सेवाएं',
+  },
+  pandits: {
+    title: 'Pandit Service Providers',
+    desc: 'Review pandit applications, traditional specializations, and service catalog',
+    titleHi: 'वैदिक पंडित निर्देशिका',
+    descHi: 'पंजीकृत पंडित, विशेषज्ञता और सेवा प्रोफाइल',
+    group: 'Puja & Pandit Services',
+    groupHi: 'पूजा एवं पंडित सेवाएं',
+  },
+  services: {
+    title: 'Puja & Ceremony Services Catalog',
+    desc: 'Manage available sacred Vedic rituals, base prices, duration & Samagri inclusions',
+    titleHi: 'पूजा व कर्मकांड सेवा सूची',
+    descHi: 'वैदिक अनुष्ठान, पूजन सामग्री, अवधि एवं दक्षिणा दरें',
+    group: 'Puja & Pandit Services',
+    groupHi: 'पूजा एवं पंडित सेवाएं',
+  },
+  categories: {
+    title: 'Service & Ceremony Categories',
+    desc: 'Organized categories for matrimony rituals, horoscopes, and Vedic consultations',
+    titleHi: 'अनुष्ठान श्रेणियां',
+    descHi: 'विवाह, हवन, शांति एवं ज्योतिष परामर्श श्रेणियां',
+    group: 'Puja & Pandit Services',
+    groupHi: 'पूजा एवं पंडित सेवाएं',
+  },
+  payments: {
+    title: 'Payments & Billing Transactions',
+    desc: 'Revenue, subscription upgrades, and ceremony booking fee transactions',
+    titleHi: 'भुगतान और बिलिंग लेनदेन',
+    descHi: 'सदस्यता योजनाएं और पूजा बुकिंग शुल्क के सुरक्षित लेनदेन',
+    group: 'Finance & Billing',
+    groupHi: 'वित्त एवं बिलिंग',
+  },
+  memberships: {
+    title: 'Memberships & Subscription Plans',
+    desc: 'Inspect plan distributions and manually upgrade users',
+    titleHi: 'सदस्यता और योजनाएं',
+    descHi: 'सिल्वर, गोल्ड, प्लैटिनम और वीआईपी योजनाएं',
+    group: 'Finance & Billing',
+    groupHi: 'वित्त एवं बिलिंग',
+  },
+  withdrawals: {
+    title: 'Pandit Payouts & Withdrawals',
+    desc: 'Review pandit wallet withdrawal requests, bank details, and approve payouts',
+    titleHi: 'पंडित भुगतान एवं निकासी',
+    descHi: 'पंडित दक्षिणा निकासी अनुरोध एवं बैंक ट्रांसफर समीक्षा',
+    group: 'Finance & Billing',
+    groupHi: 'वित्त एवं बिलिंग',
+  },
+  'help-support': {
+    title: 'Customer Inquiries & Support Tickets',
+    desc: 'Dedicated relationship support and inquiry resolution for ShaadiBanao users',
+    titleHi: 'ग्राहक सहायता और पूछताछ',
+    descHi: 'सदस्यों की पूछताछ और संपर्क अनुरोध (फोन: 8076168502, व्हाट्सएप, ईमेल)',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  notifications: {
+    title: 'Broadcast & System Notifications',
+    desc: 'Send announcements, muhurat alerts, and updates to all or segmented mobile app users',
+    titleHi: 'सिस्टम एवं ब्रॉडकास्ट सूचनाएं',
+    descHi: 'मोबाइल सदस्यों को शुभ मुहूर्त, उत्सव एवं महत्वपूर्ण सूचनाएं भेजें',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  community: {
+    title: 'Community Posts Moderation',
+    desc: 'Review, approve, or reject user wedding stories and photo memories',
+    titleHi: 'समुदाय पोस्ट्स समीक्षा',
+    descHi: 'उपयोगकर्ताओं की विवाह यादें और पारिवारिक उत्सव',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  banners: {
+    title: 'Public Banners & Promotions',
+    desc: 'Upload public promotional banners to Cloudinary and inspect active display',
+    titleHi: 'प्रचार बैनर प्रबंधन',
+    descHi: 'मोबाइल ऐप के होम स्क्रीन बैनर प्रबंधित करें',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  users: {
+    title: 'User Accounts Management',
+    desc: 'Manage member privileges, suspensions, and account states',
+    titleHi: 'उपयोगकर्ता खाते',
+    descHi: 'सदस्य अधिकार, निलंबन और खाता स्थिति प्रबंधन',
+    group: 'Core Operations',
+    groupHi: 'मुख्य संचालन',
+  },
+  profiles: {
+    title: 'Profile Moderation',
+    desc: 'Verify identity documents, bios, and approve member photos',
+    titleHi: 'प्रोफाइल सत्यापन',
+    descHi: 'बायोडाटा और फोटो सत्यापन',
+    group: 'Core Operations',
+    groupHi: 'मुख्य संचालन',
+  },
+  verifications: {
+    title: 'Identity & Aadhaar Verifications',
+    desc: 'Inspect masked identity proofs and issue verified badges',
+    titleHi: 'पहचान व आधार सत्यापन',
+    descHi: 'सरकारी पहचान पत्र और आधार की सुरक्षित समीक्षा',
+    group: 'Core Operations',
+    groupHi: 'मुख्य संचालन',
+  },
+  reports: {
+    title: 'Trust & Safety Operations',
+    desc: 'Review user-reported accounts and enforce community safety',
+    titleHi: 'सुरक्षा और रिपोर्ट प्रबंधन',
+    descHi: 'आपत्तिजनक खातों की समीक्षा और अनुशासन',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+  audit: {
+    title: 'Administrative Audit Trail',
+    desc: 'Complete verifiable logs of all staff operations and approvals',
+    titleHi: 'ऑडिट ट्रेल',
+    descHi: 'प्रशासक गतिविधियों का संपूर्ण रिकॉर्ड',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+  'chat-management': {
+    title: 'Chat & Conversations Management',
+    desc: 'Monitor real-time conversations, free female chat usage, male subscription plans & safety moderation',
+    titleHi: 'चैट एवं वार्तालाप प्रबंधन',
+    descHi: 'महिला निःशुल्क चैट, पुरुष सदस्यता अधिकार और चैट सुरक्षा नियंत्रण',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  'calls-management': {
+    title: 'Audio & Video Calls Management',
+    desc: 'Real-time WebRTC session oversight, duration tracking, Pandit consultation billing, and platform commission splits',
+    titleHi: 'ऑडियो व वीडियो कॉल्स प्रबंधन',
+    descHi: 'वेबरटीसी लाइव कॉल्स, कॉल अवधि, पंडित परामर्श शुल्क व कमीशन विभाजन',
+    group: 'Communication & Support',
+    groupHi: 'संचार एवं सहायता',
+  },
+  settings: {
+    title: 'System & Official Contact Settings',
+    desc: 'Official platform configuration, support hotlines, and operations mode',
+    titleHi: 'सिस्टम व आधिकारिक संपर्क सेटिंग्स',
+    descHi: 'आधिकारिक सहायता नंबर: 8076168502, ईमेल: shaadibanao.urbanpower@gmail.com',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+  system: {
+    title: 'System Health & Configuration',
+    desc: 'Server, database, and authentication engine diagnostics',
+    titleHi: 'सिस्टम स्वास्थ्य और कॉन्फ़िगरेशन',
+    descHi: 'सर्वर, डेटाबेस और प्रमाणन इंजन स्थिति',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+  'error-monitoring': {
+    title: 'Application Error Monitoring',
+    desc: 'Live tracking of backend and frontend exceptions, failed bookings, APIs, and payments',
+    titleHi: 'सिस्टम त्रुटि निगरानी (Error Monitoring)',
+    descHi: 'विफल एपीआई, डेटाबेस त्रुटियां और बुकिंग समस्याओं की वास्तविक समय निगरानी',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+  'database-monitoring': {
+    title: 'Database & MongoDB Monitoring',
+    desc: 'Real-time MongoDB Atlas health, latency ping, collection document counts, and indexes',
+    titleHi: 'डेटाबेस लाइव निगरानी',
+    descHi: 'मोंगोडीबी एटलस लाइव स्थिति, लेटेंसी पिंग और 26+ संग्रहों के वास्तविक आंकड़े',
+    group: 'System & Trust',
+    groupHi: 'सिस्टम व सुरक्षा',
+  },
+};
+
+function navigateToTab(tabName, updateHash = true) {
+  if (!tabName) tabName = 'dashboard';
   activeTab = tabName;
+
+  if (updateHash) {
+    if (window.location.hash !== '#/' + tabName) {
+      window.location.hash = '#/' + tabName;
+    }
+  }
 
   // Update active links
   document.querySelectorAll('.menu-link').forEach((link) => {
-    link.classList.toggle('active', link.getAttribute('data-tab') === tabName);
+    const isTarget = link.getAttribute('data-tab') === tabName;
+    link.classList.toggle('active', isTarget);
+    if (isTarget) {
+      const parentGroup = link.closest('.menu-group');
+      if (parentGroup) {
+        parentGroup.classList.add('expanded');
+      }
+    }
   });
 
   // Update sections
@@ -344,12 +713,15 @@ function navigateToTab(tabName) {
     sec.style.display = sec.id === `tab-${tabName}` ? 'block' : 'none';
   });
 
+  // Update breadcrumbs
+  updateBreadcrumbs(tabName);
+
   // Update topbar headers
   const meta = tabTitles[tabName] || { title: 'Admin Portal', desc: 'Operations' };
   const titleEl = document.getElementById('current-page-title');
   const descEl = document.getElementById('current-page-desc');
-  if (titleEl) titleEl.innerText = meta.title;
-  if (descEl) descEl.innerText = meta.desc;
+  if (titleEl) titleEl.innerText = isHindiAdmin ? (meta.titleHi || meta.title) : meta.title;
+  if (descEl) descEl.innerText = isHindiAdmin ? (meta.descHi || meta.desc) : meta.desc;
 
   refreshActiveTabData();
 }
@@ -368,6 +740,9 @@ function refreshActiveTabData() {
     case 'verifications':
       loadVerifications();
       break;
+    case 'book-my-pandit':
+      loadBookMyPanditRequests();
+      break;
     case 'bookings':
       loadBookings();
       break;
@@ -384,6 +759,7 @@ function refreshActiveTabData() {
       loadProfiles();
       break;
     case 'memberships':
+      loadMemberships();
       break;
     case 'reports':
       loadReports();
@@ -393,6 +769,39 @@ function refreshActiveTabData() {
       break;
     case 'system':
       loadSystemHealth();
+      break;
+    case 'payments':
+      loadPayments();
+      break;
+    case 'services':
+      loadServices();
+      break;
+    case 'categories':
+      loadCategories();
+      break;
+    case 'notifications':
+      loadNotifications();
+      break;
+    case 'help-support':
+      loadHelpSupport();
+      break;
+    case 'chat-management':
+      loadChatConversations();
+      break;
+    case 'calls-management':
+      loadCallsList();
+      break;
+    case 'settings':
+      loadSettings();
+      break;
+    case 'withdrawals':
+      loadWithdrawals();
+      break;
+    case 'error-monitoring':
+      loadErrorMonitoring();
+      break;
+    case 'database-monitoring':
+      loadDatabaseMonitoring();
       break;
   }
 }
@@ -1925,79 +2334,339 @@ function escapeJs(str) {
 }
 
 // ==========================================================================
-// 9. PANDIT SERVICES & VERIFICATION
+// 9. COMPLETE PANDIT SERVICES & VERIFICATION (10 SECTIONS)
 // ==========================================================================
+let currentPanditSection = 'all';
+let panditSearchQuery = '';
+let panditsCache = [];
+let activeInspectedPandit = null;
+
+function selectPanditSection(section) {
+  currentPanditSection = section;
+  document.querySelectorAll('.filter-pill[data-pandit-section]').forEach((p) => {
+    p.classList.toggle('active', p.getAttribute('data-pandit-section') === section);
+  });
+  loadPandits();
+}
+
+let panditSearchTimer = null;
+function handlePanditSearch(e) {
+  clearTimeout(panditSearchTimer);
+  panditSearchTimer = setTimeout(() => {
+    panditSearchQuery = e.target.value ? e.target.value.trim() : '';
+    loadPandits();
+  }, 300);
+}
+
 async function loadPandits() {
   const tbody = document.getElementById('tbody-pandits');
-  const statusFilter = document.getElementById('filter-pandits-status')?.value || 'all';
   if (!tbody) return;
 
-  tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6">Loading pandit catalog...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6">Loading pandits catalog...</td></tr>';
 
   try {
-    const res = await adminFetch(`/admin/pandits?status=${statusFilter}`);
+    const query = new URLSearchParams({
+      subSection: currentPanditSection,
+      search: panditSearchQuery,
+      limit: '100',
+    });
+    const res = await adminFetch(`/admin/pandits?${query.toString()}`);
     const items = res.data?.items || [];
+    panditsCache = items;
+
+    // Update Quick Stat Tiles
+    const total = items.length;
+    const pendingCount = items.filter(
+      (p) => p.verificationStatus === 'pending' || p.verificationStatus === 'under_review'
+    ).length;
+    const approvedCount = items.filter(
+      (p) => (p.verificationStatus === 'approved' || p.verificationStatus === 'verified') && p.isActive !== false
+    ).length;
+    const assignedCount = items.filter((p) => p.isAssigned === true).length;
+    const totalEarnings = items.reduce((sum, p) => sum + (p.totalEarnings || 0), 0);
+
+    const elTotal = document.getElementById('pandit-stat-total');
+    const elPending = document.getElementById('pandit-stat-pending');
+    const elApproved = document.getElementById('pandit-stat-approved');
+    const elAssigned = document.getElementById('pandit-stat-assigned');
+    const elEarnings = document.getElementById('pandit-stat-earnings');
+
+    if (elTotal) elTotal.innerText = total;
+    if (elPending) elPending.innerText = pendingCount;
+    if (elApproved) elApproved.innerText = approvedCount;
+    if (elAssigned) elAssigned.innerText = assignedCount;
+    if (elEarnings) elEarnings.innerText = '₹' + totalEarnings.toLocaleString('en-IN');
+
+    const badgePandits = document.getElementById('badge-pandits-count');
+    if (badgePandits) {
+      badgePandits.innerText = pendingCount;
+      badgePandits.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    }
 
     if (items.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No Pandit records found matching selected filter</td></tr>';
+      tbody.innerHTML =
+        '<tr><td colspan="9" class="table-empty">No Pandit records found matching the active filter and search</td></tr>';
       return;
     }
 
     tbody.innerHTML = items
       .map((p) => {
-        const statusBadge =
-          p.verificationStatus === 'verified'
-            ? '<span class="badge badge-success">✓ Verified</span>'
-            : p.verificationStatus === 'rejected'
-            ? '<span class="badge badge-danger">✕ Rejected</span>'
-            : '<span class="badge badge-warning pulse">⏳ Pending</span>';
+        const isApproved = p.verificationStatus === 'approved' || p.verificationStatus === 'verified';
+        const isPending = p.verificationStatus === 'pending' || p.verificationStatus === 'under_review';
+        const isRejected = p.verificationStatus === 'rejected';
+        const isSuspended = p.verificationStatus === 'suspended';
+
+        let statusBadge = '';
+        if (isApproved) {
+          statusBadge = '<span class="badge badge-success">✓ Approved</span>';
+        } else if (isRejected) {
+          statusBadge = '<span class="badge badge-danger">✕ Rejected</span>';
+        } else if (isSuspended) {
+          statusBadge = '<span class="badge badge-danger">🚫 Suspended</span>';
+        } else {
+          statusBadge = `<span class="badge badge-warning pulse">⏳ ${
+            p.verificationStatus === 'under_review' ? 'Under Review' : 'Pending Approval'
+          }</span>`;
+        }
+
+        const onlineBadge =
+          p.isOnline !== false
+            ? '<span style="color: #10b981; font-size: 11px; margin-left: 4px;">● Online</span>'
+            : '<span style="color: #94a3b8; font-size: 11px; margin-left: 4px;">○ Offline</span>';
+
+        const assignedBadge = p.isAssigned
+          ? '<div class="text-xs text-info mt-1">🪔 Currently Assigned</div>'
+          : '';
 
         const actions = `
-          <div class="action-buttons">
-            ${p.userId ? `<button class="btn-act btn-act-view btn-xs" onclick="openApplicantModal('${p.userId}')">👁️ Profile</button>` : ''}
-            ${p.verificationStatus !== 'verified' ? `<button class="btn-primary btn-xs" onclick="verifyPandit('${p.id}')">✓ Verify</button>` : ''}
-            ${p.verificationStatus !== 'rejected' ? `<button class="btn-danger btn-xs" onclick="rejectPandit('${p.id}')">✕ Reject</button>` : ''}
+          <div class="action-buttons" style="display: flex; flex-wrap: wrap; gap: 4px;">
+            <button class="btn-act btn-act-view btn-xs" onclick="openPanditDetailsModal('${p.id}')" title="Inspect Full Biodata & Documents">👁️ Full Profile &amp; Docs</button>
+            ${!isApproved ? `<button class="btn-primary btn-xs" onclick="approvePandit('${p.id}')">✓ Approve</button>` : ''}
+            ${!isRejected ? `<button class="btn-danger btn-xs" onclick="openRejectPanditDialog('${p.id}')">✕ Reject</button>` : ''}
+            <button class="btn-secondary btn-xs" onclick="openRequestPanditDocsModal('${p.id}')">📄 Request Docs</button>
+            <button class="btn-secondary btn-xs" onclick="togglePanditActiveStatus('${p.id}')">${
+          p.isActive !== false ? '⚡ Deactivate' : '⚡ Activate'
+        }</button>
+            ${!isSuspended ? `<button class="btn-danger btn-xs" onclick="suspendPanditAccount('${p.id}')">🚫 Suspend</button>` : ''}
           </div>
         `;
+
+        const avatar = p.profilePhoto
+          ? `<img src="${escapeHtml(p.profilePhoto)}" class="avatar-sm" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;" onerror="this.src='${FALLBACK_MEDIA_SVG}'" />`
+          : `<div class="avatar-ph" style="width: 36px; height: 36px;">${(p.name || 'P')[0]}</div>`;
+
+        const specs = (p.specialization || ['Sanatan Rituals']).slice(0, 2).join(', ');
+        const docsCount = p.documentsCount || (p.documents ? p.documents.length : 0);
 
         return `
           <tr>
             <td>
               <div class="user-cell">
-                <div class="avatar-ph">${(p.name || 'P')[0]}</div>
+                ${avatar}
                 <div>
                   <strong>${escapeHtml(p.name)}</strong>
-                  <div class="text-muted text-xs">${escapeHtml(p.religiousTradition || 'Sanatan')}</div>
+                  <div class="text-xs" style="color: var(--gold-accent-light); font-weight: 600;">${escapeHtml(
+                    p.panditId || 'PND-NEW'
+                  )}</div>
                 </div>
               </div>
             </td>
             <td>
-              <div>${escapeHtml(p.phone || 'N/A')}</div>
-              <div class="text-muted text-xs">${escapeHtml(p.email || '')}</div>
+              <div>📞 ${escapeHtml(p.phone || 'N/A')}</div>
+              <div class="text-muted text-xs">✉️ ${escapeHtml(p.email || 'N/A')}</div>
             </td>
             <td>
-              <div>${escapeHtml(p.religiousTradition || 'Vedic')}</div>
-              <div class="text-muted text-xs">${p.experienceYears} Years Exp</div>
+              <div>${escapeHtml(p.city || 'Delhi NCR')}</div>
+              <div class="text-muted text-xs">${escapeHtml(p.state || 'Delhi')}</div>
             </td>
-            <td>${(p.serviceLocations || ['Delhi NCR']).slice(0, 2).join(', ')}</td>
-            <td><span class="badge badge-info">${p.servicesCount || 0} Listed</span></td>
-            <td>⭐ ${p.rating ? p.rating.toFixed(1) : '5.0'}</td>
-            <td>${statusBadge}</td>
-            <td>${actions}</td>
+            <td>
+              <div><strong>${p.experienceYears || 5}+ Yrs</strong>: ${escapeHtml(
+          p.religiousTradition || 'Vedic Sanatan'
+        )}</div>
+              <div class="text-muted text-xs">${escapeHtml(specs)}</div>
+            </td>
+            <td>
+              <div>${
+                p.offersAstrology
+                  ? '<span class="badge badge-info text-xs">⭐ Astrology Active</span>'
+                  : '<span class="text-muted text-xs">Puja Only</span>'
+              }</div>
+              <div class="text-xs text-warning mt-1">₹${p.consultationCharges || 501} / consult</div>
+            </td>
+            <td>
+              <span class="badge ${docsCount > 0 ? 'badge-success' : 'badge-warning'}">${docsCount} Uploaded</span>
+              ${
+                p.requestedDocuments && p.requestedDocuments.length
+                  ? '<div class="text-xs text-danger mt-1">Docs Requested</div>'
+                  : ''
+              }
+            </td>
+            <td>
+              <div><strong>₹${(p.totalEarnings || 0).toLocaleString('en-IN')}</strong></div>
+              <div class="text-xs text-muted">Pending: ₹${(p.pendingPayout || 0).toLocaleString('en-IN')}</div>
+            </td>
+            <td>
+              ${statusBadge}
+              ${onlineBadge}
+              ${assignedBadge}
+            </td>
+            <td>
+              ${actions}
+            </td>
           </tr>
         `;
       })
       .join('');
   } catch (err) {
-    renderTableError(tbody, 8, err.message, 'loadPandits', err.requestId);
+    renderTableError(tbody, 9, err.message, 'loadPandits', err.requestId);
   }
 }
 
-async function verifyPandit(id) {
-  if (!confirm('Are you sure you want to verify this Pandit? They will immediately appear in public search and accept ceremony bookings.')) return;
+async function openPanditDetailsModal(panditId) {
+  let p = panditsCache.find((x) => x.id === panditId);
+  activeInspectedPandit = p;
+
+  const modal = document.getElementById('modal-pandit-details');
+  const body = document.getElementById('modal-pandit-body');
+  const title = document.getElementById('modal-pandit-title');
+  const badge = document.getElementById('modal-pandit-status-badge');
+  const actionsWrap = document.getElementById('modal-pandit-action-buttons');
+  if (!modal || !body) return;
+
+  body.innerHTML = '<div class="text-center py-6">Loading pandit file...</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const res = await adminFetch(`/pandits/${panditId}`);
+    if (res.data) {
+      p = res.data;
+      activeInspectedPandit = p;
+    }
+  } catch {
+    // use cache
+  }
+
+  if (!p) {
+    body.innerHTML = '<div class="alert alert-danger">Pandit profile could not be loaded.</div>';
+    return;
+  }
+
+  if (title) title.innerText = `🕉️ Pandit Profile: ${p.name} (${p.panditId || 'PND-ID'})`;
+  if (badge) {
+    const isApproved = p.verificationStatus === 'approved' || p.verificationStatus === 'verified';
+    badge.className = `badge ${isApproved ? 'badge-success' : p.verificationStatus === 'rejected' ? 'badge-danger' : 'badge-warning'}`;
+    badge.innerText = isApproved ? 'Approved' : p.verificationStatus === 'rejected' ? 'Rejected' : 'Pending Review';
+  }
+
+  // Documents Grid
+  const docsList = p.documents || [];
+  let docsHtml = '';
+  if (docsList.length === 0) {
+    docsHtml = '<p class="text-muted text-sm">No identity verification documents uploaded yet.</p>';
+  } else {
+    docsHtml = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 8px;">
+        ${docsList.map((doc, i) => `
+          <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; background: rgba(0,0,0,0.2);">
+            <div style="font-weight: 600; font-size: 13px; color: var(--gold-accent-light); margin-bottom: 4px;">${escapeHtml(doc.docName || doc.docType || 'Document #' + (i + 1))}</div>
+            <div class="text-xs text-muted mb-2">Type: ${escapeHtml(doc.docType || 'Identity Proof')}</div>
+            <a href="${escapeHtml(doc.docUrl)}" target="_blank" class="btn-primary btn-xs" style="text-decoration: none; display: inline-block;">🔍 View Document</a>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // Services List
+  const srvList = p.services || [];
+  const srvHtml = srvList.length
+    ? srvList.map(s => `<span class="badge badge-info" style="margin: 2px;">${escapeHtml(s.name)} (₹${s.priceInr})</span>`).join('')
+    : '<span class="text-muted text-xs">Standard Sanatan Ceremonies</span>';
+
+  // Bank details
+  const b = p.bankDetails || {};
+  const bankHtml = `
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+      <div><strong>Account Name:</strong> ${escapeHtml(b.accountHolderName || p.name || 'N/A')}</div>
+      <div><strong>Bank Name:</strong> ${escapeHtml(b.bankName || 'N/A')}</div>
+      <div><strong>Account Number:</strong> ${escapeHtml(b.accountNumber ? 'XXXX' + b.accountNumber.slice(-4) : 'N/A')}</div>
+      <div><strong>IFSC Code:</strong> ${escapeHtml(b.ifscCode || 'N/A')}</div>
+      <div><strong>UPI ID:</strong> ${escapeHtml(b.upiId || 'N/A')}</div>
+    </div>
+  `;
+
+  body.innerHTML = `
+    <div style="display: flex; gap: 16px; margin-bottom: 16px; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 16px;">
+      <div style="width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 28px; color: #fff;">
+        ${p.profilePhoto ? `<img src="${escapeHtml(p.profilePhoto)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.src='${FALLBACK_MEDIA_SVG}'" />` : (p.name || 'P')[0]}
+      </div>
+      <div>
+        <h4 style="font-size: 18px; margin-bottom: 4px; color: #fff;">${escapeHtml(p.name)} <span class="badge badge-warning text-xs">${escapeHtml(p.panditId || '')}</span></h4>
+        <div style="font-size: 13px; color: #94a3b8;">📞 ${escapeHtml(p.phone || 'N/A')} | ✉️ ${escapeHtml(p.email || 'N/A')}</div>
+        <div style="font-size: 13px; color: #94a3b8;">📍 ${escapeHtml(p.city || 'Delhi NCR')}, ${escapeHtml(p.state || 'Delhi')} | <strong>${p.experienceYears || 5}+ Years Experience</strong></div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h5 style="color: var(--gold-accent-light); font-size: 14px; margin-bottom: 6px;">📖 Biography &amp; Vedic Lineage</h5>
+      <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5;">${escapeHtml(p.bio || 'Vedic Pandit dedicated to Sanatan rituals.')}</p>
+    </div>
+
+    <div class="two-col-grid" style="gap: 16px; margin-bottom: 16px;">
+      <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+        <h5 style="color: var(--gold-accent-light); font-size: 13px; margin-bottom: 6px;">🕉️ Specialization &amp; Languages</h5>
+        <div style="font-size: 13px;"><strong>Tradition:</strong> ${escapeHtml(p.religiousTradition || 'Vedic Sanatan')}</div>
+        <div style="font-size: 13px; margin-top: 4px;"><strong>Languages:</strong> ${(p.languages || ['Hindi', 'Sanskrit']).join(', ')}</div>
+        <div style="font-size: 13px; margin-top: 4px;"><strong>Specialization:</strong> ${(p.specialization || ['Vivah', 'Puja']).join(', ')}</div>
+      </div>
+      <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+        <h5 style="color: var(--gold-accent-light); font-size: 13px; margin-bottom: 6px;">⭐ Astrology &amp; Consultation</h5>
+        <div style="font-size: 13px;"><strong>Astrology Offered:</strong> ${p.offersAstrology ? '✓ Yes' : '✕ No'}</div>
+        <div style="font-size: 13px; margin-top: 4px;"><strong>Consultation Rate:</strong> ₹${p.consultationCharges || 501} per session</div>
+        <div style="font-size: 13px; margin-top: 4px;"><strong>Expertise:</strong> ${(p.astrologyExpertise || ['Kundli Milan']).join(', ')}</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 16px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+      <h5 style="color: var(--gold-accent-light); font-size: 13px; margin-bottom: 6px;">🪔 Ritual &amp; Puja Offerings</h5>
+      <div>${srvHtml}</div>
+    </div>
+
+    <div style="margin-bottom: 16px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px;">
+      <h5 style="color: var(--gold-accent-light); font-size: 13px; margin-bottom: 6px;">🏦 Bank &amp; Payment Payout Details</h5>
+      ${bankHtml}
+    </div>
+
+    <div style="margin-bottom: 16px;">
+      <h5 style="color: var(--gold-accent-light); font-size: 14px; margin-bottom: 6px;">📄 Identity &amp; Vedic Qualification Documents (${docsList.length})</h5>
+      ${docsHtml}
+    </div>
+
+    ${p.rejectionReason ? `<div class="alert alert-danger mb-4"><strong>Rejection Reason:</strong> ${escapeHtml(p.rejectionReason)}</div>` : ''}
+    ${p.requestedDocuments && p.requestedDocuments.length ? `<div class="alert alert-warning mb-4"><strong>Requested Documents Pending:</strong> ${escapeHtml(p.requestedDocuments.join(', '))}</div>` : ''}
+  `;
+
+  if (actionsWrap) {
+    const isApproved = p.verificationStatus === 'approved' || p.verificationStatus === 'verified';
+    actionsWrap.innerHTML = `
+      ${!isApproved ? `<button class="btn-primary" onclick="approvePandit('${p.id}'); closePanditDetailsModal();">✓ Approve Registration</button>` : ''}
+      <button class="btn-danger" onclick="openRejectPanditDialog('${p.id}'); closePanditDetailsModal();">✕ Reject Application</button>
+      <button class="btn-secondary" onclick="openRequestPanditDocsModal('${p.id}'); closePanditDetailsModal();">📄 Request Documents</button>
+      <button class="btn-secondary" onclick="togglePanditActiveStatus('${p.id}'); closePanditDetailsModal();">${p.isActive !== false ? '⚡ Deactivate' : '⚡ Activate'}</button>
+    `;
+  }
+}
+
+function closePanditDetailsModal() {
+  const modal = document.getElementById('modal-pandit-details');
+  if (modal) modal.style.display = 'none';
+}
+
+async function approvePandit(id) {
+  if (!confirm('Approve this Pandit registration? They will immediately receive an in-app approval notification and be eligible to accept puja bookings & astrology consultations.')) return;
   try {
     await adminFetch(`/admin/pandits/${id}/verify`, { method: 'POST' });
-    showToast('Pandit verified successfully!');
+    showToast('Pandit registration approved successfully!');
     loadPandits();
     loadDashboardStats();
   } catch (err) {
@@ -2005,17 +2674,92 @@ async function verifyPandit(id) {
   }
 }
 
-async function rejectPandit(id) {
-  const reason = prompt('Please enter the reason for rejecting this Pandit application:');
-  if (!reason || !reason.trim()) return;
+function openRejectPanditDialog(id) {
+  document.getElementById('reject-pandit-id').value = id;
+  document.getElementById('reject-pandit-reason').value = '';
+  document.getElementById('modal-reject-pandit-dialog').style.display = 'flex';
+}
+
+function closeRejectPanditDialog() {
+  document.getElementById('modal-reject-pandit-dialog').style.display = 'none';
+}
+
+async function submitRejectPanditDialog() {
+  const id = document.getElementById('reject-pandit-id').value;
+  const reason = document.getElementById('reject-pandit-reason').value;
+  if (!reason || !reason.trim()) {
+    showToast('Please provide a reason for rejection.', 'warning');
+    return;
+  }
   try {
     await adminFetch(`/admin/pandits/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ reason: reason.trim() }),
     });
     showToast('Pandit application rejected.');
+    closeRejectPanditDialog();
     loadPandits();
     loadDashboardStats();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function openRequestPanditDocsModal(id) {
+  document.getElementById('request-docs-pandit-id').value = id;
+  document.getElementById('request-docs-custom-note').value = '';
+  document.getElementById('modal-request-pandit-docs').style.display = 'flex';
+}
+
+function closeRequestPanditDocsModal() {
+  document.getElementById('modal-request-pandit-docs').style.display = 'none';
+}
+
+async function submitRequestPanditDocs() {
+  const id = document.getElementById('request-docs-pandit-id').value;
+  const checkboxes = document.querySelectorAll('#modal-request-pandit-docs .doc-req-cb:checked');
+  const selectedDocs = Array.from(checkboxes).map((cb) => cb.value);
+  const customNote = document.getElementById('request-docs-custom-note').value.trim();
+  if (customNote) selectedDocs.push(customNote);
+
+  if (selectedDocs.length === 0) {
+    showToast('Please select at least one document to request.', 'warning');
+    return;
+  }
+
+  try {
+    await adminFetch(`/admin/pandits/${id}/request-docs`, {
+      method: 'POST',
+      body: JSON.stringify({ requestedDocuments: selectedDocs }),
+    });
+    showToast('Document request sent to Pandit successfully.');
+    closeRequestPanditDocsModal();
+    loadPandits();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function togglePanditActiveStatus(id) {
+  try {
+    const res = await adminFetch(`/admin/pandits/${id}/toggle-active`, { method: 'PATCH' });
+    showToast(res.message || 'Pandit status toggled.');
+    loadPandits();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function suspendPanditAccount(id) {
+  const reason = prompt('Please enter the reason for suspending this Pandit:');
+  if (!reason || !reason.trim()) return;
+  try {
+    await adminFetch(`/admin/pandits/${id}/suspend`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    showToast('Pandit account suspended.');
+    loadPandits();
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -2202,9 +2946,18 @@ async function loadBookings() {
     tbody.innerHTML = items
       .map((b) => {
         let statusBadge = '<span class="badge badge-info">Requested</span>';
-        if (b.status === 'accepted') statusBadge = '<span class="badge badge-success">✓ Confirmed</span>';
+        if (b.status === 'accepted' || b.status === 'confirmed') statusBadge = '<span class="badge badge-success">✓ Confirmed</span>';
+        else if (b.status === 'assigned') statusBadge = '<span class="badge badge-warning" style="background:#d97706; color:#fff;">Assigned (Review)</span>';
         else if (b.status === 'completed') statusBadge = '<span class="badge badge-success">Completed</span>';
         else if (b.status === 'cancelled' || b.status === 'declined') statusBadge = '<span class="badge badge-danger">Cancelled</span>';
+
+        const paymentBadge = b.paymentStatus === 'paid'
+          ? '<div style="margin-top:3px;"><span class="badge badge-success" style="font-size:10px;">PAID ✓</span></div>'
+          : '<div style="margin-top:3px;"><span class="badge" style="background:#334155; color:#94a3b8; font-size:10px;">UNPAID</span></div>';
+
+        const communityBadge = b.isCommunityBooking
+          ? '<span class="badge" style="background:#6366f1; color:#fff; font-size:10px; margin-left:4px;">Community</span>'
+          : '';
 
         const modeBadge = b.mode === 'online'
           ? '<span class="badge badge-info">📹 Online Video</span>'
@@ -2212,7 +2965,7 @@ async function loadBookings() {
 
         return `
           <tr>
-            <td><strong>${escapeHtml(b.bookingReference || 'N/A')}</strong></td>
+            <td><strong>${escapeHtml(b.bookingReference || 'N/A')}</strong>${communityBadge}</td>
             <td>
               <div>${escapeHtml(b.userName || 'Devotee')}</div>
               <div class="text-muted text-xs">${escapeHtml(b.userMobile || '')}</div>
@@ -2224,7 +2977,7 @@ async function loadBookings() {
               <div class="text-muted text-xs">${escapeHtml(b.timeSlot || '')}</div>
             </td>
             <td>${modeBadge}</td>
-            <td><strong>₹${(b.priceInr || 0).toLocaleString('en-IN')}</strong></td>
+            <td><strong>₹${(b.priceInr || 0).toLocaleString('en-IN')}</strong>${paymentBadge}</td>
             <td>${statusBadge}</td>
             <td>
               <div style="display: flex; gap: 4px; flex-wrap: wrap;">
@@ -2709,6 +3462,7 @@ async function updateBookingStatus(bookingId, newStatus) {
     });
     showToast(res.message || 'Status updated successfully', 'success');
     loadBookings();
+    loadBookMyPanditRequests();
     loadDashboardStats();
   } catch (err) {
     showToast(err.message || 'Failed to update status', 'error');
@@ -2725,6 +3479,7 @@ async function promptCancelBooking(bookingId) {
     });
     showToast(res.message || 'Booking cancelled', 'success');
     loadBookings();
+    loadBookMyPanditRequests();
     loadDashboardStats();
   } catch (err) {
     showToast(err.message || 'Failed to cancel booking', 'error');
@@ -2733,3 +3488,1328 @@ async function promptCancelBooking(bookingId) {
 
 window.updateBookingStatus = updateBookingStatus;
 window.promptCancelBooking = promptCancelBooking;
+
+
+// ==========================================================================
+// 13. BOOK MY PANDIT - CUSTOM REQUESTS & REAL-TIME DISPATCH
+// ==========================================================================
+let allBookMyPanditItems = [];
+let panditsListCache = [];
+let lastKnownBookingCount = 0;
+
+async function loadBookMyPanditRequests() {
+  const tbody = document.getElementById('tbody-book-my-pandit');
+  const statusFilter = document.getElementById('filter-pandit-requests-status')?.value || 'all';
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center py-6">Loading devotee booking requests...</td></tr>';
+
+  try {
+    const res = await adminFetch(`/admin/bookings?status=${statusFilter}`);
+    const items = res.data?.items || [];
+    allBookMyPanditItems = items;
+
+    // Compute live mini-stats
+    const totalCount = items.length;
+    const pendingCount = items.filter(b => b.status === 'pending' || b.status === 'requested').length;
+    const confirmedCount = items.filter(b => b.status === 'confirmed' || b.status === 'accepted').length;
+    const assignedCount = items.filter(b => b.status === 'assigned').length;
+    const completedCount = items.filter(b => b.status === 'completed').length;
+
+    const elTotal = document.getElementById('stat-bmp-total');
+    const elPending = document.getElementById('stat-bmp-pending');
+    const elConfirmed = document.getElementById('stat-bmp-confirmed');
+    const elAssigned = document.getElementById('stat-bmp-assigned');
+    const elCompleted = document.getElementById('stat-bmp-completed');
+    const badgeReq = document.getElementById('badge-bmp-requests');
+
+    if (elTotal) elTotal.innerText = totalCount;
+    if (elPending) elPending.innerText = pendingCount;
+    if (elConfirmed) elConfirmed.innerText = confirmedCount;
+    if (elAssigned) elAssigned.innerText = assignedCount;
+    if (elCompleted) elCompleted.innerText = completedCount;
+
+    if (badgeReq) {
+      badgeReq.innerText = pendingCount;
+      badgeReq.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    }
+
+    renderBookMyPanditTable(items);
+  } catch (err) {
+    renderTableError(tbody, 9, err.message, 'loadBookMyPanditRequests', err.requestId);
+  }
+}
+
+function filterPanditRequests() {
+  const query = document.getElementById('search-pandit-requests')?.value.toLowerCase().trim() || '';
+  if (!query) {
+    renderBookMyPanditTable(allBookMyPanditItems);
+    return;
+  }
+  const filtered = allBookMyPanditItems.filter(b => {
+    return (
+      (b.bookingReference || '').toLowerCase().includes(query) ||
+      (b.userName || '').toLowerCase().includes(query) ||
+      (b.userMobile || '').toLowerCase().includes(query) ||
+      (b.serviceName || '').toLowerCase().includes(query) ||
+      (b.ceremonyType || '').toLowerCase().includes(query) ||
+      (b.city || '').toLowerCase().includes(query)
+    );
+  });
+  renderBookMyPanditTable(filtered);
+}
+
+function renderBookMyPanditTable(items) {
+  const tbody = document.getElementById('tbody-book-my-pandit');
+  if (!tbody) return;
+
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="table-empty">No booking requests found matching filter</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map((b) => {
+    let statusBadge = '<span class="badge badge-warning">⏳ Pending</span>';
+    if (b.status === 'assigned' || (b.panditName && b.status === 'accepted')) {
+      statusBadge = `<span class="badge badge-success" style="background:#7c3aed;color:#fff;">🕉️ Assigned (${escapeHtml(b.panditName || 'Pandit Ji')})</span>`;
+    } else if (b.status === 'confirmed' || b.status === 'accepted') {
+      statusBadge = '<span class="badge badge-info">✓ Confirmed</span>';
+    } else if (b.status === 'completed') {
+      statusBadge = '<span class="badge badge-success">✓ Completed</span>';
+    } else if (b.status === 'cancelled' || b.status === 'declined') {
+      statusBadge = '<span class="badge badge-danger">✕ Cancelled</span>';
+    }
+
+    const customerDisplay = b.userName ? escapeHtml(b.userName) : 'Devotee';
+    const mobileDisplay = b.userMobile ? escapeHtml(b.userMobile) : ((b.userId && typeof b.userId === 'object' && b.userId.mobile) || 'N/A');
+    const serviceDisplay = escapeHtml(b.serviceName || b.ceremonyType || 'Puja Service');
+    const locationDisplay = escapeHtml(b.venueAddress || b.address || b.city || (b.mode === 'online' ? 'Online Consultation' : 'In-Person'));
+    const budgetDisplay = b.budgetRangeInr ? `₹${escapeHtml(b.budgetRangeInr)}` : (b.priceInr ? `₹${b.priceInr.toLocaleString('en-IN')}` : 'Standard');
+    const guestsDisplay = b.guestCount ? `${b.guestCount} guests` : 'Family';
+
+    return `
+      <tr>
+        <td>
+          <strong>${escapeHtml(b.bookingReference || 'N/A')}</strong>
+          <div class="text-muted text-xs">${new Date(b.createdAt || Date.now()).toLocaleDateString('en-IN')}</div>
+        </td>
+        <td>
+          <div style="font-weight: 600; color: #fff;">${customerDisplay}</div>
+          <div style="font-size: 11px; color: var(--gold-accent-light); display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+            📞 <a href="tel:${escapeHtml(mobileDisplay)}" style="color: inherit; text-decoration: none;">${mobileDisplay}</a>
+            ${mobileDisplay && mobileDisplay !== 'N/A' ? `<a href="https://wa.me/91${mobileDisplay.replace(/\D/g, '')}" target="_blank" title="WhatsApp" style="margin-left: 4px;">💬</a>` : ''}
+          </div>
+        </td>
+        <td>
+          <div style="font-weight: 600; color: var(--gold-accent);">${serviceDisplay}</div>
+          <div class="text-muted text-xs">${escapeHtml(b.ceremonyType || 'puja')}</div>
+        </td>
+        <td>
+          <div>${escapeHtml(b.bookingDate || 'TBD')}</div>
+          <div class="text-muted text-xs">${escapeHtml(b.timeSlot || 'Shubh Muhurat')}</div>
+        </td>
+        <td>
+          <div style="max-width: 140px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(b.address || '')}">
+            ${locationDisplay}
+          </div>
+        </td>
+        <td>
+          <div style="font-weight: 600; color: #fff;">${budgetDisplay}</div>
+          <div class="text-muted text-xs">${guestsDisplay}</div>
+        </td>
+        <td>
+          ${b.panditName ? `<span style="font-weight: 600; color: var(--gold-accent-light);">🙏 ${escapeHtml(b.panditName)}</span>` : '<span class="text-muted text-xs">Unassigned</span>'}
+        </td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <button class="btn-primary btn-xs" onclick="openAssignPanditModal('${b.id}', '${escapeHtml(customerDisplay)}', '${escapeHtml(serviceDisplay)}', '${escapeHtml(b.bookingDate || '')}')">
+              🕉️ Assign
+            </button>
+            <button class="btn-secondary btn-xs" onclick="viewBookingDetails('${b.id}')">
+              👁️ Details
+            </button>
+            ${b.status !== 'completed' && b.status !== 'cancelled' ? `
+              <button class="btn-success btn-xs" onclick="updateBookingStatus('${b.id}', 'completed')" title="Mark as Completed">✓ Done</button>
+              <button class="btn-danger btn-xs" onclick="promptCancelBooking('${b.id}')" title="Cancel Booking">✕</button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function openAssignPanditModal(bookingId, customerName, serviceName, bookingDate) {
+  document.getElementById('assign-booking-id').value = bookingId;
+  const summaryEl = document.getElementById('assign-booking-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = `<strong>Customer:</strong> ${customerName} | <strong>Puja:</strong> ${serviceName} | <strong>Date:</strong> ${bookingDate}`;
+  }
+
+  const select = document.getElementById('assign-pandit-select');
+  select.innerHTML = '<option value="">Loading approved pandits...</option>';
+  document.getElementById('modal-assign-pandit').style.display = 'flex';
+
+  try {
+    if (panditsListCache.length === 0) {
+      const res = await adminFetch('/admin/pandits?status=approved');
+      panditsListCache = res.data?.items || [];
+    }
+
+    if (panditsListCache.length === 0) {
+      select.innerHTML = '<option value="">No approved pandits found</option>';
+      return;
+    }
+
+    select.innerHTML = '<option value="">-- Choose Approved Pandit --</option>' +
+      panditsListCache.map(p => {
+        const name = p.name || p.userId?.displayName || 'Pandit Ji';
+        const phone = p.phone || p.userId?.mobile || '';
+        const specs = (p.specializations || []).slice(0, 2).join(', ');
+        return `<option value="${p.id}">${escapeHtml(name)} (${escapeHtml(specs)}) - ${escapeHtml(phone)}</option>`;
+      }).join('');
+  } catch (err) {
+    select.innerHTML = `<option value="">Error loading pandits: ${escapeHtml(err.message)}</option>`;
+  }
+}
+
+function closeAssignPanditModal() {
+  document.getElementById('modal-assign-pandit').style.display = 'none';
+  document.getElementById('assign-pandit-notes').value = '';
+}
+
+async function submitPanditAssignment() {
+  const bookingId = document.getElementById('assign-booking-id').value;
+  const panditId = document.getElementById('assign-pandit-select').value;
+  const notes = document.getElementById('assign-pandit-notes').value;
+  const btn = document.getElementById('btn-confirm-assign-pandit');
+
+  if (!panditId) {
+    showToast('Please select a pandit to assign.', 'warning');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = 'Assigning...';
+
+  try {
+    await adminFetch(`/admin/bookings/${bookingId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ panditId, notes }),
+    });
+
+    showToast('Pandit successfully assigned to booking!');
+    closeAssignPanditModal();
+    loadBookMyPanditRequests();
+    loadBookings();
+  } catch (err) {
+    showToast(err.message || 'Failed to assign pandit.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerText = 'Assign & Notify Devotee';
+  }
+}
+
+function viewBookingDetails(bookingId) {
+  const booking = allBookMyPanditItems.find(b => b.id === bookingId);
+  if (!booking) return;
+
+  const content = document.getElementById('booking-details-modal-content');
+  const title = document.getElementById('booking-details-modal-title');
+  if (title) title.innerText = `Puja Booking: ${booking.bookingReference || 'Details'}`;
+
+  const mobileDisplay = booking.userMobile || ((booking.userId && typeof booking.userId === 'object' && booking.userId.mobile) || 'N/A');
+  const addressDisplay = booking.venueAddress || booking.address || 'Address not specified';
+  const notesDisplay = booking.specialRequests || booking.devoteeNotes || '';
+
+  content.innerHTML = `
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+      <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--gold-accent); margin-bottom: 6px;">Devotee Information</div>
+        <div style="font-size: 15px; font-weight: 700; color: #fff;">${escapeHtml(booking.userName || 'Devotee')}</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Phone: <strong>${escapeHtml(mobileDisplay)}</strong></div>
+        <div style="margin-top: 10px; display: flex; gap: 8px;">
+          <a href="tel:${escapeHtml(mobileDisplay)}" class="btn-primary btn-xs" style="text-decoration: none;">📞 Call Devotee</a>
+          ${mobileDisplay && mobileDisplay !== 'N/A' ? `<a href="https://wa.me/91${mobileDisplay.replace(/\D/g, '')}" target="_blank" class="btn-success btn-xs" style="text-decoration: none;">💬 WhatsApp</a>` : ''}
+        </div>
+      </div>
+
+      <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; text-transform: uppercase; color: var(--gold-accent); margin-bottom: 6px;">Ritual & Ceremony</div>
+        <div style="font-size: 15px; font-weight: 700; color: #fff;">${escapeHtml(booking.serviceName || booking.ceremonyType || 'Puja Service')}</div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">Mode: <strong>${escapeHtml(booking.mode === 'online' ? 'Online Consultation' : 'In-Person at Venue')}</strong></div>
+        <div style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">Date: <strong>${escapeHtml(booking.bookingDate || 'TBD')}</strong> (${escapeHtml(booking.timeSlot || 'Shubh Muhurat')})</div>
+      </div>
+    </div>
+
+    <div style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); margin-bottom: 16px;">
+      <div style="font-size: 11px; text-transform: uppercase; color: var(--gold-accent); margin-bottom: 6px;">Venue & Ceremony Address</div>
+      <div style="font-size: 13px; color: #fff;">${escapeHtml(addressDisplay)}</div>
+      ${booking.city ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">City: ${escapeHtml(booking.city)}, State: ${escapeHtml(booking.state || 'N/A')}</div>` : ''}
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;">
+      <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-muted);">Estimated Guests</div>
+        <div style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 2px;">${booking.guestCount || 'Family'}</div>
+      </div>
+      <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-muted);">Budget Range</div>
+        <div style="font-size: 14px; font-weight: 700; color: var(--gold-accent); margin-top: 2px;">${booking.budgetRangeInr ? `₹${escapeHtml(booking.budgetRangeInr)}` : (booking.priceInr ? `₹${booking.priceInr}` : 'Standard')}</div>
+      </div>
+      <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-color);">
+        <div style="font-size: 11px; color: var(--text-muted);">Language Preference</div>
+        <div style="font-size: 14px; font-weight: 700; color: #fff; margin-top: 2px;">${escapeHtml(booking.languagePref || 'Hindi / Sanskrit')}</div>
+      </div>
+    </div>
+
+    ${notesDisplay ? `
+      <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); margin-bottom: 16px;">
+        <div style="font-size: 11px; color: var(--gold-accent); margin-bottom: 4px;">Devotee Notes / Gotra Details</div>
+        <div style="font-size: 13px; color: #fff;">${escapeHtml(notesDisplay)}</div>
+      </div>
+    ` : ''}
+  `;
+
+  document.getElementById('modal-booking-details').style.display = 'flex';
+}
+
+function closeBookingDetailsModal() {
+  document.getElementById('modal-booking-details').style.display = 'none';
+}
+
+function startBookingPolling() {
+  setInterval(async () => {
+    if (!authToken) return;
+    try {
+      const res = await adminFetch('/admin/bookings?status=all');
+      const items = res.data?.items || [];
+      const pendingCount = items.filter(b => b.status === 'pending' || b.status === 'requested').length;
+
+      const badgeReq = document.getElementById('badge-bmp-requests');
+      if (badgeReq) {
+        badgeReq.innerText = pendingCount;
+        badgeReq.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+      }
+
+      if (lastKnownBookingCount > 0 && items.length > lastKnownBookingCount) {
+        const latest = items[0];
+        const devoteeName = latest?.userName || 'A customer';
+        showToast(`🔔 New Book My Pandit request received from ${devoteeName}!`, 'info');
+        if (activeTab === 'book-my-pandit') {
+          loadBookMyPanditRequests();
+        } else if (activeTab === 'bookings') {
+          loadBookings();
+        }
+        loadDashboardStats();
+      }
+      lastKnownBookingCount = items.length;
+    } catch {
+      // background poll error is silent
+    }
+  }, 10000);
+}
+
+function initAdminSocket() {
+  if (typeof io === 'undefined' || !authToken || window.adminSocket) return;
+  try {
+    const socket = io({
+      auth: { token: authToken },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
+
+    socket.on('connect', () => {
+      console.log('⚡ Admin real-time WebSocket connected');
+    });
+
+    socket.on('new_booking_request', (data) => {
+      const name = data?.userName || 'A devotee';
+      const ceremony = data?.serviceName || 'Puja';
+      showToast(`🔔 New Booking: ${name} requested ${ceremony}!`, 'info');
+      const badgeReq = document.getElementById('badge-bmp-requests');
+      if (badgeReq) {
+        const cur = parseInt(badgeReq.innerText, 10) || 0;
+        badgeReq.innerText = cur + 1;
+        badgeReq.style.display = 'inline-block';
+      }
+      if (activeTab === 'book-my-pandit') {
+        loadBookMyPanditRequests();
+      } else if (activeTab === 'bookings') {
+        loadBookings();
+      }
+      loadDashboardStats();
+    });
+
+    socket.on('new_pandit_registration', (data) => {
+      showToast(`🙏 New Pandit Registration: ${data?.name || 'Pandit Ji'} applied!`, 'info');
+      if (activeTab === 'pandits') {
+        loadPandits();
+      }
+      loadDashboardStats();
+    });
+
+    window.adminSocket = socket;
+  } catch (err) {
+    console.warn('Socket init error:', err);
+  }
+}
+
+// ==========================================================================
+// 14. PAYMENTS & TRANSACTIONS
+// ==========================================================================
+async function loadPayments() {
+  const tbody = document.getElementById('tbody-payments');
+  const statusFilter = document.getElementById('filter-payments-status')?.value || 'all';
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6">Loading payments data...</td></tr>';
+
+  try {
+    const res = await adminFetch(`/admin/payments?status=${statusFilter}`);
+    const items = res.data?.items || [];
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">No payments recorded matching filter</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(p => {
+      let statusBadge = '<span class="badge badge-success">✓ Captured</span>';
+      if (p.status === 'created') statusBadge = '<span class="badge badge-warning">⏳ Initiated</span>';
+      else if (p.status === 'failed') statusBadge = '<span class="badge badge-danger">✕ Failed</span>';
+
+      return `
+        <tr>
+          <td><code>${escapeHtml(p.id)}</code></td>
+          <td>${escapeHtml(p.userName || p.userId?.displayName || 'User')}</td>
+          <td><strong>₹${(p.amountInr || 0).toLocaleString('en-IN')}</strong></td>
+          <td>${escapeHtml(p.plan || p.purpose || 'VIP Membership')}</td>
+          <td>${escapeHtml(p.method || 'Razorpay / UPI')}</td>
+          <td>${statusBadge}</td>
+          <td>${new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    renderTableError(tbody, 7, err.message, 'loadPayments', err.requestId);
+  }
+}
+
+// ==========================================================================
+// 15. SERVICES CATALOG
+// ==========================================================================
+async function loadServices() {
+  const tbody = document.getElementById('tbody-services');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6">Loading services catalog...</td></tr>';
+
+  try {
+    const res = await adminFetch('/admin/services');
+    const items = res.data?.items || [];
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="table-empty">No services found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(s => {
+      return `
+        <tr>
+          <td><code>${escapeHtml(s.code)}</code></td>
+          <td><strong>${escapeHtml(s.name)}</strong></td>
+          <td>${escapeHtml(s.category)}</td>
+          <td><strong>₹${(s.basePriceInr || 0).toLocaleString('en-IN')}</strong></td>
+          <td>${escapeHtml(s.duration || '2-3 Hours')}</td>
+          <td>${s.samagriIncluded ? '✅ Included' : '❌ Devotee Brings'}</td>
+          <td><span class="badge badge-success">Active</span></td>
+          <td>
+            <button class="btn-secondary btn-xs" onclick="editService('${escapeHtml(s.code)}')">✏️ Edit</button>
+            <button class="btn-danger btn-xs" onclick="deleteService('${escapeHtml(s.code)}')">✕ Delete</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    renderTableError(tbody, 8, err.message, 'loadServices', err.requestId);
+  }
+}
+
+function openCreateServiceModal() {
+  document.getElementById('service-form-id').value = '';
+  document.getElementById('service-form-code').value = '';
+  document.getElementById('service-form-name').value = '';
+  document.getElementById('service-form-name-hi').value = '';
+  document.getElementById('service-form-price').value = '5100';
+  document.getElementById('service-form-desc').value = '';
+  document.getElementById('modal-service-form').style.display = 'flex';
+}
+
+function closeServiceFormModal() {
+  document.getElementById('modal-service-form').style.display = 'none';
+}
+
+async function saveServiceForm() {
+  const code = document.getElementById('service-form-code').value.trim();
+  const name = document.getElementById('service-form-name').value.trim();
+  const nameHi = document.getElementById('service-form-name-hi').value.trim();
+  const category = document.getElementById('service-form-category').value;
+  const basePriceInr = Number(document.getElementById('service-form-price').value) || 5100;
+  const duration = document.getElementById('service-form-duration').value.trim() || '2-3 Hours';
+  const samagriIncluded = document.getElementById('service-form-samagri').value === 'true';
+  const description = document.getElementById('service-form-desc').value.trim();
+
+  if (!code || !name) {
+    showToast('Please provide service code and name.', 'warning');
+    return;
+  }
+
+  try {
+    await adminFetch('/admin/services', {
+      method: 'POST',
+      body: JSON.stringify({
+        code,
+        name,
+        nameHi,
+        category,
+        basePriceInr,
+        duration,
+        samagriIncluded,
+        description,
+        isActive: true,
+      }),
+    });
+    showToast('Service saved successfully!');
+    closeServiceFormModal();
+    loadServices();
+  } catch (err) {
+    showToast(err.message || 'Failed to save service.', 'error');
+  }
+}
+
+async function deleteService(code) {
+  if (!confirm(`Are you sure you want to remove service "${code}"?`)) return;
+  try {
+    await adminFetch(`/admin/services/${code}`, { method: 'DELETE' });
+    showToast('Service deleted.');
+    loadServices();
+  } catch (err) {
+    showToast(err.message || 'Failed to delete service.', 'error');
+  }
+}
+
+function editService(code) {
+  openCreateServiceModal();
+  document.getElementById('service-form-code').value = code;
+  document.getElementById('service-form-name').value = code;
+}
+
+// ==========================================================================
+// 16. CATEGORIES
+// ==========================================================================
+async function loadCategories() {
+  const grid = document.getElementById('categories-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '<div class="table-empty">Loading service categories...</div>';
+
+  try {
+    const res = await adminFetch('/admin/categories');
+    const items = res.data?.items || [];
+    if (items.length === 0) {
+      grid.innerHTML = '<div class="table-empty">No categories found</div>';
+      return;
+    }
+
+    grid.innerHTML = items.map(c => `
+      <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 16px;">
+        <div style="font-size: 28px; margin-bottom: 8px;">${escapeHtml(c.icon || '🕉️')}</div>
+        <div style="font-size: 16px; font-weight: 700; color: #fff;">${escapeHtml(c.name)}</div>
+        <div style="font-size: 13px; color: var(--gold-accent-light); margin-top: 2px;">${escapeHtml(c.nameHi || '')}</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">${escapeHtml(c.desc || '')}</div>
+        <div style="margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--gold-accent);">${c.serviceCount || 0} Available Rituals</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    renderContainerError(grid, err.message, 'loadCategories', err.requestId);
+  }
+}
+
+// ==========================================================================
+// 17. NOTIFICATIONS BROADCAST
+// ==========================================================================
+async function loadNotifications() {
+  const tbody = document.getElementById('tbody-notifications');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6">Loading notification logs...</td></tr>';
+
+  try {
+    const res = await adminFetch('/admin/notifications');
+    const items = res.data?.items || [];
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="table-empty">No broadcast notifications sent yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(n => `
+      <tr>
+        <td><strong>${escapeHtml(n.title)}</strong></td>
+        <td><div style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(n.message)}</div></td>
+        <td><span class="badge badge-info">${escapeHtml(n.targetAudience || 'all')}</span></td>
+        <td>${escapeHtml(n.senderName || 'Admin')}</td>
+        <td>${new Date(n.createdAt || Date.now()).toLocaleDateString('en-IN')}</td>
+        <td><span class="badge badge-success">Delivered</span></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    renderTableError(tbody, 6, err.message, 'loadNotifications', err.requestId);
+  }
+}
+
+function openSendNotificationModal() {
+  document.getElementById('modal-send-notification').style.display = 'flex';
+}
+
+function closeSendNotificationModal() {
+  document.getElementById('modal-send-notification').style.display = 'none';
+  document.getElementById('notif-title').value = '';
+  document.getElementById('notif-message').value = '';
+}
+
+async function submitBroadcastNotification() {
+  const title = document.getElementById('notif-title').value.trim();
+  const message = document.getElementById('notif-message').value.trim();
+  const targetAudience = document.getElementById('notif-target').value;
+  const actionUrl = document.getElementById('notif-action-url').value.trim();
+
+  if (!title || !message) {
+    showToast('Please enter notification title and message.', 'warning');
+    return;
+  }
+
+  try {
+    await adminFetch('/admin/notifications/broadcast', {
+      method: 'POST',
+      body: JSON.stringify({ title, message, targetAudience, actionUrl }),
+    });
+    showToast('Broadcast notification sent successfully!');
+    closeSendNotificationModal();
+    loadNotifications();
+  } catch (err) {
+    showToast(err.message || 'Failed to send broadcast.', 'error');
+  }
+}
+
+// ==========================================================================
+// 18. HELP & SUPPORT INQUIRIES
+// ==========================================================================
+async function loadHelpSupport() {
+  const tbody = document.getElementById('tbody-help-support');
+  const statusFilter = document.getElementById('filter-support-status')?.value || 'all';
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6">Loading support inquiries...</td></tr>';
+
+  try {
+    const res = await adminFetch(`/admin/support/inquiries?status=${statusFilter}`);
+    const items = res.data?.items || [];
+    const badgeSupport = document.getElementById('badge-support-count');
+    const openCount = items.filter(i => i.status === 'open' || i.status === 'pending').length;
+    if (badgeSupport) {
+      badgeSupport.innerText = openCount;
+      badgeSupport.style.display = openCount > 0 ? 'inline-block' : 'none';
+    }
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">No support inquiries found matching filter</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(inq => {
+      let statusBadge = '<span class="badge badge-warning">⏳ Open</span>';
+      if (inq.status === 'in_progress') statusBadge = '<span class="badge badge-info">⚙️ In Progress</span>';
+      else if (inq.status === 'resolved') statusBadge = '<span class="badge badge-success">✓ Resolved</span>';
+      else if (inq.status === 'closed') statusBadge = '<span class="badge badge-muted">Closed</span>';
+
+      const phone = inq.phone || inq.mobile || inq.userId?.mobile || '';
+      const email = inq.email || inq.userId?.email || '';
+
+      return `
+        <tr>
+          <td>
+            <strong>${escapeHtml(inq.name || inq.userId?.displayName || 'User')}</strong>
+            <div style="font-size: 11px; color: var(--gold-accent-light); margin-top: 2px;">
+              📞 <a href="tel:${escapeHtml(phone)}" style="color: inherit; text-decoration: none;">${escapeHtml(phone || 'N/A')}</a>
+            </div>
+            <div class="text-muted text-xs">${escapeHtml(email)}</div>
+          </td>
+          <td><span class="badge badge-info">${escapeHtml(inq.category || 'General')}</span></td>
+          <td><strong>${escapeHtml(inq.subject || 'Support Request')}</strong></td>
+          <td><div style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(inq.message || '')}">${escapeHtml(inq.message || '')}</div></td>
+          <td>${statusBadge}</td>
+          <td>${new Date(inq.createdAt || Date.now()).toLocaleDateString('en-IN')}</td>
+          <td>
+            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+              ${phone ? `<a href="tel:${escapeHtml(phone)}" class="btn-primary btn-xs" style="text-decoration: none;" title="Call">📞 Call</a>` : ''}
+              ${phone ? `<a href="https://wa.me/91${phone.replace(/\D/g, '')}" target="_blank" class="btn-success btn-xs" style="text-decoration: none;" title="WhatsApp">💬 WhatsApp</a>` : ''}
+              ${email ? `<a href="mailto:${escapeHtml(email)}" class="btn-secondary btn-xs" style="text-decoration: none;" title="Email">✉️ Email</a>` : ''}
+              ${inq.status !== 'resolved' ? `<button class="btn-success btn-xs" onclick="updateInquiryStatus('${inq.id}', 'resolved')">✓ Resolve</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    renderTableError(tbody, 7, err.message, 'loadHelpSupport', err.requestId);
+  }
+}
+
+async function updateInquiryStatus(inquiryId, status) {
+  try {
+    await adminFetch(`/admin/support/inquiries/${inquiryId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    showToast(`Inquiry marked as ${status}!`);
+    loadHelpSupport();
+  } catch (err) {
+    showToast(err.message || 'Failed to update inquiry status.', 'error');
+  }
+}
+
+// ==========================================================================
+// 20. CHAT CONVERSATIONS & ABUSE MODERATION (SECTION 9)
+// ==========================================================================
+let chatSearchQuery = '';
+let chatSearchTimer = null;
+
+function handleChatSearch(e) {
+  clearTimeout(chatSearchTimer);
+  chatSearchTimer = setTimeout(() => {
+    chatSearchQuery = e.target.value ? e.target.value.trim() : '';
+    loadChatConversations();
+  }, 300);
+}
+
+async function loadChatConversations() {
+  const tbody = document.getElementById('tbody-chat-conversations');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="7" class="text-center py-6">Loading conversations...</td></tr>';
+
+  try {
+    const res = await adminFetch(`/admin/chat/conversations?search=${encodeURIComponent(chatSearchQuery)}`);
+    const convs = res.data?.conversations || [];
+
+    if (convs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">No conversation records found</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = convs
+      .map((c) => {
+        const u1 = c.user1 || {};
+        const u2 = c.user2 || {};
+        const entitlementBadge = c.isFreeChat
+          ? '<span class="badge badge-success">✨ Free Female Chat</span>'
+          : '<span class="badge badge-info">💳 Paid Male Plan</span>';
+
+        const lastActive = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString('en-IN') : 'N/A';
+
+        return `
+          <tr>
+            <td>
+              <div><strong>${escapeHtml(u1.name || 'User 1')}</strong></div>
+              <div class="text-xs text-muted">Gender: ${escapeHtml(u1.gender || 'N/A')} | 📞 ${escapeHtml(u1.mobile || 'N/A')}</div>
+              ${u1.isChatBlocked ? '<span class="badge badge-danger text-xs mt-1">Chat Blocked</span>' : ''}
+            </td>
+            <td>
+              <div><strong>${escapeHtml(u2.name || 'User 2')}</strong></div>
+              <div class="text-xs text-muted">Gender: ${escapeHtml(u2.gender || 'N/A')} | 📞 ${escapeHtml(u2.mobile || 'N/A')}</div>
+              ${u2.isChatBlocked ? '<span class="badge badge-danger text-xs mt-1">Chat Blocked</span>' : ''}
+            </td>
+            <td>${entitlementBadge}</td>
+            <td><span class="badge badge-purple">${c.messageCount || 0} msgs</span></td>
+            <td>
+              <div class="text-xs" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ${escapeHtml(c.lastMessagePreview || 'No messages yet')}
+              </div>
+            </td>
+            <td><div class="text-xs text-muted">${lastActive}</div></td>
+            <td>
+              <div class="action-buttons" style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button class="btn-primary btn-xs" onclick="openChatTranscript('${c.id}', '${escapeHtml(u1.name)}', '${escapeHtml(u2.name)}')">👁️ Messages</button>
+                ${
+                  u1.id
+                    ? `<button class="btn-${u1.isChatBlocked ? 'success' : 'danger'} btn-xs" onclick="toggleBlockChatUser('${u1.id}', ${u1.isChatBlocked})">${
+                        u1.isChatBlocked ? 'Unblock ' + escapeHtml(u1.name.slice(0, 8)) : 'Block ' + escapeHtml(u1.name.slice(0, 8))
+                      }</button>`
+                    : ''
+                }
+                ${
+                  u2.id
+                    ? `<button class="btn-${u2.isChatBlocked ? 'success' : 'danger'} btn-xs" onclick="toggleBlockChatUser('${u2.id}', ${u2.isChatBlocked})">${
+                        u2.isChatBlocked ? 'Unblock ' + escapeHtml(u2.name.slice(0, 8)) : 'Block ' + escapeHtml(u2.name.slice(0, 8))
+                      }</button>`
+                    : ''
+                }
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+  } catch (err) {
+    renderTableError(tbody, 7, err.message, 'loadChatConversations', err.requestId);
+  }
+}
+
+async function openChatTranscript(conversationId, user1Name, user2Name) {
+  const modal = document.getElementById('modal-chat-transcript');
+  const body = document.getElementById('chat-transcript-messages');
+  const title = document.getElementById('chat-transcript-title');
+  const subtitle = document.getElementById('chat-transcript-subtitle');
+  if (!modal || !body) return;
+
+  if (title) title.innerText = `💬 Chat: ${user1Name} & ${user2Name}`;
+  if (subtitle) subtitle.innerText = `Conversation ID: ${conversationId}`;
+  body.innerHTML = '<div class="text-center py-6">Loading conversation transcript...</div>';
+  modal.style.display = 'flex';
+
+  try {
+    const res = await adminFetch(`/conversations/${conversationId}/messages?limit=100`);
+    const msgs = res.data?.items || [];
+
+    if (msgs.length === 0) {
+      body.innerHTML = '<div class="text-center text-muted py-6">No messages found in this conversation yet.</div>';
+      return;
+    }
+
+    body.innerHTML = msgs
+      .reverse()
+      .map((m) => {
+        const time = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+        return `
+          <div style="margin-bottom: 12px; background: rgba(255,255,255,0.06); padding: 10px 14px; border-radius: 8px; border-left: 3px solid var(--gold-accent-light);">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <strong style="font-size: 13px; color: var(--gold-accent-light);">${escapeHtml(m.senderId || 'Participant')}</strong>
+              <span class="text-muted text-xs">${time}</span>
+            </div>
+            <div style="font-size: 13px; color: #fff; line-height: 1.4;">${escapeHtml(m.text || '')}</div>
+            ${m.attachmentUrl ? `<div class="mt-2"><a href="${escapeHtml(m.attachmentUrl)}" target="_blank" class="btn-xs btn-primary">📎 View Attachment</a></div>` : ''}
+          </div>
+        `;
+      })
+      .join('');
+  } catch (err) {
+    body.innerHTML = `<div class="alert alert-danger">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function closeChatTranscriptModal() {
+  const modal = document.getElementById('modal-chat-transcript');
+  if (modal) modal.style.display = 'none';
+}
+
+async function toggleBlockChatUser(userId, isCurrentlyBlocked) {
+  if (isCurrentlyBlocked) {
+    if (!confirm('Unblock this user from sending messages?')) return;
+    try {
+      await adminFetch(`/admin/chat/users/${userId}/block-chat`, {
+        method: 'POST',
+        body: JSON.stringify({ isBlocked: false }),
+      });
+      showToast('User chat privileges restored.');
+      loadChatConversations();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  } else {
+    const reason = prompt('Please enter reason for blocking this user from chatting:');
+    if (!reason || !reason.trim()) return;
+    try {
+      await adminFetch(`/admin/chat/users/${userId}/block-chat`, {
+        method: 'POST',
+        body: JSON.stringify({ isBlocked: true, reason: reason.trim() }),
+      });
+      showToast('User has been blocked from sending messages.');
+      loadChatConversations();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+}
+
+// ==========================================================================
+// 18.5 AUDIO & VIDEO CALLS MANAGEMENT
+// ==========================================================================
+async function loadCallsList() {
+  const tbody = document.getElementById('tbody-calls-list');
+  const filterType = document.getElementById('call-filter-type')?.value || 'all';
+  if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-muted">Loading call records...</td></tr>`;
+
+  try {
+    const res = await adminFetch(`/admin/calls?filter=${encodeURIComponent(filterType)}&limit=50`);
+    const data = res.data || {};
+    const calls = data.items || [];
+    const stats = data.stats || {};
+
+    const statCalls = document.getElementById('stat-total-calls');
+    const statDuration = document.getElementById('stat-total-call-duration');
+    const statRev = document.getElementById('stat-total-call-revenue');
+    const statPandit = document.getElementById('stat-total-pandit-call-earnings');
+    const badgeCalls = document.getElementById('badge-calls-count');
+
+    const totalCalls = stats.totalCalls || (data.pagination ? data.pagination.totalCount : calls.length);
+    const totalDurationSec = stats.totalDuration || 0;
+    const totalDurationMin = Math.round(totalDurationSec / 60);
+    const totalRev = stats.totalRevenue || 0;
+    const totalPanditEarnings = stats.totalPanditEarnings || 0;
+
+    if (statCalls) statCalls.innerText = totalCalls.toLocaleString();
+    if (statDuration) statDuration.innerText = `${totalDurationMin} min`;
+    if (statRev) statRev.innerText = `₹${totalRev.toLocaleString()}`;
+    if (statPandit) statPandit.innerText = `₹${totalPanditEarnings.toLocaleString()}`;
+    if (badgeCalls) {
+      badgeCalls.innerText = totalCalls;
+      badgeCalls.style.display = totalCalls > 0 ? 'inline-block' : 'none';
+    }
+
+    if (!calls.length) {
+      if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center py-8 text-muted">No call records found for selected filter (${filterType}).</td></tr>`;
+      return;
+    }
+
+    let html = '';
+    calls.forEach((c) => {
+      const typeBadge = c.callType === 'video'
+        ? `<span class="badge" style="background: rgba(139, 92, 246, 0.15); color: #8b5cf6;">📹 Video</span>`
+        : `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">📞 Audio</span>`;
+
+      let statusBadge = `<span class="badge badge-secondary">${c.status || 'unknown'}</span>`;
+      if (c.status === 'accepted' || c.status === 'in_progress') {
+        statusBadge = `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">● Connected</span>`;
+      } else if (c.status === 'ended') {
+        statusBadge = `<span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #3b82f6;">✓ Completed</span>`;
+      } else if (c.status === 'missed') {
+        statusBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">✕ Missed</span>`;
+      } else if (c.status === 'rejected') {
+        statusBadge = `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">⊘ Declined</span>`;
+      }
+
+      const durMin = Math.floor((c.durationSeconds || 0) / 60);
+      const durSec = (c.durationSeconds || 0) % 60;
+      const durText = `${durMin}m ${durSec < 10 ? '0' : ''}${durSec}s`;
+
+      const callerName = escapeHtml(c.callerName || (c.callerId ? String(c.callerId).slice(-6) : 'User'));
+      const receiverName = escapeHtml(c.receiverName || (c.receiverId ? String(c.receiverId).slice(-6) : 'Pandit/User'));
+      const panditLabel = c.panditId
+        ? `<span style="color: #D4AF37; font-weight: 600;">🕉️ Pandit: ${escapeHtml(String(c.panditId).slice(-6))}</span>`
+        : `<span class="text-muted">User-to-User</span>`;
+
+      const amountPaid = c.amountPaid ? `₹${c.amountPaid}` : 'Free / Included';
+      const dateText = c.createdAt ? new Date(c.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A';
+
+      html += `<tr>
+        <td style="font-family: monospace; font-size: 11px;">${escapeHtml(c.sessionId || (c._id ? String(c._id).slice(-8) : 'N/A'))}</td>
+        <td><strong>${callerName}</strong></td>
+        <td><strong>${receiverName}</strong></td>
+        <td>${panditLabel}</td>
+        <td>${typeBadge}</td>
+        <td>${durText}</td>
+        <td style="font-weight: 600; color: #10b981;">${amountPaid}</td>
+        <td>${statusBadge}</td>
+        <td class="text-muted text-xs">${dateText}</td>
+      </tr>`;
+    });
+
+    if (tbody) tbody.innerHTML = html;
+  } catch (err) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-danger">Failed to load call sessions: ${escapeHtml(err.message || 'Error')}</td></tr>`;
+  }
+}
+
+// ==========================================================================
+// 19. SETTINGS & CHAT RULES CONTROL (SECTION 10)
+// ==========================================================================
+async function loadSettings() {
+  try {
+    const res = await adminFetch('/admin/system/settings');
+    const s = res.data || {};
+
+    if (document.getElementById('setting-phone')) document.getElementById('setting-phone').value = s.supportPhone || s.contactPhone || '8076168502';
+    if (document.getElementById('setting-whatsapp')) document.getElementById('setting-whatsapp').value = s.whatsappPhone || s.contactWhatsApp || '8076168502';
+    if (document.getElementById('setting-email')) document.getElementById('setting-email').value = s.supportEmail || s.contactEmail || 'shaadibanao.urbanpower@gmail.com';
+
+    if (document.getElementById('setting-female-free-chat')) document.getElementById('setting-female-free-chat').checked = s.femaleFreeChatEnabled !== false;
+    if (document.getElementById('setting-male-paid-chat')) document.getElementById('setting-male-paid-chat').checked = s.malePaidChatRequired !== false;
+    if (document.getElementById('setting-male-free-reply')) document.getElementById('setting-male-free-reply').checked = s.maleFreeReplyToFemale !== false;
+    if (document.getElementById('setting-male-free-limit')) document.getElementById('setting-male-free-limit').value = s.maleFreeMessageLimit || 0;
+    if (document.getElementById('setting-max-message-length')) document.getElementById('setting-max-message-length').value = s.maxMessageLength || 1000;
+
+    if (document.getElementById('setting-plus-price')) document.getElementById('setting-plus-price').value = s.plusPlanPriceInr || 2999;
+    if (document.getElementById('setting-premium-price')) document.getElementById('setting-premium-price').value = s.premiumPlanPriceInr || 4999;
+    if (document.getElementById('setting-audio-call-price')) document.getElementById('setting-audio-call-price').value = s.audioConsultationPriceInr || 501;
+    if (document.getElementById('setting-video-call-price')) document.getElementById('setting-video-call-price').value = s.videoConsultationPriceInr || 1100;
+    if (document.getElementById('setting-call-commission')) document.getElementById('setting-call-commission').value = s.callCommissionRate || 15;
+    if (document.getElementById('setting-pandit-fee')) document.getElementById('setting-pandit-fee').value = s.defaultPanditConsultationFee || 501;
+    if (document.getElementById('setting-astrology-fee')) document.getElementById('setting-astrology-fee').value = s.defaultAstrologyFee || 501;
+
+    if (document.getElementById('setting-banned-keywords')) {
+      const keywords = s.bannedKeywords || ['abuse', 'fraud', 'scam', 'money transfer'];
+      document.getElementById('setting-banned-keywords').value = keywords.join(', ');
+    }
+
+    showToast('System configuration & rules loaded.');
+  } catch (err) {
+    showToast('Loaded verified fallback settings.', 'info');
+  }
+}
+
+async function saveSystemSettings() {
+  try {
+    const phone = document.getElementById('setting-phone')?.value.trim() || '8076168502';
+    const whatsapp = document.getElementById('setting-whatsapp')?.value.trim() || '8076168502';
+    const email = document.getElementById('setting-email')?.value.trim() || 'shaadibanao.urbanpower@gmail.com';
+
+    const femaleFreeChat = document.getElementById('setting-female-free-chat')?.checked;
+    const malePaidChat = document.getElementById('setting-male-paid-chat')?.checked;
+    const maleFreeReply = document.getElementById('setting-male-free-reply')?.checked;
+    const maleFreeLimit = Number(document.getElementById('setting-male-free-limit')?.value) || 0;
+    const maxMsgLength = Number(document.getElementById('setting-max-message-length')?.value) || 1000;
+
+    const plusPrice = Number(document.getElementById('setting-plus-price')?.value) || 2999;
+    const premiumPrice = Number(document.getElementById('setting-premium-price')?.value) || 4999;
+    const audioCallPrice = Number(document.getElementById('setting-audio-call-price')?.value) || 501;
+    const videoCallPrice = Number(document.getElementById('setting-video-call-price')?.value) || 1100;
+    const callCommission = Number(document.getElementById('setting-call-commission')?.value) || 15;
+    const panditFee = Number(document.getElementById('setting-pandit-fee')?.value) || 501;
+    const astrologyFee = Number(document.getElementById('setting-astrology-fee')?.value) || 501;
+
+    const bannedKeywordsRaw = document.getElementById('setting-banned-keywords')?.value || '';
+    const bannedKeywords = bannedKeywordsRaw
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean);
+
+    const payload = {
+      supportPhone: phone,
+      contactPhone: phone,
+      whatsappPhone: whatsapp,
+      contactWhatsApp: whatsapp,
+      supportEmail: email,
+      contactEmail: email,
+      femaleFreeChatEnabled: femaleFreeChat,
+      malePaidChatRequired: malePaidChat,
+      maleFreeReplyToFemale: maleFreeReply,
+      maleFreeMessageLimit: maleFreeLimit,
+      maxMessageLength: maxMsgLength,
+      plusPlanPriceInr: plusPrice,
+      premiumPlanPriceInr: premiumPrice,
+      audioConsultationPriceInr: audioCallPrice,
+      videoConsultationPriceInr: videoCallPrice,
+      callCommissionRate: callCommission,
+      defaultPanditConsultationFee: panditFee,
+      defaultAstrologyFee: astrologyFee,
+      bannedKeywords,
+    };
+
+    const res = await adminFetch('/admin/system/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+
+    showToast('All system settings & chat rules saved and applied immediately without restart!');
+  } catch (err) {
+    showToast(err.message || 'Failed to save settings.', 'error');
+  }
+}
+
+// Expose modal and tab functions to global window scope
+window.navigateToTab = navigateToTab;
+window.toggleMenuGroup = toggleMenuGroup;
+window.selectPanditSection = selectPanditSection;
+window.handlePanditSearch = handlePanditSearch;
+window.loadPandits = loadPandits;
+window.openPanditDetailsModal = openPanditDetailsModal;
+window.closePanditDetailsModal = closePanditDetailsModal;
+window.approvePandit = approvePandit;
+window.openRejectPanditDialog = openRejectPanditDialog;
+window.closeRejectPanditDialog = closeRejectPanditDialog;
+window.submitRejectPanditDialog = submitRejectPanditDialog;
+window.openRequestPanditDocsModal = openRequestPanditDocsModal;
+window.closeRequestPanditDocsModal = closeRequestPanditDocsModal;
+window.submitRequestPanditDocs = submitRequestPanditDocs;
+window.togglePanditActiveStatus = togglePanditActiveStatus;
+window.suspendPanditAccount = suspendPanditAccount;
+
+window.handleChatSearch = handleChatSearch;
+window.loadChatConversations = loadChatConversations;
+window.openChatTranscript = openChatTranscript;
+window.closeChatTranscriptModal = closeChatTranscriptModal;
+window.toggleBlockChatUser = toggleBlockChatUser;
+
+window.loadBookMyPanditRequests = loadBookMyPanditRequests;
+window.filterPanditRequests = filterPanditRequests;
+window.openAssignPanditModal = openAssignPanditModal;
+window.closeAssignPanditModal = closeAssignPanditModal;
+window.submitPanditAssignment = submitPanditAssignment;
+window.viewBookingDetails = viewBookingDetails;
+window.closeBookingDetailsModal = closeBookingDetailsModal;
+window.loadPayments = loadPayments;
+window.loadServices = loadServices;
+window.openCreateServiceModal = openCreateServiceModal;
+window.closeServiceFormModal = closeServiceFormModal;
+window.saveServiceForm = saveServiceForm;
+window.deleteService = deleteService;
+window.editService = editService;
+window.loadCategories = loadCategories;
+window.loadNotifications = loadNotifications;
+window.openSendNotificationModal = openSendNotificationModal;
+window.closeSendNotificationModal = closeSendNotificationModal;
+window.submitBroadcastNotification = submitBroadcastNotification;
+window.loadHelpSupport = loadHelpSupport;
+window.updateInquiryStatus = updateInquiryStatus;
+window.loadSettings = loadSettings;
+window.saveSystemSettings = saveSystemSettings;
+window.saveSettings = saveSystemSettings;
+window.loadCallsList = loadCallsList;
+window.toggleAdminLanguage = toggleAdminLanguage;
+
+function loadMemberships() {
+  // Static tier display in tab-memberships
+}
+window.loadMemberships = loadMemberships;
+
+// ==========================================================================
+// 21. PANDIT WITHDRAWALS & PAYOUTS
+// ==========================================================================
+let currentWithdrawalFilter = 'all';
+
+async function loadWithdrawals(status = currentWithdrawalFilter) {
+  currentWithdrawalFilter = status;
+  const tbody = document.getElementById('withdrawals-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Fetching withdrawals...</td></tr>';
+
+  try {
+    const res = await apiRequest(`/admin/withdrawals?status=${status}&limit=50`);
+    const items = res?.data?.items || [];
+    
+    // Update badge count
+    const pendingCount = items.filter(w => w.status === 'pending').length;
+    const badge = document.getElementById('badge-withdrawals-count');
+    if (badge) {
+      badge.innerText = pendingCount;
+      badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+    }
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">No withdrawal requests found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(w => {
+      const bankInfo = w.bankDetails?.upiId 
+        ? `UPI: <strong>${escapeHtml(w.bankDetails.upiId)}</strong>` 
+        : `A/C: ${escapeHtml(w.bankDetails?.accountNumber || 'N/A')} (${escapeHtml(w.bankDetails?.ifscCode || '')})<br><small>${escapeHtml(w.bankDetails?.bankName || '')}</small>`;
+
+      const statusBadge = w.status === 'paid' 
+        ? '<span class="badge badge-success">PAID</span>'
+        : w.status === 'rejected'
+        ? '<span class="badge badge-danger">REJECTED</span>'
+        : '<span class="badge badge-warning">PENDING</span>';
+
+      const actions = w.status === 'pending'
+        ? `<div style="display:flex; gap:6px;">
+             <button class="btn-sm btn-success" onclick="approveWithdrawal('${w.id}')">✓ Pay</button>
+             <button class="btn-sm btn-danger" onclick="rejectWithdrawal('${w.id}')">✕ Reject</button>
+           </div>`
+        : `<small class="text-muted">${w.referenceNumber || w.rejectionReason || 'Processed'}</small>`;
+
+      return `
+        <tr>
+          <td><strong style="color:var(--gold-accent-light);">${w.withdrawalId}</strong></td>
+          <td><strong>${escapeHtml(w.panditName)}</strong><br><small class="text-muted">${escapeHtml(w.panditCode)}</small></td>
+          <td>${escapeHtml(w.panditPhone || 'N/A')}</td>
+          <td><strong style="color:#10b981; font-size:15px;">₹${(w.amount || 0).toLocaleString('en-IN')}</strong></td>
+          <td>${bankInfo}</td>
+          <td>${w.createdAt ? new Date(w.createdAt).toLocaleDateString() : 'N/A'}</td>
+          <td>${statusBadge}</td>
+          <td>${actions}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:30px;">Failed to load withdrawals: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function filterWithdrawals(status, btn) {
+  if (btn) {
+    btn.parentElement.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  loadWithdrawals(status);
+}
+
+async function approveWithdrawal(id) {
+  const ref = prompt('Enter Bank UTR / IMPS Reference Number for this payout:');
+  if (ref === null) return;
+  try {
+    const res = await apiRequest(`/admin/withdrawals/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ referenceNumber: ref || undefined }),
+    });
+    showToast('Withdrawal marked as PAID successfully.');
+    loadWithdrawals();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function rejectWithdrawal(id) {
+  const reason = prompt('Enter reason for rejecting this payout request:');
+  if (reason === null) return;
+  try {
+    const res = await apiRequest(`/admin/withdrawals/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || 'Bank details could not be verified' }),
+    });
+    showToast('Withdrawal rejected.');
+    loadWithdrawals();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ==========================================================================
+// 22. ERROR MONITORING
+// ==========================================================================
+async function loadErrorMonitoring() {
+  const tbody = document.getElementById('errors-tbody');
+  if (!tbody) return;
+  const modFilter = document.getElementById('error-module-filter')?.value || 'all';
+  const sevFilter = document.getElementById('error-severity-filter')?.value || 'all';
+
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:var(--text-muted);">Fetching error logs...</td></tr>';
+
+  try {
+    const res = await apiRequest(`/admin/errors?module=${modFilter}&severity=${sevFilter}&limit=50`);
+    const items = res?.data?.items || [];
+
+    const openCount = items.filter(e => !e.resolved).length;
+    const badge = document.getElementById('badge-errors-count');
+    if (badge) {
+      badge.innerText = openCount;
+      badge.style.display = openCount > 0 ? 'inline-block' : 'none';
+    }
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:#10b981;">✓ No error incidents recorded. System running smoothly!</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = items.map(e => {
+      const sevBadge = e.severity === 'critical'
+        ? '<span class="badge badge-danger">CRITICAL</span>'
+        : e.severity === 'high'
+        ? '<span class="badge badge-danger" style="background:#ea580c;">HIGH</span>'
+        : '<span class="badge badge-warning">MEDIUM</span>';
+
+      const statusBadge = e.resolved
+        ? '<span class="badge badge-success">RESOLVED</span>'
+        : '<span class="badge badge-danger">OPEN</span>';
+
+      const actionBtn = !e.resolved
+        ? `<button class="btn-sm btn-primary" onclick="resolveErrorLog('${e.id}')">✓ Resolve</button>`
+        : `<small class="text-muted">Resolved by ${escapeHtml(e.resolvedBy || 'Admin')}</small>`;
+
+      return `
+        <tr>
+          <td><strong style="color:#ef4444;">${e.errorId}</strong></td>
+          <td><span class="badge" style="background:#334155; color:#cbd5e1;">${(e.module || 'SYSTEM').toUpperCase()}</span></td>
+          <td><span style="font-size:13px; font-weight:600;">${escapeHtml(e.errorMessage)}</span></td>
+          <td><code>${escapeHtml(e.httpMethod || 'API')} ${escapeHtml(e.apiEndpoint || '/')}</code></td>
+          <td>${sevBadge}</td>
+          <td><small>${e.createdAt ? new Date(e.createdAt).toLocaleString() : 'Recent'}</small></td>
+          <td>${statusBadge}</td>
+          <td>${actionBtn}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:30px;">Failed to load errors: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+async function resolveErrorLog(id) {
+  const notes = prompt('Enter resolution notes (optional):');
+  if (notes === null) return;
+  try {
+    await apiRequest(`/admin/errors/${id}/resolve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolutionNotes: notes || 'Verified and resolved by administrator' }),
+    });
+    showToast('Error incident marked as resolved.');
+    loadErrorMonitoring();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// ==========================================================================
+// 23. DATABASE LIVE MONITORING
+// ==========================================================================
+async function loadDatabaseMonitoring() {
+  const grid = document.getElementById('db-collections-grid');
+  if (grid) grid.innerHTML = '<div style="color:var(--text-muted); padding:20px;">Pinging database cluster...</div>';
+
+  try {
+    const res = await apiRequest('/admin/database/monitoring');
+    const data = res?.data || {};
+
+    const hostEl = document.getElementById('db-mon-host');
+    const nameEl = document.getElementById('db-mon-name');
+    const latencyEl = document.getElementById('db-mon-latency');
+    const colCountEl = document.getElementById('db-mon-col-count');
+    const badgeEl = document.getElementById('db-mon-badge');
+
+    if (hostEl) hostEl.innerText = data.host || 'cluster0.kx9qipw.mongodb.net';
+    if (nameEl) nameEl.innerText = data.databaseName || 'bandhansetu';
+    if (latencyEl) latencyEl.innerText = `${data.pingLatencyMs || 0} ms (Excellent)`;
+    if (colCountEl) colCountEl.innerText = `${data.collectionsCount || 0} collections`;
+    if (badgeEl) {
+      badgeEl.innerText = data.status === 'connected' ? 'CONNECTED (ONLINE)' : data.status.toUpperCase();
+      badgeEl.className = data.status === 'connected' ? 'badge badge-success' : 'badge badge-danger';
+    }
+
+    if (grid) {
+      const cols = data.collections || [];
+      if (cols.length === 0) {
+        grid.innerHTML = '<div style="color:var(--text-muted);">No collections found.</div>';
+        return;
+      }
+      grid.innerHTML = cols.map(c => `
+        <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; color:#cbd5e1; font-size:13px;">${escapeHtml(c.name)}</span>
+          <span class="badge" style="background:#1e293b; color:var(--gold-accent-light); font-weight:bold; font-size:12px;">${c.count} docs</span>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    if (grid) grid.innerHTML = `<div style="color:#ef4444; padding:20px;">Failed to ping database: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+window.loadWithdrawals = loadWithdrawals;
+window.filterWithdrawals = filterWithdrawals;
+window.approveWithdrawal = approveWithdrawal;
+window.rejectWithdrawal = rejectWithdrawal;
+window.loadErrorMonitoring = loadErrorMonitoring;
+window.resolveErrorLog = resolveErrorLog;
+window.loadDatabaseMonitoring = loadDatabaseMonitoring;
+

@@ -23,9 +23,12 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
-  const [activeTab, setActiveTab] = useState<'kundli' | 'matching'>(
+  const [activeTab, setActiveTab] = useState<'kundli' | 'matching' | 'consultation'>(
     route?.params?.initialTab || 'kundli'
   );
+
+  const [astrologers, setAstrologers] = useState<any[]>([]);
+  const [astrologersLoading, setAstrologersLoading] = useState(false);
 
   const partnerParam = route?.params?.partner;
   const partnerName = partnerParam?.name;
@@ -86,6 +89,70 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const fetchAstrologers = async () => {
+    setAstrologersLoading(true);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch(`${API_BASE}/astrology/astrologers`, { headers });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setAstrologers(json.data.items || []);
+      }
+    } catch {
+      // offline fallback
+    } finally {
+      setAstrologersLoading(false);
+    }
+  };
+
+  const handleBookConsultation = async (astrologer: any) => {
+    Alert.alert(
+      'परामर्श बुक करें (Book Consultation)',
+      `${astrologer.name} से ज्योतिष परामर्श शुरू करें?\nशुल्क: ₹${astrologer.consultationCharges || 501}`,
+      [
+        { text: 'रद्द करें (Cancel)', style: 'cancel' },
+        {
+          text: 'पुष्टि करें (Confirm & Book)',
+          onPress: async () => {
+            try {
+              const headers = await getAuthHeader();
+              const res = await fetch(`${API_BASE}/astrology/consultations`, {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  panditId: astrologer.id,
+                  type: 'astrology',
+                  topic: 'Kundli Milan & Vivah Guidance',
+                  scheduledDate: new Date().toISOString().slice(0, 10),
+                  scheduledTime: '11:00 AM',
+                }),
+              });
+              const json = await res.json();
+              if (json.success) {
+                Alert.alert(
+                  'परामर्श अनुरोध भेजा गया 🎉',
+                  'आपका ज्योतिष परामर्श अनुरोध सफलतापूर्वक दर्ज हो गया है। ज्योतिषी शीघ्र ही आपसे संपर्क करेंगे।',
+                  [
+                    {
+                      text: 'ठीक है (OK)',
+                      onPress: () => {
+                        navigation.navigate('MyBookings');
+                      },
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert('त्रुटि', json.message || 'परामर्श बुक नहीं हो सका।');
+              }
+            } catch (err: any) {
+              Alert.alert('त्रुटि', err?.message || 'सर्वर से कनेक्ट करने में समस्या आई।');
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -188,6 +255,29 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
               ]}
             >
               {t('astrologyScreen.tabKundliMilan')}
+            </Text>
+          </PressableScale>
+
+          <PressableScale
+            style={[styles.segmentTab, activeTab === 'consultation' && styles.segmentTabActive]}
+            onPress={() => {
+              setActiveTab('consultation');
+              if (astrologers.length === 0) fetchAstrologers();
+            }}
+          >
+            <Ionicons
+              name="chatbubbles-outline"
+              size={15}
+              color={activeTab === 'consultation' ? ds.color.maroon : ds.color.textMuted}
+            />
+            <Text
+              maxFontSizeMultiplier={1.2}
+              style={[
+                styles.segmentLabel,
+                activeTab === 'consultation' && styles.segmentLabelActive,
+              ]}
+            >
+              {t('astrologyScreen.tabConsultation', 'परामर्श')}
             </Text>
           </PressableScale>
         </View>
@@ -557,6 +647,215 @@ export const AstrologyScreen: React.FC<any> = ({ navigation, route }) => {
                   </View>
                 ))}
               </View>
+            )}
+          </View>
+        )}
+
+        {activeTab === 'consultation' && (
+          <View>
+            <View style={styles.guidanceCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Ionicons name="sparkles" size={16} color={ds.color.maroon} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: ds.color.maroon }}>
+                  प्रमाणित वैदिक ज्योतिषी (Verified Astrologers)
+                </Text>
+              </View>
+              <Text style={{ fontSize: 12, color: ds.color.textMuted, lineHeight: 18 }}>
+                कुंडली दोष, गुण मिलान, विवाह मुहूर्त एवं जीवन मार्गदर्शन हेतु सत्यापित ज्योतिषियों से सीधा परामर्श प्राप्त करें।
+              </Text>
+            </View>
+
+            {astrologersLoading ? (
+              <View style={styles.skeletonContainer}>
+                <Skeleton width="100%" height={140} radius={16} style={{ marginBottom: 12 }} />
+                <Skeleton width="100%" height={140} radius={16} />
+              </View>
+            ) : astrologers.length === 0 ? (
+              <View style={[styles.card, { alignItems: 'center', paddingVertical: 32 }]}>
+                <Ionicons name="people-outline" size={44} color={ds.color.textMuted} style={{ marginBottom: 12 }} />
+                <Text style={{ fontSize: 15, fontWeight: '700', color: ds.color.text, marginBottom: 4 }}>
+                  वर्तमान में ज्योतिषी उपलब्ध नहीं हैं
+                </Text>
+                <Text style={{ fontSize: 13, color: ds.color.textMuted, textAlign: 'center', marginBottom: 16 }}>
+                  कृपया कुछ समय बाद पुनः प्रयास करें या अन्य सेवाओं का उपयोग करें।
+                </Text>
+                <PressableScale
+                  style={[styles.editBtn, { marginTop: 0, paddingHorizontal: 20 }]}
+                  onPress={fetchAstrologers}
+                >
+                  <Ionicons name="refresh" size={15} color={ds.color.maroon} />
+                  <Text style={styles.editBtnText}>पुनः लोड करें (Refresh)</Text>
+                </PressableScale>
+              </View>
+            ) : (
+              astrologers.map((ast) => (
+                <View key={ast.id} style={[styles.card, { marginBottom: 14 }]}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <View
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
+                        backgroundColor: ds.color.surfaceWarm,
+                        borderWidth: 2,
+                        borderColor: ds.color.maroon,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 18, fontWeight: '700', color: ds.color.maroon }}>
+                        {ast.name ? ast.name.slice(0, 2).toUpperCase() : 'पं'}
+                      </Text>
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: ds.color.text }}>
+                          {ast.name}
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 2,
+                            borderRadius: 999,
+                            backgroundColor: ast.isOnline ? '#DCFCE7' : '#F1F5F9',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '700',
+                              color: ast.isOnline ? '#166534' : '#64748B',
+                            }}
+                          >
+                            {ast.isOnline ? '● Online' : 'Available'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={{ fontSize: 12, color: ds.color.textMuted, marginTop: 2 }}>
+                        अनुभव: {ast.experience || 5}+ वर्ष | {ast.city || 'Delhi NCR'}
+                      </Text>
+
+                      {/* Expertise Badges */}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                        {(ast.astrologyExpertise && ast.astrologyExpertise.length > 0
+                          ? ast.astrologyExpertise
+                          : ['Vedic Astrology', 'Kundli Milan', 'Vivah Muhurat']
+                        ).slice(0, 3).map((exp: string, i: number) => (
+                          <View
+                            key={i}
+                            style={{
+                              backgroundColor: '#FFF7ED',
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 4,
+                              borderWidth: 0.5,
+                              borderColor: '#FED7AA',
+                            }}
+                          >
+                            <Text style={{ fontSize: 10, color: '#C2410C', fontWeight: '600' }}>
+                              {exp}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      {/* Fee & Action Row */}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginTop: 12,
+                          paddingTop: 8,
+                          borderTopWidth: 1,
+                          borderTopColor: '#F7EFE4',
+                        }}
+                      >
+                        <View>
+                          <Text style={{ fontSize: 10, color: ds.color.textMuted }}>परामर्श शुल्क</Text>
+                          <Text style={{ fontSize: 15, fontWeight: '800', color: ds.color.maroon }}>
+                            ₹{ast.consultationCharges || 501}
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <PressableScale
+                            style={{
+                              backgroundColor: '#2E7D32',
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                            onPress={() => {
+                              navigation.navigate('Call', {
+                                callType: 'audio',
+                                targetUserId: ast.userId || ast.id,
+                                targetUserName: ast.name,
+                                panditId: ast.id,
+                              });
+                            }}
+                            accessibilityLabel="Audio Call"
+                          >
+                            <Ionicons name="call" size={13} color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                              ऑडियो
+                            </Text>
+                          </PressableScale>
+
+                          <PressableScale
+                            style={{
+                              backgroundColor: '#B8860B',
+                              paddingHorizontal: 10,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}
+                            onPress={() => {
+                              navigation.navigate('Call', {
+                                callType: 'video',
+                                targetUserId: ast.userId || ast.id,
+                                targetUserName: ast.name,
+                                panditId: ast.id,
+                              });
+                            }}
+                            accessibilityLabel="Video Call"
+                          >
+                            <Ionicons name="videocam" size={14} color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                              वीडियो
+                            </Text>
+                          </PressableScale>
+
+                          <PressableScale
+                            style={{
+                              backgroundColor: ds.color.maroon,
+                              paddingHorizontal: 12,
+                              paddingVertical: 8,
+                              borderRadius: 10,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 5,
+                            }}
+                            onPress={() => handleBookConsultation(ast)}
+                          >
+                            <Ionicons name="chatbubble-ellipses" size={13} color="#FFFFFF" />
+                            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                              चैट
+                            </Text>
+                          </PressableScale>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ))
             )}
           </View>
         )}

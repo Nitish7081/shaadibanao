@@ -313,6 +313,8 @@ export interface ChatMessage {
   senderId: string;
   text: string;
   status: MessageStatus;
+  isFreeChat?: boolean;
+  planTier?: string;
   createdAt: string;
 }
 
@@ -332,6 +334,7 @@ export interface ConversationItem {
   lastMessage?: ChatMessage;
   unreadCount: number;
   contactExchange: ContactExchangeDetails;
+  isFreeChat?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -486,21 +489,57 @@ export interface PanditAvailabilitySlot {
 
 export interface PanditProfile {
   id: string;
+  panditId?: string;
   userId: string;
   name: string;
   profilePhoto?: string;
   phone?: string;
   email?: string;
+  gender?: string;
+  dateOfBirth?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+  };
+  city?: string;
+  state?: string;
   bio: string;
   experienceYears: number;
   languages: string[];
+  specialization?: string[];
   serviceLocations: string[];
   religiousTradition: string;
   services: PanditServiceItem[];
   availability: PanditAvailabilitySlot[];
-  verificationStatus: 'pending' | 'verified' | 'rejected';
+  offersAstrology?: boolean;
+  astrologyExpertise?: string[];
+  consultationCharges?: number;
+  bankDetails?: {
+    accountHolderName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    upiId?: string;
+  };
+  documents?: Array<{
+    docType: string;
+    docUrl: string;
+    docName: string;
+    verifiedAt?: string;
+    status: string;
+  }>;
+  verificationStatus: 'pending' | 'under_review' | 'approved' | 'verified' | 'rejected' | 'suspended';
   verifiedBy?: string;
   verifiedAt?: string;
+  rejectionReason?: string;
+  requestedDocuments?: string[];
+  isActive?: boolean;
+  isOnline?: boolean;
+  isAssigned?: boolean;
+  totalEarnings?: number;
+  pendingPayout?: number;
   rating: number;
   reviewsCount: number;
   createdAt: string;
@@ -513,7 +552,7 @@ export interface PujaBooking {
   userId: string;
   userName?: string;
   userMobile?: string;
-  panditId: string;
+  panditId?: string;
   panditName?: string;
   serviceId: string;
   serviceName: string;
@@ -522,8 +561,21 @@ export interface PujaBooking {
   timeSlot: string;    // e.g. "10:00 AM - 01:00 PM"
   mode: 'in_person' | 'online';
   venueAddress?: string;
+  city?: string;
+  state?: string;
+  guestCount?: number;
+  languagePref?: string;
+  budgetRangeInr?: string;
   priceInr: number;
-  status: 'requested' | 'accepted' | 'declined' | 'rescheduled' | 'completed' | 'cancelled';
+  paymentStatus?: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentId?: string;
+  orderId?: string;
+  paidAmount?: number;
+  commissionAmount?: number;
+  panditEarnings?: number;
+  isCommunityBooking?: boolean;
+  communityId?: string;
+  status: 'pending' | 'confirmed' | 'assigned' | 'requested' | 'accepted' | 'declined' | 'rescheduled' | 'completed' | 'cancelled';
   cancellationReason?: string;
   kundliSharedConsent: boolean;
   specialRequests?: string;
@@ -630,5 +682,114 @@ export interface ContactInquiryResponse {
   submittedAt: string;
   message: string;
 }
+
+export interface PaymentOrderResponse {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  bookingReference?: string;
+  serviceName?: string;
+}
+
+export interface PaymentVerificationInput {
+  orderId: string;
+  paymentId: string;
+  signature?: string;
+}
+
+export interface PanditWalletResponse {
+  panditId: string;
+  name: string;
+  totalEarnings: number;
+  pendingPayout: number;
+  completedBookingsCount: number;
+  bankDetails?: {
+    accountHolderName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    bankName?: string;
+    upiId?: string;
+  };
+  withdrawals: Array<{
+    id: string;
+    withdrawalId: string;
+    amount: number;
+    status: 'pending' | 'approved' | 'rejected' | 'paid';
+    referenceNumber?: string;
+    rejectionReason?: string;
+    createdAt: string;
+  }>;
+}
+
+export interface ErrorLogItem {
+  id: string;
+  errorId: string;
+  module: string;
+  errorMessage: string;
+  apiEndpoint?: string;
+  httpMethod?: string;
+  statusCode?: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  resolved: boolean;
+  resolutionStatus: 'open' | 'investigating' | 'resolved' | 'ignored';
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  createdAt: string;
+}
+
+export interface DatabaseMonitoringStats {
+  status: 'connected' | 'disconnected' | 'connecting' | 'unconfigured';
+  host?: string;
+  databaseName?: string;
+  isProduction: boolean;
+  pingLatencyMs: number;
+  collectionsCount: number;
+  collections: Array<{
+    name: string;
+    count: number;
+  }>;
+  serverTimestamp: string;
+}
+
+export type CallType = 'audio' | 'video';
+export type CallStatus = 'initiating' | 'ringing' | 'accepted' | 'rejected' | 'missed' | 'busy' | 'ended' | 'failed';
+
+export interface CallSessionItem {
+  id: string;
+  sessionId: string;
+  callerId: string;
+  callerName: string;
+  callerPhoto?: string;
+  receiverId: string;
+  receiverName: string;
+  receiverPhoto?: string;
+  panditId?: string;
+  panditName?: string;
+  callType: CallType;
+  status: CallStatus;
+  isPaid?: boolean;
+  amountPaid?: number;
+  panditEarnings?: number;
+  commissionAmount?: number;
+  durationSeconds: number;
+  rejectionReason?: string;
+  startedAt: string;
+  connectedAt?: string;
+  endedAt?: string;
+}
+
+export interface WebRtcSignalPayload {
+  sessionId: string;
+  targetUserId: string;
+  type?: 'offer' | 'answer' | 'candidate' | 'mute' | 'hangup';
+  sdp?: any;
+  candidate?: any;
+  isMuted?: boolean;
+  isVideoOff?: boolean;
+}
+
+
 
 

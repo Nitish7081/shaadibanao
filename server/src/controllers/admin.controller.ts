@@ -4,6 +4,8 @@ import { PanditService } from '../services/pandit.service';
 import { VerificationService } from '../services/verification.service';
 import { BookingService } from '../services/booking.service';
 import { CommunityService } from '../services/community.service';
+import { ChatService } from '../services/chat.service';
+import { CallService } from '../services/call.service';
 import { ApiResponse } from '@bandhansetu/shared';
 import { BannerService } from '../services/banner.service';
 
@@ -362,12 +364,7 @@ export class AdminController {
    */
   public static async getPandits(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { page, limit, status } = req.query;
-      const data = await PanditService.listAdminPandits(
-        page ? Number(page) : 1,
-        limit ? Number(limit) : 20,
-        (status as string) || 'all'
-      );
+      const data = await PanditService.listAdminPandits(req.query);
       res.status(200).json({ success: true, data });
     } catch (error) {
       next(error);
@@ -375,16 +372,20 @@ export class AdminController {
   }
 
   /**
-   * POST /api/v1/admin/pandits/:id/verify
+   * POST /api/v1/admin/pandits/:id/verify or /approve
    */
   public static async verifyPandit(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const adminId = req.user?.userId || (req as any).user?.id || 'admin';
       const result = await PanditService.verifyPandit(req.params.id, adminId, req.ip);
-      res.status(200).json({ success: true, message: result.message });
+      res.status(200).json({ success: true, message: result.message, data: (result as any).pandit });
     } catch (error) {
       next(error);
     }
+  }
+
+  public static async approvePandit(req: Request, res: Response, next: NextFunction): Promise<void> {
+    return AdminController.verifyPandit(req, res, next);
   }
 
   /**
@@ -394,8 +395,63 @@ export class AdminController {
     try {
       const adminId = req.user?.userId || (req as any).user?.id || 'admin';
       const { reason } = req.body;
-      const result = await PanditService.rejectPandit(req.params.id, adminId, reason || 'Incomplete qualifications', req.ip);
+      const result = await PanditService.rejectPandit(req.params.id, adminId, reason || 'Incomplete qualifications or documentation', req.ip);
       res.status(200).json({ success: true, message: result.message });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/pandits/:id/request-docs
+   */
+  public static async requestPanditDocuments(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const reqDocs = req.body.requestedDocuments || req.body.documents;
+      const docs = Array.isArray(reqDocs) ? reqDocs : [reqDocs || 'Government ID / Vedic Certificate'];
+      const result = await PanditService.requestDocuments(req.params.id, adminId, docs, req.ip);
+      res.status(200).json({ success: true, message: result.message, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/pandits/:id/toggle-active
+   */
+  public static async togglePanditActive(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const result = await PanditService.toggleActive(req.params.id, adminId, req.ip);
+      res.status(200).json({ success: true, message: result.message, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/pandits/:id/suspend
+   */
+  public static async suspendPandit(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const { reason } = req.body;
+      const result = await PanditService.suspendPandit(req.params.id, adminId, reason || 'Account suspended by administrator.', req.ip);
+      res.status(200).json({ success: true, message: result.message });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/pandits/:id
+   */
+  public static async updatePandit(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const result = await PanditService.adminUpdatePandit(req.params.id, adminId, req.body);
+      res.status(200).json({ success: true, message: 'Pandit details updated successfully.', data: result });
     } catch (error) {
       next(error);
     }
@@ -519,7 +575,7 @@ export class AdminController {
   public static async assignBookingPandit(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const adminId = (req as any).user?.userId || (req as any).user?.id || 'admin';
-      const { panditId } = req.body;
+      const { panditId, status, autoConfirm } = req.body;
       if (!panditId) {
         res.status(400).json({
           success: false,
@@ -527,10 +583,11 @@ export class AdminController {
         });
         return;
       }
-      const booking = await BookingService.assignPandit(req.params.id, panditId, adminId);
+      const assignMode = status ? status : (autoConfirm !== undefined ? autoConfirm : 'accepted');
+      const booking = await BookingService.assignPandit(req.params.id, panditId, adminId, assignMode);
       res.status(200).json({
         success: true,
-        message: 'Pandit assigned and booking confirmed.',
+        message: assignMode === 'assigned' ? 'Pandit assigned successfully for review.' : 'Pandit assigned and booking confirmed.',
         data: booking,
       });
     } catch (error) {
@@ -669,6 +726,285 @@ export class AdminController {
       const adminUser = req.user;
       await AdminService.deleteBanner(req.params.id, adminUser, req.ip);
       res.status(200).json({ success: true, message: 'Banner removed successfully.' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/support/inquiries
+   */
+  public static async getSupportInquiries(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { status, search, page, limit } = req.query;
+      const data = await AdminService.getSupportInquiries({
+        status: status as string,
+        search: search as string,
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 20,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/support/inquiries/:id/status
+   */
+  public static async updateSupportInquiryStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { status } = req.body;
+      const adminUser = req.user;
+      const data = await AdminService.updateSupportInquiryStatus(req.params.id, status, adminUser);
+      res.status(200).json({ success: true, message: 'Support inquiry updated successfully.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/payments
+   */
+  public static async getPaymentsList(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { page, limit, planId } = req.query;
+      const data = await AdminService.getPaymentsList({
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 20,
+        planId: planId as string,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/services
+   */
+  public static async getServicesCatalog(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.getServicesCatalog();
+      res.status(200).json({ success: true, data: { items: data } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/services
+   */
+  public static async saveServiceCatalogItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const data = await AdminService.saveServiceCatalogItem(req.body, adminUser);
+      res.status(200).json({ success: true, message: 'Service saved successfully.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/services/:id
+   */
+  public static async deleteServiceCatalogItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      await AdminService.deleteServiceCatalogItem(req.params.id, adminUser);
+      res.status(200).json({ success: true, message: 'Service removed successfully.' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/categories
+   */
+  public static async getCategories(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.getCategories();
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/notifications
+   */
+  public static async getAdminNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { page, limit } = req.query;
+      const data = await AdminService.getAdminNotifications(
+        page ? Number(page) : 1,
+        limit ? Number(limit) : 20
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/notifications/broadcast
+   */
+  public static async sendBroadcastNotification(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const data = await AdminService.sendBroadcastNotification(req.body, adminUser);
+      res.status(201).json({ success: true, message: 'Broadcast notification sent successfully.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/system/settings
+   */
+  public static async getSystemSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.getSystemSettings();
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/system/settings
+   */
+  public static async updateSystemSettings(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const data = await AdminService.updateSystemSettings(req.body, adminUser);
+      res.status(200).json({ success: true, message: 'System settings updated successfully.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/chat/conversations
+   */
+  public static async getChatConversations(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await ChatService.listAdminConversations(req.query);
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/chat/users/:userId/block-chat
+   */
+  public static async blockUserChat(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.userId || (req as any).user?.id || 'admin';
+      const { isBlocked, reason } = req.body;
+      const result = await ChatService.setChatBlockStatus(
+        req.params.userId,
+        isBlocked !== undefined ? Boolean(isBlocked) : true,
+        reason || 'Abusive behavior or terms violation',
+        adminId
+      );
+      res.status(200).json({ success: true, message: result.message, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/withdrawals
+   */
+  public static async getWithdrawals(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.listWithdrawals(req.query);
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/withdrawals/:id/approve
+   */
+  public static async approveWithdrawal(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const { referenceNumber } = req.body;
+      const data = await AdminService.approveWithdrawal(req.params.id, adminUser, referenceNumber);
+      res.status(200).json({ success: true, message: 'Withdrawal approved and marked as paid.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/withdrawals/:id/reject
+   */
+  public static async rejectWithdrawal(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const { reason } = req.body;
+      const data = await AdminService.rejectWithdrawal(req.params.id, adminUser, reason);
+      res.status(200).json({ success: true, message: 'Withdrawal request rejected.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/errors
+   */
+  public static async getErrorLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.listErrorLogs(req.query);
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/errors/:id/resolve
+   */
+  public static async resolveErrorLog(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUser = req.user;
+      const { resolutionNotes } = req.body;
+      const data = await AdminService.resolveErrorLog(req.params.id, adminUser, resolutionNotes);
+      res.status(200).json({ success: true, message: 'Error log marked as resolved.', data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/database/monitoring
+   */
+  public static async getDatabaseMonitoring(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await AdminService.getDatabaseMonitoringStats();
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/calls
+   */
+  public static async getCalls(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { page, limit, filter } = req.query;
+      const data = await CallService.getAdminCallList(
+        page ? Number(page) : 1,
+        limit ? Number(limit) : 50,
+        (filter as string) || 'all'
+      );
+      res.status(200).json({ success: true, data });
     } catch (error) {
       next(error);
     }

@@ -8,7 +8,7 @@ export type RootStackParamList = {
   ProfileCreation: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   ProfileDetail: { profileId: string; name: string };
-  ChatDetail: { conversationId: string; partnerName: string };
+  ChatDetail: { conversationId: string; partnerName: string; partnerId?: string };
   Membership: undefined;
   Notifications: undefined;
   PrivacySettings: undefined;
@@ -26,6 +26,17 @@ export type RootStackParamList = {
   Search: undefined;
   Chat: undefined;
   MuhuratFinder: { ceremonyType?: string } | undefined;
+  HelpSupport: undefined;
+  PanditDashboard: undefined;
+  Call: {
+    sessionId?: string;
+    callType: 'audio' | 'video';
+    targetUserId: string;
+    targetUserName: string;
+    targetUserPhoto?: string;
+    isIncoming?: boolean;
+    panditId?: string;
+  };
 };
 
 export type MainTabParamList = {

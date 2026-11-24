@@ -2,40 +2,49 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { PressableScale, ds } from '../../design';
 
 interface Props {
   onUpgradePress: () => void;
 }
 
-export const VipBanner: React.FC<Props> = ({ onUpgradePress }) => (
-  <LinearGradient
-    colors={ds.gradient.vip}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={styles.card}
-  >
-    <View style={styles.row}>
-      <View style={styles.crown}>
-        <MaterialCommunityIcons name="crown" size={26} color={ds.color.deepMaroon} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.kicker}>VIP MEMBERSHIP</Text>
-        <Text style={styles.title}>Direct Contact & Horoscope Matching</Text>
-      </View>
-    </View>
-    <Text style={styles.desc}>Unlock premium features and get closer to your perfect match.</Text>
-    <PressableScale
-      onPress={onUpgradePress}
-      accessibilityRole="button"
-      accessibilityLabel="Explore Membership Plans"
-      style={styles.btn}
+export const VipBanner: React.FC<Props> = ({ onUpgradePress }) => {
+  const { t } = useTranslation();
+
+  return (
+    <LinearGradient
+      colors={ds.gradient.vip}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.card}
     >
-      <Text style={styles.btnText}>Explore Membership Plans</Text>
-      <MaterialCommunityIcons name="arrow-right" size={18} color="#FFFFFF" />
-    </PressableScale>
-  </LinearGradient>
-);
+      <View style={styles.row}>
+        <View style={styles.crown}>
+          <MaterialCommunityIcons name="crown" size={26} color={ds.color.deepMaroon} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kicker}>{t('vipBanner.kicker', 'VIP MEMBERSHIP')}</Text>
+          <Text style={styles.title}>
+            {t('vipBanner.title', 'Direct Contact & Horoscope Matching')}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.desc}>
+        {t('vipBanner.desc', 'Unlock premium features and get closer to your perfect match.')}
+      </Text>
+      <PressableScale
+        onPress={onUpgradePress}
+        accessibilityRole="button"
+        accessibilityLabel={t('vipBanner.btn', 'Explore Membership Plans')}
+        style={styles.btn}
+      >
+        <Text style={styles.btnText}>{t('vipBanner.btn', 'Explore Membership Plans')}</Text>
+        <MaterialCommunityIcons name="arrow-right" size={18} color="#FFFFFF" />
+      </PressableScale>
+    </LinearGradient>
+  );
+};
 
 const styles = StyleSheet.create({
   card: { borderRadius: ds.radius.xl, padding: ds.space.lg + 2, marginBottom: 0, ...ds.shadow.lift },

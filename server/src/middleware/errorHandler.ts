@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { ZodError } from 'zod';
 import { config } from '../config/env';
+import { ErrorLogModel } from '../models/error-log.model';
 
 export class AppError extends Error {
   public statusCode: number;
@@ -100,6 +102,45 @@ export const errorHandler = (
   console.error(`[Unhandled Server Error] [reqId=${reqId}] [${req.method} ${req.originalUrl}] ${err.name || 'Error'}: ${err.message}`);
   if (!config.isProduction && err.stack) {
     console.error(err.stack);
+  }
+
+  // Automatic Error Monitoring Log (Sanitized, no credentials/OTPs/passwords logged)
+  try {
+    const errorId = `ERR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const originalUrl = req.originalUrl || '';
+    const moduleName = originalUrl.includes('/booking')
+      ? 'booking'
+      : originalUrl.includes('/payment')
+      ? 'payment'
+      : originalUrl.includes('/pandit')
+      ? 'pandit'
+      : originalUrl.includes('/chat') || originalUrl.includes('/conversations')
+      ? 'chat'
+      : originalUrl.includes('/auth')
+      ? 'auth'
+      : originalUrl.includes('/admin')
+      ? 'admin'
+      : 'system';
+
+    const cleanEndpoint = originalUrl.split('?')[0];
+
+    if (mongoose.connection.readyState === 1) {
+      ErrorLogModel.create({
+        errorId,
+        module: moduleName,
+        errorMessage: err.message || 'Internal Server Error',
+        stackTrace: err.stack ? err.stack.slice(0, 2000) : undefined,
+        apiEndpoint: cleanEndpoint,
+        httpMethod: req.method,
+        statusCode: 500,
+        severity: err.name?.includes('Mongo') ? 'critical' : 'high',
+        userId: (req as any).user?.id || (req as any).user?.userId,
+        userRole: (req as any).user?.role,
+        clientIp: req.ip,
+      }).catch(() => {});
+    }
+  } catch {
+    // Non-blocking error monitoring
   }
 
   res.status(500).json({

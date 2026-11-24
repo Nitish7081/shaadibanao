@@ -26,6 +26,9 @@ import { IdentityVerificationScreen } from '../screens/IdentityVerificationScree
 import { CreatePostScreen } from '../screens/CreatePostScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { MuhuratFinderScreen } from '../screens/MuhuratFinderScreen';
+import { HelpSupportScreen } from '../screens/HelpSupportScreen';
+import { PanditDashboardScreen } from '../screens/PanditDashboardScreen';
+import { CallScreen } from '../screens/CallScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,6 +66,9 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="Search" component={SearchScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="MuhuratFinder" component={MuhuratFinderScreen} />
+      <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+      <Stack.Screen name="PanditDashboard" component={PanditDashboardScreen} />
+      <Stack.Screen name="Call" component={CallScreen} />
     </Stack.Navigator>
   );
 };

@@ -19,6 +19,7 @@ import { communityRouter } from './community.routes';
 import { bannerRouter } from './banner.routes';
 import { reportRouter } from './report.routes';
 import { publicRouter } from './public.routes';
+import { callRouter } from './call.routes';
 
 export const apiV1Router = Router();
 
@@ -31,6 +32,8 @@ apiV1Router.use('/search', searchRouter);
 apiV1Router.use('/shortlists', shortlistRouter);
 apiV1Router.use('/interests', interestRouter);
 apiV1Router.use('/conversations', chatRouter);
+apiV1Router.use('/chat/conversations', chatRouter);
+apiV1Router.use('/chat', chatRouter);
 apiV1Router.use('/membership', membershipRouter);
 apiV1Router.use('/admin', adminRouter);
 apiV1Router.use('/verification', verificationRouter);
@@ -42,4 +45,5 @@ apiV1Router.use('/consultations', consultationRouter);
 apiV1Router.use('/community', communityRouter);
 apiV1Router.use('/banners', bannerRouter);
 apiV1Router.use('/reports', reportRouter);
+apiV1Router.use('/calls', callRouter);
 

@@ -1,7 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookingService } from '../services/booking.service';
 import { requireAuth } from '../middleware/auth.middleware';
-import { requireApproved } from '../middleware/approval.middleware';
 import { ApiResponse } from '@bandhansetu/shared';
 
 export const bookingRouter = Router();
@@ -40,11 +39,15 @@ bookingRouter.get('/pandit', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// POST /api/v1/bookings (Create booking request - requires approved account)
-bookingRouter.post('/', requireApproved, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+// POST /api/v1/bookings or /request (Create booking request - accessible to all logged-in devotees)
+bookingRouter.post(['/', '/request'], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const userId = (req as any).user.id;
+    const userId = (req as any).user?.id || (req as any).user?.userId;
     const {
+      userName,
+      userMobile,
+      serviceName,
+      ceremonyType,
       panditId,
       serviceId,
       bookingDate,
@@ -56,15 +59,19 @@ bookingRouter.post('/', requireApproved, async (req: Request, res: Response, nex
       guestCount,
       languagePref,
       budgetRangeInr,
+      priceInr,
+      isCommunityBooking,
+      communityId,
       kundliSharedConsent,
       specialRequests,
     } = req.body;
 
-    // serviceId, bookingDate, timeSlot are always required
-    if (!serviceId || !bookingDate || !timeSlot) {
+    // serviceId or ceremonyType, bookingDate, timeSlot are always required
+    const finalServiceId = serviceId || ceremonyType || 'other_puja';
+    if (!finalServiceId || !bookingDate || !timeSlot) {
       res.status(400).json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'serviceId, bookingDate, and timeSlot are required.' },
+        error: { code: 'VALIDATION_ERROR', message: 'serviceId/ceremonyType, bookingDate, and timeSlot are required.' },
       });
       return;
     }
@@ -74,8 +81,12 @@ bookingRouter.post('/', requireApproved, async (req: Request, res: Response, nex
 
     const booking = await BookingService.createBooking({
       userId,
+      userName: clean(userName),
+      userMobile: clean(userMobile),
       panditId: panditId || undefined,
-      serviceId: String(serviceId).trim(),
+      serviceId: String(finalServiceId).trim(),
+      serviceName: clean(serviceName),
+      ceremonyType: clean(ceremonyType),
       bookingDate: String(bookingDate).trim(),
       timeSlot: String(timeSlot).trim(),
       mode: mode || 'in_person',
@@ -85,6 +96,9 @@ bookingRouter.post('/', requireApproved, async (req: Request, res: Response, nex
       guestCount: guestCount ? Number(guestCount) : undefined,
       languagePref: clean(languagePref),
       budgetRangeInr: clean(budgetRangeInr),
+      priceInr: priceInr !== undefined && priceInr !== null ? Number(priceInr) : undefined,
+      isCommunityBooking: !!isCommunityBooking,
+      communityId: communityId ? String(communityId) : undefined,
       kundliSharedConsent: !!kundliSharedConsent,
       specialRequests: clean(specialRequests),
     });
@@ -163,6 +177,57 @@ bookingRouter.post('/:id/complete', async (req: Request, res: Response, next: Ne
       success: true,
       message: 'Booking marked as completed.',
       data: booking,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/bookings/:id/payment/order (Create order for Razorpay/gateway)
+bookingRouter.post(['/:id/payment/order', '/:id/create-order'], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const order = await BookingService.createBookingPaymentOrder(req.params.id, userId);
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Payment order created successfully.',
+      data: order,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/bookings/:id/payment/verify (Verify gateway signature & confirm booking)
+bookingRouter.post(['/:id/payment/verify', '/:id/verify-payment'], async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const result = await BookingService.verifyBookingPayment(req.params.id, userId, req.body);
+
+    const response: ApiResponse = {
+      success: true,
+      message: result.message,
+      data: result.booking,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/bookings/:id/payment/failed (Record payment failure)
+bookingRouter.post('/:id/payment/failed', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const result = await BookingService.paymentFailed(req.params.id, userId, req.body?.reason);
+
+    const response: ApiResponse = {
+      success: true,
+      message: result.message,
+      data: result.booking,
     };
     res.status(200).json(response);
   } catch (error) {

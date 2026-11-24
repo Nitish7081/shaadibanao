@@ -12,6 +12,13 @@ import { VerificationRequestModel } from '../models/verification-request.model';
 import { PartnerPreferenceModel } from '../models/preference.model';
 import { KundliModel } from '../models/kundli.model';
 import { BannerModel } from '../models/banner.model';
+import { ContactInquiryModel } from '../models/contact-inquiry.model';
+import { NotificationModel } from '../models/notification.model';
+import { ServiceCatalogModel } from '../models/service-catalog.model';
+import { SystemSettingsModel } from '../models/system-settings.model';
+import { WithdrawalModel } from '../models/withdrawal.model';
+import { PaymentModel } from '../models/payment.model';
+import { ErrorLogModel } from '../models/error-log.model';
 import { StorageService } from './storage.service';
 import { sanitizeBannerLink } from './banner.service';
 import { presentPhoto, presentPhotoUrl } from './photoPrivacy';
@@ -160,6 +167,9 @@ export class AdminService {
         membershipPlans: { free: 0, silver: 0, gold: 0, platinum: 0 },
         totalReports: 0,
         pendingReports: 0,
+        totalBookings: 0,
+        pendingBookings: 0,
+        recentBookings: [],
         recentUsers: allUsers.slice(-5),
         recentApprovals: pendingUsers.slice(-5),
         recentReports: [],
@@ -181,12 +191,14 @@ export class AdminService {
       totalPandits,
       pendingPandits,
       totalBookings,
+      pendingBookings,
       pendingCommunityPosts,
       pendingIdentityRequests,
       recentUsers,
       recentApprovals,
       recentReports,
       recentAudits,
+      recentBookings,
       membershipAgg,
     ] = await Promise.all([
       UserModel.countDocuments({ status: { $ne: 'deleted' } }),
@@ -202,6 +214,7 @@ export class AdminService {
       PanditModel.countDocuments(),
       PanditModel.countDocuments({ verificationStatus: 'pending' }),
       BookingModel.countDocuments(),
+      BookingModel.countDocuments({ status: { $in: ['pending', 'requested'] } }),
       CommunityPostModel.countDocuments({ moderationStatus: 'pending' }),
       VerificationRequestModel.countDocuments({ status: 'pending' }),
       UserModel.find({ status: { $ne: 'deleted' } })
@@ -220,6 +233,10 @@ export class AdminService {
       AuditLogModel.find()
         .sort({ createdAt: -1 })
         .limit(8),
+      BookingModel.find()
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .lean(),
       MembershipModel.aggregate([
         { $match: { status: 'active' } },
         { $group: { _id: '$planId', count: { $sum: 1 } } },
@@ -253,6 +270,7 @@ export class AdminService {
       totalPandits,
       pendingPandits,
       totalBookings,
+      pendingBookings,
       pendingCommunityPosts,
       totalProfiles,
       verifiedProfiles,
@@ -264,6 +282,18 @@ export class AdminService {
       recentApprovals,
       recentReports,
       recentAudits,
+      recentBookings: (recentBookings || []).map((b: any) => ({
+        id: b._id?.toString(),
+        bookingReference: b.bookingReference,
+        userName: b.userName,
+        userMobile: b.userMobile,
+        serviceName: b.serviceName,
+        bookingDate: b.bookingDate,
+        timeSlot: b.timeSlot,
+        mode: b.mode,
+        status: b.status,
+        createdAt: b.createdAt,
+      })),
     };
   }
 
@@ -1589,6 +1619,880 @@ export class AdminService {
     });
 
     return true;
+  }
+
+  /**
+   * Help & Support - List all customer inquiries
+   */
+  public static async getSupportInquiries(query: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { items: [], pagination: { totalCount: 0, page: 1, limit: 20, totalPages: 1 } };
+    }
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter: any = {};
+    if (query.status && query.status !== 'all') {
+      filter.status = query.status;
+    }
+    if (query.search && query.search.trim()) {
+      const q = query.search.trim();
+      filter.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+        { ticketId: { $regex: q, $options: 'i' } },
+        { subject: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const [items, totalCount] = await Promise.all([
+      ContactInquiryModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      ContactInquiryModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: items.map((inq: any) => ({
+        id: inq._id.toString(),
+        ticketId: inq.ticketId,
+        name: inq.name,
+        email: inq.email,
+        phone: inq.phone || 'N/A',
+        category: inq.category,
+        subject: inq.subject,
+        message: inq.message,
+        status: inq.status,
+        createdAt: inq.createdAt?.toISOString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Help & Support - Update inquiry status
+   */
+  public static async updateSupportInquiryStatus(
+    id: string,
+    status: string,
+    adminUser: any
+  ): Promise<any> {
+    const inq = await ContactInquiryModel.findById(id);
+    if (!inq) throw new AppError('Inquiry not found.', 404, 'NOT_FOUND');
+    inq.status = status as any;
+    await inq.save();
+
+    const adminId = typeof adminUser === 'string' ? adminUser : (adminUser?.userId || adminUser?.id || adminUser?._id);
+    const adminEmail = typeof adminUser === 'object' ? (adminUser?.email || 'admin@shaadibanao.com') : 'admin@shaadibanao.com';
+    const adminName = typeof adminUser === 'object' ? (adminUser?.displayName || 'Administrator') : 'Administrator';
+
+    if (adminId) {
+      await AuditLogModel.create({
+        adminId,
+        adminEmail,
+        adminName,
+        action: 'UPDATE_SUPPORT_INQUIRY',
+        details: { inquiryId: id, newStatus: status, ticketId: inq.ticketId },
+      });
+    }
+    return inq;
+  }
+
+  /**
+   * Payments & Transactions - List memberships with payment history
+   */
+  public static async getPaymentsList(query: {
+    page?: number;
+    limit?: number;
+    planId?: string;
+    type?: string;
+  }): Promise<any> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { items: [], pagination: { totalCount: 0, page: 1, limit: 20, totalPages: 1 } };
+    }
+
+    // Check unified PaymentModel first
+    const paymentFilter: any = {};
+    if (query.type && query.type !== 'all') {
+      paymentFilter.type = query.type;
+    }
+
+    const paymentCount = await PaymentModel.countDocuments(paymentFilter);
+    if (paymentCount > 0) {
+      const [payments, totalCount] = await Promise.all([
+        PaymentModel.find(paymentFilter)
+          .populate('userId', 'displayName email mobile role')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Promise.resolve(paymentCount),
+      ]);
+
+      return {
+        items: payments.map((p: any) => ({
+          id: p._id.toString(),
+          orderId: p.orderId,
+          paymentId: p.paymentId || 'N/A',
+          userId: p.userId?._id?.toString() || p.userId?.toString(),
+          userName: p.userName || p.userId?.displayName || 'User',
+          userEmail: p.userEmail || p.userId?.email || 'N/A',
+          userMobile: p.userMobile || p.userId?.mobile || 'N/A',
+          planId: p.referenceId || p.type,
+          type: p.type,
+          referenceDescription: p.referenceDescription || `${p.type} payment`,
+          amountInr: p.amount,
+          currency: p.currency || 'INR',
+          status: p.status,
+          gateway: p.gateway || 'razorpay',
+          createdAt: p.createdAt?.toISOString ? p.createdAt.toISOString() : p.createdAt,
+        })),
+        pagination: {
+          page,
+          limit,
+          totalCount,
+          totalPages: Math.ceil(totalCount / limit) || 1,
+        },
+      };
+    }
+
+    // Fallback: Legacy MembershipModel query
+    const filter: any = {};
+    if (query.planId && query.planId !== 'all') {
+      filter.planId = query.planId;
+    }
+
+    const [items, totalCount] = await Promise.all([
+      MembershipModel.find(filter)
+        .populate('userId', 'displayName email mobile role')
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      MembershipModel.countDocuments(filter),
+    ]);
+
+    const PLAN_PRICES: Record<string, number> = {
+      free: 0,
+      plus: 2999,
+      premium: 4999,
+    };
+
+    return {
+      items: items.map((m: any) => ({
+        id: m._id.toString(),
+        userId: m.userId?._id?.toString() || m.userId?.toString(),
+        userName: m.userId?.displayName || 'User',
+        userEmail: m.userId?.email || 'N/A',
+        userMobile: m.userId?.mobile || 'N/A',
+        planId: m.planId,
+        type: 'membership',
+        amountInr: PLAN_PRICES[m.planId] || 0,
+        status: m.status,
+        contactDisclosuresUsed: m.contactDisclosuresUsed || 0,
+        startDate: m.startDate?.toISOString(),
+        expiresAt: m.expiresAt?.toISOString(),
+        createdAt: m.createdAt?.toISOString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Services Catalog - Get all puja services
+   */
+  public static async getServicesCatalog(): Promise<any[]> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) return [];
+
+    let services = await ServiceCatalogModel.find().sort({ ceremonyType: 1, name: 1 }).lean();
+
+    // Auto-seed default catalog if empty
+    if (services.length === 0) {
+      const defaults = [
+        {
+          serviceId: 'wedding',
+          name: 'Vivah Sanskar (Wedding Ceremony)',
+          nameHi: 'विवाह संस्कार',
+          category: 'Vedic Wedding Ceremonies',
+          description: 'Traditional Vedic Vivah ceremony including Jaymala, Kanyadaan, Saptapadi, and Sindoor Daan.',
+          descriptionHi: 'पारंपरिक वैदिक विवाह संस्कार जिसमें जयमाला, कन्यादान, सप्तपदी और सिन्दूर दान शामिल हैं।',
+          priceInr: 15100,
+          durationMinutes: 240,
+          isActive: true,
+          ceremonyType: 'wedding',
+        },
+        {
+          serviceId: 'engagement',
+          name: 'Sagai & Ring Ceremony (Engagement)',
+          nameHi: 'सगाई और अंगूठी समारोह',
+          category: 'Vedic Wedding Ceremonies',
+          description: 'Auspicious engagement rituals, ring exchange blessings, and Ganesh Pujan.',
+          descriptionHi: 'शुभ सगाई अनुष्ठान, अंगूठी विनिमय आशीर्वाद एवं गणेश पूजन।',
+          priceInr: 5100,
+          durationMinutes: 120,
+          isActive: true,
+          ceremonyType: 'engagement',
+        },
+        {
+          serviceId: 'griha_pravesh',
+          name: 'Griha Pravesh & Vastu Shanti',
+          nameHi: 'गृह प्रवेश एवं वास्तु शांति',
+          category: 'Home & Vastu Pujas',
+          description: 'Purification and blessings for entering a new home, Vastu dosha shanti, and havan.',
+          descriptionHi: 'नए घर में प्रवेश, वास्तु दोष शांति और हवन के लिए शुद्धिकरण और आशीर्वाद।',
+          priceInr: 7100,
+          durationMinutes: 180,
+          isActive: true,
+          ceremonyType: 'griha_pravesh',
+        },
+        {
+          serviceId: 'satyanarayan_puja',
+          name: 'Shri Satyanarayan Katha & Puja',
+          nameHi: 'श्री सत्यनारायण कथा एवं पूजा',
+          category: 'Auspicious Kathas & Havans',
+          description: 'Full reading of Sri Satyanarayan Katha, Panchamrit snan, and Aarti for family prosperity.',
+          descriptionHi: 'पारिवारिक सुख-समृद्धि हेतु श्री सत्यनारायण कथा, पंचामृत स्नान और महाआरती।',
+          priceInr: 3100,
+          durationMinutes: 120,
+          isActive: true,
+          ceremonyType: 'satyanarayan_puja',
+        },
+        {
+          serviceId: 'rudrabhishek',
+          name: 'Maha Rudrabhishek Puja',
+          nameHi: 'महा रुद्राभिषेक पूजा',
+          category: 'Auspicious Kathas & Havans',
+          description: 'Sacred Shiva Abhishek with milk, honey, sugarcane juice, and chanting of Sri Rudram.',
+          descriptionHi: 'दूध, शहद, गन्ने के रस और श्री रुद्रम पाठ के साथ पवित्र शिव अभिषेक।',
+          priceInr: 5100,
+          durationMinutes: 150,
+          isActive: true,
+          ceremonyType: 'rudrabhishek',
+        },
+        {
+          serviceId: 'kundli_milan',
+          name: 'Vedic Kundli Milan (36 Gunas)',
+          nameHi: 'वैदिक कुंडली मिलान (36 गुण)',
+          category: 'Astrological Consultations',
+          description: 'In-depth horoscope compatibility, Manglik dosha analysis, and remedy guidance.',
+          descriptionHi: 'विस्तृत कुंडली मिलान, मांगलिक दोष विश्लेषण और वैदिक उपाय।',
+          priceInr: 1100,
+          durationMinutes: 60,
+          isActive: true,
+          ceremonyType: 'kundli_milan',
+        },
+        {
+          serviceId: 'puja_havan',
+          name: 'Vedic Puja & Havan Anushthan',
+          nameHi: 'वैदिक पूजा एवं हवन अनुष्ठान',
+          category: 'Auspicious Kathas & Havans',
+          description: 'Customized Vedic ritual and fire sacrifice for peace, health, and spiritual elevation.',
+          descriptionHi: 'शांति, स्वास्थ्य और आध्यात्मिक उन्नति के लिए विशेष वैदिक हवन और अनुष्ठान।',
+          priceInr: 5500,
+          durationMinutes: 180,
+          isActive: true,
+          ceremonyType: 'puja_havan',
+        },
+        {
+          serviceId: 'kundli_jyotish',
+          name: 'Vedic Horoscope & Jyotish Consultation',
+          nameHi: 'ज्योतिष एवं भविष्यफल परामर्श',
+          category: 'Astrological Consultations',
+          description: 'Direct 1-on-1 consultation with Acharyas on career, marriage timing, and remedies.',
+          descriptionHi: 'विवाह योग, करियर और ग्रहों के समाधान हेतु आचार्यों से सीधा परामर्श।',
+          priceInr: 999,
+          durationMinutes: 45,
+          isActive: true,
+          ceremonyType: 'kundli_jyotish',
+        },
+      ];
+      await ServiceCatalogModel.insertMany(defaults);
+      services = await ServiceCatalogModel.find().sort({ ceremonyType: 1, name: 1 }).lean();
+    }
+
+    return services.map((s: any) => ({
+      id: s._id.toString(),
+      serviceId: s.serviceId,
+      name: s.name,
+      nameHi: s.nameHi || s.name,
+      category: s.category,
+      description: s.description,
+      descriptionHi: s.descriptionHi || s.description,
+      priceInr: s.priceInr,
+      durationMinutes: s.durationMinutes,
+      isActive: s.isActive,
+      ceremonyType: s.ceremonyType,
+    }));
+  }
+
+  /**
+   * Services Catalog - Save or update service
+   */
+  public static async saveServiceCatalogItem(data: any, adminUser: any): Promise<any> {
+    const serviceId = data.serviceId?.trim() || `srv_${Date.now()}`;
+    const item = await ServiceCatalogModel.findOneAndUpdate(
+      { serviceId },
+      {
+        serviceId,
+        name: data.name?.trim(),
+        nameHi: data.nameHi?.trim(),
+        category: data.category?.trim() || 'Vedic Ceremonies',
+        description: data.description?.trim() || '',
+        descriptionHi: data.descriptionHi?.trim() || '',
+        priceInr: Number(data.priceInr) || 0,
+        durationMinutes: Number(data.durationMinutes) || 60,
+        isActive: data.isActive !== false,
+        ceremonyType: data.ceremonyType || 'other_puja',
+      },
+      { upsert: true, new: true }
+    );
+
+    await AuditLogModel.create({
+      adminId: adminUser.userId || adminUser.id,
+      adminEmail: adminUser.email,
+      adminName: adminUser.displayName || 'Administrator',
+      action: 'UPDATE_SERVICE_CATALOG',
+      details: { serviceId, name: item.name, priceInr: item.priceInr },
+    });
+    return item;
+  }
+
+  /**
+   * Services Catalog - Delete service
+   */
+  public static async deleteServiceCatalogItem(id: string, adminUser: any): Promise<boolean> {
+    const item = await ServiceCatalogModel.findOneAndDelete({
+      $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { serviceId: id }],
+    });
+    if (item) {
+      await AuditLogModel.create({
+        adminId: adminUser.userId || adminUser.id,
+        adminEmail: adminUser.email,
+        adminName: adminUser.displayName || 'Administrator',
+        action: 'DELETE_SERVICE_CATALOG',
+        details: { serviceId: item.serviceId, name: item.name },
+      });
+    }
+    return true;
+  }
+
+  /**
+   * Categories - Get all categories
+   */
+  public static async getCategories(): Promise<any> {
+    return {
+      ceremonyCategories: [
+        { id: 'wedding', name: 'Vedic Wedding Ceremonies', count: 4, icon: '💍' },
+        { id: 'home_vastu', name: 'Home & Vastu Pujas', count: 3, icon: '🏛️' },
+        { id: 'kathas_havans', name: 'Auspicious Kathas & Havans', count: 5, icon: '🔥' },
+        { id: 'astrology', name: 'Astrological Consultations', count: 2, icon: '✨' },
+        { id: 'sanskars', name: 'Sanskars & Sacred Rites', count: 3, icon: '🪔' },
+      ],
+      matrimonialCategories: [
+        { id: 'community', name: 'Community Alliances (Brahmin, Rajput, Agarwal, etc.)', icon: '👥' },
+        { id: 'location', name: 'Regional & Metro Circles (Delhi NCR, Mumbai, Bangalore, UP, Bihar)', icon: '📍' },
+        { id: 'education', name: 'Professional Circles (Tech, Civil Services, Doctors, Business)', icon: '🎓' },
+      ],
+    };
+  }
+
+  /**
+   * Notifications & Broadcasts - Get notifications history
+   */
+  public static async getAdminNotifications(page = 1, limit = 20): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { items: [], pagination: { totalCount: 0, page: 1, limit: 20, totalPages: 1 } };
+    }
+    const skip = (page - 1) * limit;
+    const [items, totalCount] = await Promise.all([
+      NotificationModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      NotificationModel.countDocuments(),
+    ]);
+
+    return {
+      items: items.map((n: any) => ({
+        id: n._id.toString(),
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        targetAudience: n.targetAudience,
+        createdAt: n.createdAt?.toISOString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Notifications & Broadcasts - Send broadcast notification
+   */
+  public static async sendBroadcastNotification(
+    data: { title: string; message: string; targetAudience?: string },
+    adminUser: any
+  ): Promise<any> {
+    if (!data.title?.trim() || !data.message?.trim()) {
+      throw new AppError('Title and message are required for broadcast notification.', 400, 'VALIDATION_ERROR');
+    }
+
+    const notif = await NotificationModel.create({
+      title: data.title.trim(),
+      message: data.message.trim(),
+      type: 'broadcast',
+      targetAudience: data.targetAudience || 'all',
+      isRead: false,
+      readBy: [],
+    });
+
+    await AuditLogModel.create({
+      adminId: adminUser.userId || adminUser.id,
+      adminEmail: adminUser.email,
+      adminName: adminUser.displayName || 'Administrator',
+      action: 'SEND_BROADCAST_NOTIFICATION',
+      details: { title: notif.title, targetAudience: notif.targetAudience },
+    });
+
+    return notif;
+  }
+
+  /**
+   * System Settings - Get system and contact configuration
+   */
+  public static async getSystemSettings(): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    let settingsDoc: any = null;
+
+    if (isDbConnected) {
+      try {
+        settingsDoc = await SystemSettingsModel.findOne({ key: 'global_settings' }).lean();
+        if (!settingsDoc) {
+          settingsDoc = await SystemSettingsModel.create({
+            key: 'global_settings',
+            appName: 'ShaadiBanao',
+            femaleFreeChatEnabled: true,
+            malePaidChatRequired: true,
+            maleFreeMessageLimit: 0,
+            plusPlanPriceInr: 2999,
+            premiumPlanPriceInr: 4999,
+            defaultPanditConsultationFee: 501,
+            defaultAstrologyFee: 501,
+            maxMessageLength: 1000,
+            mediaAttachmentsEnabled: true,
+            bannedKeywords: ['abuse', 'fraud', 'scam', 'money transfer'],
+            supportPhone: '8076168502',
+            contactPhone: '8076168502',
+            supportEmail: 'shaadibanao.urbanpower@gmail.com',
+            contactEmail: 'shaadibanao.urbanpower@gmail.com',
+            whatsappPhone: '8076168502',
+            contactWhatsApp: '8076168502',
+            whatsappUrl: 'https://wa.me/918076168502',
+            bookingAutoAssign: false,
+            defaultLanguage: 'hi',
+          });
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    return {
+      appName: settingsDoc?.appName || 'ShaadiBanao',
+      femaleFreeChatEnabled: settingsDoc?.femaleFreeChatEnabled !== false,
+      malePaidChatRequired: settingsDoc?.malePaidChatRequired !== false,
+      maleFreeMessageLimit: settingsDoc?.maleFreeMessageLimit || 0,
+      plusPlanPriceInr: settingsDoc?.plusPlanPriceInr || 2999,
+      premiumPlanPriceInr: settingsDoc?.premiumPlanPriceInr || 4999,
+      defaultPanditConsultationFee: settingsDoc?.defaultPanditConsultationFee || 501,
+      defaultAstrologyFee: settingsDoc?.defaultAstrologyFee || 501,
+      maxMessageLength: settingsDoc?.maxMessageLength || 1000,
+      mediaAttachmentsEnabled: settingsDoc?.mediaAttachmentsEnabled !== false,
+      bannedKeywords: settingsDoc?.bannedKeywords || ['abuse', 'fraud', 'scam', 'money transfer'],
+      supportPhone: settingsDoc?.supportPhone || '8076168502',
+      contactPhone: settingsDoc?.contactPhone || '8076168502',
+      supportEmail: settingsDoc?.supportEmail || 'shaadibanao.urbanpower@gmail.com',
+      contactEmail: settingsDoc?.contactEmail || 'shaadibanao.urbanpower@gmail.com',
+      whatsappPhone: settingsDoc?.whatsappPhone || '8076168502',
+      contactWhatsApp: settingsDoc?.contactWhatsApp || '8076168502',
+      whatsappUrl: settingsDoc?.whatsappUrl || 'https://wa.me/918076168502',
+      serverMode: process.env.NODE_ENV || 'development',
+      port: process.env.PORT || 5000,
+      databaseStatus: isDbConnected ? 'connected' : 'disconnected',
+      cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME),
+      firebaseConfigured: Boolean(process.env.FIREBASE_PROJECT_ID),
+      bookingAutoAssign: settingsDoc?.bookingAutoAssign || false,
+      defaultLanguage: settingsDoc?.defaultLanguage || 'hi',
+    };
+  }
+
+  /**
+   * System Settings - Update system settings (Admin)
+   */
+  public static async updateSystemSettings(data: any, adminUser?: any): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { success: true, message: 'Settings saved (in-memory mode).' };
+    }
+
+    let settings = await SystemSettingsModel.findOne({ key: 'global_settings' });
+    if (!settings) {
+      settings = new SystemSettingsModel({ key: 'global_settings' });
+    }
+
+    if (data.femaleFreeChatEnabled !== undefined) settings.femaleFreeChatEnabled = Boolean(data.femaleFreeChatEnabled);
+    if (data.malePaidChatRequired !== undefined) settings.malePaidChatRequired = Boolean(data.malePaidChatRequired);
+    if (data.maleFreeReplyToFemale !== undefined) settings.maleFreeReplyToFemale = Boolean(data.maleFreeReplyToFemale);
+    if (data.maleFreeMessageLimit !== undefined) settings.maleFreeMessageLimit = Number(data.maleFreeMessageLimit);
+    if (data.plusPlanPriceInr !== undefined) settings.plusPlanPriceInr = Number(data.plusPlanPriceInr);
+    if (data.premiumPlanPriceInr !== undefined) settings.premiumPlanPriceInr = Number(data.premiumPlanPriceInr);
+    if (data.defaultPanditConsultationFee !== undefined) settings.defaultPanditConsultationFee = Number(data.defaultPanditConsultationFee);
+    if (data.defaultAstrologyFee !== undefined) settings.defaultAstrologyFee = Number(data.defaultAstrologyFee);
+    if (data.audioConsultationPriceInr !== undefined) settings.audioConsultationPriceInr = Number(data.audioConsultationPriceInr);
+    if (data.videoConsultationPriceInr !== undefined) settings.videoConsultationPriceInr = Number(data.videoConsultationPriceInr);
+    if (data.chatConsultationPriceInr !== undefined) settings.chatConsultationPriceInr = Number(data.chatConsultationPriceInr);
+    if (data.consultationDurationMinutes !== undefined) settings.consultationDurationMinutes = Number(data.consultationDurationMinutes);
+    if (data.freeTrialCallMinutes !== undefined) settings.freeTrialCallMinutes = Number(data.freeTrialCallMinutes);
+    if (data.callCommissionRate !== undefined) settings.callCommissionRate = Number(data.callCommissionRate);
+    if (data.maxMessageLength !== undefined) settings.maxMessageLength = Number(data.maxMessageLength);
+    if (data.mediaAttachmentsEnabled !== undefined) settings.mediaAttachmentsEnabled = Boolean(data.mediaAttachmentsEnabled);
+    if (data.bannedKeywords && Array.isArray(data.bannedKeywords)) settings.bannedKeywords = data.bannedKeywords;
+    if (data.supportPhone) {
+      settings.supportPhone = data.supportPhone.trim();
+      settings.contactPhone = data.supportPhone.trim();
+    }
+    if (data.supportEmail) {
+      settings.supportEmail = data.supportEmail.trim();
+      settings.contactEmail = data.supportEmail.trim();
+    }
+    if (data.whatsappPhone) {
+      settings.whatsappPhone = data.whatsappPhone.trim();
+      settings.contactWhatsApp = data.whatsappPhone.trim();
+      settings.whatsappUrl = `https://wa.me/91${data.whatsappPhone.trim().replace(/\D/g, '')}`;
+    }
+    if (data.bookingAutoAssign !== undefined) settings.bookingAutoAssign = Boolean(data.bookingAutoAssign);
+    if (data.defaultLanguage) settings.defaultLanguage = data.defaultLanguage;
+    if (adminUser?.userId || adminUser?.id) settings.updatedBy = adminUser.userId || adminUser.id;
+
+    await settings.save();
+
+    await AuditLogModel.create({
+      adminId: adminUser?.userId || adminUser?.id || 'admin',
+      adminEmail: adminUser?.email,
+      action: 'UPDATE_SYSTEM_SETTINGS',
+      details: data,
+    });
+
+    return this.getSystemSettings();
+  }
+
+  /**
+   * Withdrawals: List pandit withdrawal requests
+   */
+  public static async listWithdrawals(query: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<any> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter: any = {};
+    if (query.status && query.status !== 'all') {
+      filter.status = query.status;
+    }
+
+    const [items, totalCount] = await Promise.all([
+      WithdrawalModel.find(filter)
+        .populate('panditId', 'name panditId phone totalEarnings pendingPayout')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      WithdrawalModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: items.map((w: any) => ({
+        id: w._id.toString(),
+        withdrawalId: w.withdrawalId,
+        panditId: w.panditId?._id ? w.panditId._id.toString() : (w.panditId ? w.panditId.toString() : ''),
+        panditCode: w.panditId?.panditId || '',
+        panditName: w.panditName || w.panditId?.name || 'Pandit Ji',
+        panditPhone: w.panditPhone || w.panditId?.phone || '',
+        amount: w.amount,
+        status: w.status,
+        bankDetails: w.bankDetails || {},
+        referenceNumber: w.referenceNumber,
+        rejectionReason: w.rejectionReason,
+        processedBy: w.processedBy,
+        processedAt: w.processedAt?.toISOString ? w.processedAt.toISOString() : w.processedAt,
+        createdAt: w.createdAt?.toISOString ? w.createdAt.toISOString() : w.createdAt,
+      })),
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Withdrawals: Approve payout and deduct from Pandit's pendingPayout
+   */
+  public static async approveWithdrawal(
+    id: string,
+    adminUser: any,
+    referenceNumber?: string
+  ): Promise<any> {
+    const withdrawal = await WithdrawalModel.findById(id);
+    if (!withdrawal) throw new AppError('Withdrawal request not found.', 404, 'NOT_FOUND');
+
+    if (withdrawal.status !== 'pending') {
+      throw new AppError(`Cannot approve withdrawal with status "${withdrawal.status}".`, 400, 'INVALID_STATUS');
+    }
+
+    const pandit = await PanditModel.findById(withdrawal.panditId);
+    if (!pandit) throw new AppError('Associated Pandit account not found.', 404, 'NOT_FOUND');
+
+    // Deduct from Pandit's pendingPayout
+    pandit.pendingPayout = Math.max(0, (pandit.pendingPayout || 0) - withdrawal.amount);
+    await pandit.save();
+
+    withdrawal.status = 'paid';
+    withdrawal.processedBy = adminUser?.userId || adminUser?.id || 'admin';
+    withdrawal.processedAt = new Date();
+    withdrawal.referenceNumber = referenceNumber || `PAY-${Date.now()}`;
+    await withdrawal.save();
+
+    // Audit log
+    await AuditLogModel.create({
+      adminId: adminUser?.userId || adminUser?.id || 'admin',
+      adminEmail: adminUser?.email,
+      action: 'APPROVE_PANDIT_WITHDRAWAL',
+      targetUserId: withdrawal.userId?.toString(),
+      details: {
+        withdrawalId: withdrawal.withdrawalId,
+        amount: withdrawal.amount,
+        panditId: withdrawal.panditId.toString(),
+        referenceNumber: withdrawal.referenceNumber,
+      },
+    });
+
+    // Notify Pandit
+    try {
+      if (withdrawal.userId) {
+        await NotificationModel.create({
+          userId: withdrawal.userId,
+          title: 'भुगतान पूर्ण (Payout Processed)',
+          body: `आपके ₹${withdrawal.amount} की निकासी का भुगतान सफल रहा (संदर्भ: ${withdrawal.referenceNumber})।`,
+          type: 'payout_processed',
+          data: {
+            withdrawalId: withdrawal.withdrawalId,
+            amount: withdrawal.amount,
+            referenceNumber: withdrawal.referenceNumber,
+          },
+        });
+      }
+    } catch {}
+
+    return withdrawal;
+  }
+
+  /**
+   * Withdrawals: Reject payout with reason
+   */
+  public static async rejectWithdrawal(
+    id: string,
+    adminUser: any,
+    reason?: string
+  ): Promise<any> {
+    const withdrawal = await WithdrawalModel.findById(id);
+    if (!withdrawal) throw new AppError('Withdrawal request not found.', 404, 'NOT_FOUND');
+
+    if (withdrawal.status !== 'pending') {
+      throw new AppError(`Cannot reject withdrawal with status "${withdrawal.status}".`, 400, 'INVALID_STATUS');
+    }
+
+    withdrawal.status = 'rejected';
+    withdrawal.processedBy = adminUser?.userId || adminUser?.id || 'admin';
+    withdrawal.processedAt = new Date();
+    withdrawal.rejectionReason = reason || 'Payout details could not be verified by admin.';
+    await withdrawal.save();
+
+    // Audit log
+    await AuditLogModel.create({
+      adminId: adminUser?.userId || adminUser?.id || 'admin',
+      adminEmail: adminUser?.email,
+      action: 'REJECT_PANDIT_WITHDRAWAL',
+      targetUserId: withdrawal.userId?.toString(),
+      details: {
+        withdrawalId: withdrawal.withdrawalId,
+        amount: withdrawal.amount,
+        reason,
+      },
+    });
+
+    return withdrawal;
+  }
+
+  /**
+   * Error Monitoring: List structured error logs
+   */
+  public static async listErrorLogs(query: {
+    page?: number;
+    limit?: number;
+    module?: string;
+    severity?: string;
+    resolved?: string;
+  }): Promise<any> {
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const filter: any = {};
+    if (query.module && query.module !== 'all') {
+      filter.module = query.module;
+    }
+    if (query.severity && query.severity !== 'all') {
+      filter.severity = query.severity;
+    }
+    if (query.resolved !== undefined && query.resolved !== 'all') {
+      filter.resolved = query.resolved === 'true';
+    }
+
+    const isDbConnected = mongoose.connection.readyState === 1;
+    if (!isDbConnected) {
+      return { items: [], pagination: { totalCount: 0, page: 1, limit: 20, totalPages: 1 } };
+    }
+
+    const [items, totalCount] = await Promise.all([
+      ErrorLogModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ErrorLogModel.countDocuments(filter),
+    ]);
+
+    return {
+      items: items.map((e: any) => ({
+        id: e._id.toString(),
+        errorId: e.errorId,
+        module: e.module,
+        errorMessage: e.errorMessage,
+        stackTrace: e.stackTrace,
+        apiEndpoint: e.apiEndpoint,
+        httpMethod: e.httpMethod,
+        statusCode: e.statusCode,
+        severity: e.severity,
+        resolved: e.resolved,
+        resolutionStatus: e.resolutionStatus,
+        resolvedAt: e.resolvedAt?.toISOString ? e.resolvedAt.toISOString() : e.resolvedAt,
+        resolvedBy: e.resolvedBy,
+        resolutionNotes: e.resolutionNotes,
+        createdAt: e.createdAt?.toISOString ? e.createdAt.toISOString() : e.createdAt,
+      })),
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+    };
+  }
+
+  /**
+   * Error Monitoring: Mark an error as resolved
+   */
+  public static async resolveErrorLog(
+    id: string,
+    adminUser: any,
+    resolutionNotes?: string
+  ): Promise<any> {
+    const err = await ErrorLogModel.findById(id);
+    if (!err) throw new AppError('Error log entry not found.', 404, 'NOT_FOUND');
+
+    err.resolved = true;
+    err.resolutionStatus = 'resolved';
+    err.resolvedAt = new Date();
+    err.resolvedBy = adminUser?.email || adminUser?.userId || 'admin';
+    if (resolutionNotes) {
+      err.resolutionNotes = resolutionNotes.trim();
+    }
+    await err.save();
+
+    return err;
+  }
+
+  /**
+   * Database Monitoring: Health, ping latency, and collection statistics
+   */
+  public static async getDatabaseMonitoringStats(): Promise<any> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    const startPing = Date.now();
+    let pingLatencyMs = 0;
+
+    const collectionsInfo: Array<{ name: string; count: number }> = [];
+
+    if (isDbConnected && mongoose.connection.db) {
+      try {
+        await mongoose.connection.db.admin().ping();
+        pingLatencyMs = Date.now() - startPing;
+
+        const list = await mongoose.connection.db.listCollections().toArray();
+        for (const col of list) {
+          const count = await mongoose.connection.db.collection(col.name).countDocuments();
+          collectionsInfo.push({ name: col.name, count });
+        }
+      } catch (err: any) {
+        pingLatencyMs = Date.now() - startPing;
+      }
+    }
+
+    const stateMap: Record<number, string> = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting',
+    };
+
+    return {
+      status: stateMap[mongoose.connection.readyState] || 'disconnected',
+      host: mongoose.connection.host || 'cluster0.kx9qipw.mongodb.net',
+      databaseName: mongoose.connection.name || 'bandhansetu',
+      isProduction: process.env.NODE_ENV === 'production',
+      pingLatencyMs,
+      collectionsCount: collectionsInfo.length,
+      collections: collectionsInfo.sort((a, b) => b.count - a.count),
+      serverTimestamp: new Date().toISOString(),
+    };
   }
 
   /**

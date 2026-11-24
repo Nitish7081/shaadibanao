@@ -92,6 +92,7 @@ export type PhotoApprovalStatus = typeof PHOTO_APPROVAL_STATUS[number];
 
 export const CEREMONY_TYPES = [
   'wedding',
+  'vivah_puja',
   'engagement',
   'griha_pravesh',
   'satyanarayan_puja',
@@ -99,13 +100,21 @@ export const CEREMONY_TYPES = [
   'navagraha_shanti',
   'kundli_milan',
   'namkaran',
+  'puja_havan',
+  'kundli_jyotish',
   'other_puja',
+  'other',
 ] as const;
 export type CeremonyType = typeof CEREMONY_TYPES[number];
 
 export const BOOKING_STATUS = [
-  'requested',
+  'pending',
+  'confirmed',
+  'assigned',
+  'pandit_assigned',
   'accepted',
+  'in_progress',
+  'requested',
   'declined',
   'rescheduled',
   'completed',
@@ -115,8 +124,11 @@ export type BookingStatus = typeof BOOKING_STATUS[number];
 
 export const PANDIT_VERIFICATION_STATUS = [
   'pending',
+  'under_review',
+  'approved',
   'verified',
   'rejected',
+  'suspended',
 ] as const;
 export type PanditVerificationStatus = typeof PANDIT_VERIFICATION_STATUS[number];
 

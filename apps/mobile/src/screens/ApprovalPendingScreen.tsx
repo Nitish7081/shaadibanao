@@ -424,10 +424,14 @@ export const ApprovalPendingScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         {/* Support Footer */}
-        <View style={styles.footer}>
+        <TouchableOpacity
+          style={styles.footer}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('HelpSupport')}
+        >
           <Text style={styles.footerText}>Need urgent assistance with your verification?</Text>
-          <Text style={styles.supportLink}>support@shaadibanao.com</Text>
-        </View>
+          <Text style={styles.supportLink}>📞 8076168502 • Tap to Contact Help & Support</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

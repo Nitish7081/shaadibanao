@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { navigationRef, navigateToLogin } from './src/navigation/navigationRef';
 import { onAuthExpired } from './src/services/authSession';
 import { ReconsentModal } from './src/components/common/ReconsentModal';
+import { ShaadiBanaoLogo } from './src/components/royal/ShaadiBanaoLogo';
 import { colors } from './src/constants/theme';
 import { initI18n } from './src/i18n';
 
@@ -56,7 +57,11 @@ export default function App() {
   if (!fontsLoaded || !i18nReady) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.royalMaroon} />
+        <StatusBar style="light" />
+        <ShaadiBanaoLogo size="large" />
+        <Text style={styles.loadingTitle}>ShaadiBanao</Text>
+        <Text style={styles.loadingSubtitle}>Rishton ki nayi shuruaat</Text>
+        <ActivityIndicator size="small" color="#D4AF37" style={{ marginTop: 24 }} />
       </View>
     );
   }
@@ -75,8 +80,21 @@ export default function App() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: colors.ivory,
+    backgroundColor: colors.royalMaroon,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 1,
+    marginTop: 16,
+  },
+  loadingSubtitle: {
+    fontSize: 13,
+    color: colors.lightGold,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

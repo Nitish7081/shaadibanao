@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, spacing, borderRadius } from '../constants/theme';
 import { getSessionToken, getSessionUser, API_BASE, getAuthHeader } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
 import { getMyProfile } from '../services/profileService';
 import { useTranslation } from 'react-i18next';
 import { DatePickerField } from '../components/common/DatePickerField';
@@ -117,14 +118,20 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation, route })
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    if (!fullName.trim()) newErrors.fullName = 'Please enter your full name.';
-    if (!mobile.trim() || !/^\d{10,13}$/.test(mobile.replace(/[\s+\-()]/g, ''))) {
-      newErrors.mobile = 'Please enter a valid mobile number.';
+    if (!fullName.trim()) {
+      newErrors.fullName = isHindi ? 'कृपया अपना पूरा नाम दर्ज करें।' : 'Please enter your full name.';
     }
-    if (!city.trim()) newErrors.city = 'Please enter your city.';
-    if (!serviceType) newErrors.serviceType = 'Please select a service type.';
+    if (!mobile.trim() || !/^\d{10,13}$/.test(mobile.replace(/[\s+\-()]/g, ''))) {
+      newErrors.mobile = isHindi ? 'कृपया 10 अंकों का वैध मोबाइल नंबर दर्ज करें।' : 'Please enter a valid mobile number.';
+    }
+    if (!city.trim()) {
+      newErrors.city = isHindi ? 'कृपया अपना शहर दर्ज करें।' : 'Please enter your city.';
+    }
+    if (!serviceType) {
+      newErrors.serviceType = isHindi ? 'कृपया पूजा का प्रकार चुनें।' : 'Please select a service type.';
+    }
     if (serviceType === 'other' && !otherService.trim()) {
-      newErrors.otherService = 'Please describe the service you need.';
+      newErrors.otherService = isHindi ? 'कृपया पूजा का विवरण दर्ज करें।' : 'Please describe the service you need.';
     }
     const dateCheck = isValidBookingDate(bookingDate);
     if (!dateCheck.isValid) {
@@ -143,32 +150,41 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation, route })
       }
     }
     if (mode === 'in_person' && !venueAddress.trim()) {
-      newErrors.venueAddress = 'Please enter the ceremony venue or address.';
+      newErrors.venueAddress = isHindi ? 'कृपया पूजा स्थल का पता दर्ज करें।' : 'Please enter the ceremony venue or address.';
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async () => {
+    if (submitting) return; // Prevent double submit
     if (!validateForm()) return;
 
     const token = getSessionToken();
     if (!token) {
-      Alert.alert('Login Required', 'Please log in to submit a booking request.');
+      Alert.alert(
+        isHindi ? 'लॉगिन आवश्यक है' : 'Login Required',
+        isHindi ? 'पंडित जी को बुक करने के लिए कृपया पहले लॉगिन करें।' : 'Please log in to submit a booking request.'
+      );
       return;
     }
 
     const finalService = serviceType === 'other' ? otherService.trim() : serviceType;
+    const selectedOption = SERVICE_TYPES.find((s) => s.id === serviceType);
+    const resolvedServiceName = serviceType === 'other'
+      ? (otherService.trim() || (isHindi ? 'विशेष वैदिक पूजा' : 'Special Vedic Puja'))
+      : (isHindi ? selectedOption?.hi : selectedOption?.label) || finalService;
 
     setSubmitting(true);
     try {
-      const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/bookings`, {
+      const json = await apiClient<any>('/bookings', {
         method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          // no panditId = "any available pandit"
+          userName: fullName.trim(),
+          userMobile: mobile.trim(),
           serviceId: finalService,
+          serviceName: resolvedServiceName,
+          ceremonyType: serviceType === 'other' ? 'other_puja' : serviceType,
           bookingDate: bookingDate.trim(),
           timeSlot,
           mode,
@@ -183,13 +199,13 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation, route })
         }),
       });
 
-      const json = await res.json();
-      if (json.success && json.data) {
+      if (json && (json.success || json.data)) {
+        const ref = json.data?.bookingReference || json.bookingReference || 'SB-CONFIRMED';
         Alert.alert(
           isHindi ? 'अनुरोध भेज दिया गया! 🙏' : 'Request Sent! 🙏',
           isHindi
-            ? `आपका बुकिंग अनुरोध (${json.data.bookingReference}) सफलतापूर्वक दर्ज हो गया है। हमारी टीम जल्द ही एक योग्य पंडित जी से आपको जोड़ेगी।`
-            : `Your booking request (${json.data.bookingReference}) has been received. Our team will connect you with an available Pandit Ji shortly.`,
+            ? `आपका बुकिंग अनुरोध (${ref}) सफलतापूर्वक दर्ज हो गया है। हमारी टीम जल्द ही एक योग्य पंडित जी से आपको जोड़ेगी।`
+            : `Your booking request (${ref}) has been received. Our team will connect you with an available Pandit Ji shortly.`,
           [
             {
               text: isHindi ? 'मेरी बुकिंग देखें' : 'View My Bookings',
@@ -200,13 +216,13 @@ export const PanditBookingRequestScreen: React.FC<any> = ({ navigation, route })
       } else {
         Alert.alert(
           isHindi ? 'कुछ गलत हुआ' : 'Booking Notice',
-          json.error?.message || json.message || (isHindi ? 'कृपया फिर से कोशिश करें।' : 'Unable to submit. Please try again.')
+          json?.error?.message || json?.message || (isHindi ? 'कृपया फिर से कोशिश करें।' : 'Unable to submit. Please try again.')
         );
       }
-    } catch {
+    } catch (err: any) {
       Alert.alert(
-        isHindi ? 'नेटवर्क त्रुटि' : 'Network Error',
-        isHindi ? 'कृपया अपना इंटरनेट कनेक्शन जांचें।' : 'Please check your internet connection.'
+        isHindi ? 'त्रुटि' : 'Booking Notice',
+        err?.message || (isHindi ? 'कृपया अपना इंटरनेट कनेक्शन जांचें।' : 'Please check your connection and try again.')
       );
     } finally {
       setSubmitting(false);

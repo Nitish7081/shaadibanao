@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { colors } from '../../constants/theme';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -19,8 +20,20 @@ const TAB_META: Record<string, { label: string; icon: IconName; focusedIcon: Ico
  * Royal bottom navigation: ivory bar, gold top trim, maroon active state.
  */
 export const RoyalTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 10 : 8);
+
+  const getTabLabel = (name: string) => {
+    switch (name) {
+      case 'Home': return t('tabs.home', 'Home');
+      case 'Matches': return t('tabs.matches', 'Matches');
+      case 'Community': return t('tabs.community', 'Community');
+      case 'Astrology': return t('tabs.astrology', 'Astrology');
+      case 'Profile': return t('tabs.profile', 'Profile');
+      default: return name;
+    }
+  };
 
   return (
     <View style={[styles.bar, { paddingBottom: bottomInset }]}>
@@ -32,6 +45,7 @@ export const RoyalTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
           icon: 'ellipse-outline' as IconName,
           focusedIcon: 'ellipse' as IconName,
         };
+        const displayLabel = getTabLabel(route.name);
 
         const onPress = () => {
           const event = navigation.emit({
@@ -52,7 +66,7 @@ export const RoyalTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
             onPress={onPress}
             accessibilityRole="button"
             accessibilityState={focused ? { selected: true } : {}}
-            accessibilityLabel={`${meta.label} tab`}
+            accessibilityLabel={`${displayLabel} tab`}
           >
             <View style={[styles.iconWrap, focused && styles.iconWrapFocused]}>
               <Ionicons
@@ -62,7 +76,7 @@ export const RoyalTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) 
               />
             </View>
             <Text style={[styles.label, focused && styles.labelFocused]} numberOfLines={1}>
-              {meta.label}
+              {displayLabel}
             </Text>
             <View style={[styles.indicator, focused && styles.indicatorOn]} />
           </TouchableOpacity>

@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { colors, typography, spacing } from '../constants/theme';
+import { colors, spacing } from '../constants/theme';
 import { loadSessionFromStorage, hasActiveSession, getSessionUser, syncCurrentUserWithBackend } from '../services/authSession';
 import { getNextRouteForUser } from '../navigation/authRouting';
 import { ShaadiBanaoLogo } from '../components/royal/ShaadiBanaoLogo';
@@ -12,25 +12,95 @@ import { useTranslation } from 'react-i18next';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
 
+const WELCOME_MESSAGES_EN = [
+  'Connecting sacred hearts & families...',
+  'Authentic Vedic Kundli & Muhurat matching...',
+  'Safe, verified & private Sanatan matrimony...',
+];
+
+const WELCOME_MESSAGES_HI = [
+  'पवित्र पारिवारिक रिश्तों की मंगल शुरुआत...',
+  'प्रामाणिक वैदिक कुंडली एवं शुभ मुहूर्त मिलान...',
+  'सुरक्षित, सत्यापित एवं मर्यादित सनातन विवाह...',
+];
+
 export const SplashScreen: React.FC<Props> = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language === 'hi';
+  const messages = isHindi ? WELCOME_MESSAGES_HI : WELCOME_MESSAGES_EN;
+
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  // Smooth Animations: Pulse & Fade
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const textFadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // Fade in whole screen
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+
+    // Gentle pulsing loop for the royal emblem
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.05,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseLoop.start();
+
+    // Message rotation timer
+    const interval = setInterval(() => {
+      Animated.timing(textFadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setMessageIndex((prev) => (prev + 1) % messages.length);
+        Animated.timing(textFadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, 1800);
+
+    return () => {
+      pulseLoop.stop();
+      clearInterval(interval);
+    };
+  }, [messages.length]);
 
   useEffect(() => {
     let isMounted = true;
 
-    // Non-blocking wake up for server
+    // Non-blocking server health ping
     fetch('https://shaadibanao.onrender.com/api/v1/health').catch(() => {});
 
     const checkAuthAndNavigate = async () => {
-      // 1. Fast O(1) Session & Profile Recovery from L1/L2 Cache
+      // 1. Fast O(1) Session & Profile Recovery from Cache
       const hasStoredSession = await loadSessionFromStorage();
 
-      // 2. Non-blocking asynchronous sync with MongoDB: never blocks app boot
+      // 2. Non-blocking asynchronous sync with MongoDB in the background
       if (hasStoredSession && hasActiveSession()) {
         syncCurrentUserWithBackend().catch(() => {});
       }
 
-      // 3. Instant Navigation: Sleek 180ms brand display avoids UI flicker and opens immediately
+      // 3. Smooth automatic navigation as soon as cache hydration is complete
       setTimeout(() => {
         if (!isMounted) return;
         if (hasStoredSession && hasActiveSession()) {
@@ -42,10 +112,9 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
             navigation.replace(next.screen);
           }
         } else {
-          // If the user previously selected a language, advance directly to Welcome
           navigation.replace(hasChosenLanguage() ? 'Welcome' : 'LanguageSelection');
         }
-      }, 180);
+      }, 250);
     };
 
     checkAuthAndNavigate();
@@ -56,31 +125,36 @@ export const SplashScreen: React.FC<Props> = ({ navigation }) => {
   }, [navigation]);
 
   return (
-    <View style={styles.container}>
-      {/* Background Decorative Glow */}
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      {/* Background Decorative Radial Glow */}
       <View style={styles.radialGlow} />
 
-      {/* ShaadiBanao Matrimonial Emblem */}
-      <View style={styles.emblemContainer}>
+      {/* ShaadiBanao Matrimonial Emblem with Subtle Pulsing */}
+      <Animated.View style={[styles.emblemContainer, { transform: [{ scale: pulseAnim }] }]}>
         <ShaadiBanaoLogo size="large" />
-      </View>
+      </Animated.View>
 
       <Text style={styles.brandTitle}>ShaadiBanao</Text>
-      <Text style={styles.tagline}>{t('splash.tagline')}</Text>
+      <Text style={styles.tagline}>{t('splash.tagline', 'Rishton ki nayi shuruaat')}</Text>
 
       <VedicDivider color="rgba(212, 175, 55, 0.45)" style={styles.divider} />
 
-      {/* Loading dots */}
+      {/* Rotating Auspicious Vedic Message */}
+      <Animated.View style={[styles.messageBox, { opacity: textFadeAnim }]}>
+        <Text style={styles.rotatingMessage}>{messages[messageIndex]}</Text>
+      </Animated.View>
+
+      {/* Subtle Loading Dots */}
       <View style={styles.dotsContainer}>
-        <View style={[styles.dot, styles.dotActive]} />
-        <View style={styles.dot} />
-        <View style={styles.dot} />
+        <View style={[styles.dot, messageIndex === 0 ? styles.dotActive : null]} />
+        <View style={[styles.dot, messageIndex === 1 ? styles.dotActive : null]} />
+        <View style={[styles.dot, messageIndex === 2 ? styles.dotActive : null]} />
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>{t('splash.subtitle')}</Text>
+        <Text style={styles.footerText}>{t('splash.subtitle', 'Sacred Sanatan Matrimony & Vedic Services')}</Text>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -95,10 +169,10 @@ const styles = StyleSheet.create({
   },
   radialGlow: {
     position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(212, 175, 55, 0.10)',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(212, 175, 55, 0.12)',
   },
   emblemContainer: {
     marginBottom: spacing.base,
@@ -121,26 +195,39 @@ const styles = StyleSheet.create({
   },
   divider: {
     maxWidth: 200,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  messageBox: {
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  rotatingMessage: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    opacity: 0.9,
+    letterSpacing: 0.3,
   },
   dotsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
     marginHorizontal: spacing.xxs,
   },
   dotActive: {
     backgroundColor: colors.royalGold,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 14,
+    borderRadius: 7,
   },
   footer: {
     position: 'absolute',
@@ -150,6 +237,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.lightGold,
     letterSpacing: 0.8,
-    opacity: 0.8,
+    opacity: 0.85,
   },
 });

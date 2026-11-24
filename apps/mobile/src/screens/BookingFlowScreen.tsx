@@ -14,14 +14,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
 import { DatePickerField } from '../components/common/DatePickerField';
 import { isValidBookingDate, getBookingDateLimits, formatApiDate } from '../utils/dateTimeHelpers';
-import { API_BASE, getCachedUserProfile } from '../services/authSession';
-import { getAuthHeader } from '../services/authSession';
+import { API_BASE, getCachedUserProfile, getSessionUser, getAuthHeader } from '../services/authSession';
+import { apiClient } from '../services/apiClient';
+import { useTranslation } from 'react-i18next';
 
 export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
+  const { t, i18n } = useTranslation();
+  const isHindi = i18n.language === 'hi';
   const { panditId, serviceId, serviceName, priceInr } = route.params || {};
 
   // Form State
   const cachedUser = getCachedUserProfile();
+  const sessionUser = getSessionUser() as any;
   const defaultLocation = cachedUser?.city ? `${cachedUser.city}${cachedUser.state ? `, ${cachedUser.state}` : ''}` : '';
   const bookingLimits = getBookingDateLimits();
   const [bookingDate, setBookingDate] = useState(formatApiDate(new Date()));
@@ -40,38 +44,48 @@ export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
   ];
 
   const handleConfirmBooking = async () => {
+    if (submitting) return;
     if (!bookingDate || !timeSlot) {
-      Alert.alert('Required Fields', 'Please select a date and time slot.');
+      Alert.alert(
+        isHindi ? 'आवश्यक फ़ील्ड' : 'Required Fields',
+        isHindi ? 'कृपया अनुष्ठान की तारीख और समय स्लॉट चुनें।' : 'Please select a date and time slot.'
+      );
       return;
     }
     const dateCheck = isValidBookingDate(bookingDate);
     if (!dateCheck.isValid) {
       Alert.alert(
-        'Invalid Date',
+        isHindi ? 'अमान्य तारीख' : 'Invalid Date',
         dateCheck.error === 'past'
-          ? 'Booking date must be today or a future date.'
-          : 'Booking date must be within 1 year.'
+          ? (isHindi ? 'तारीख आज या भविष्य की होनी चाहिए।' : 'Booking date must be today or a future date.')
+          : (isHindi ? 'तारीख 1 वर्ष के भीतर होनी चाहिए।' : 'Booking date must be within 1 year.')
       );
       return;
     }
 
     if (mode === 'in_person' && !venueAddress.trim()) {
-      Alert.alert('Required Fields', 'Please specify the ceremony venue address.');
+      Alert.alert(
+        isHindi ? 'आवश्यक फ़ील्ड' : 'Required Fields',
+        isHindi ? 'कृपया पूजा स्थल का पता दर्ज करें।' : 'Please specify the ceremony venue address.'
+      );
       return;
     }
 
     setSubmitting(true);
     try {
-      const headers = await getAuthHeader();
-      const res = await fetch(`${API_BASE}/bookings`, {
+      const devoteeName = cachedUser?.firstName
+        ? `${cachedUser.firstName} ${cachedUser.lastName || ''}`.trim()
+        : sessionUser?.displayName || 'Devotee';
+      const devoteeMobile = (cachedUser as any)?.mobile || sessionUser?.mobile || '';
+
+      const json = await apiClient<any>('/bookings', {
         method: 'POST',
-        headers: {
-          ...headers,
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
+          userName: devoteeName,
+          userMobile: devoteeMobile,
           panditId,
           serviceId,
+          serviceName,
           bookingDate,
           timeSlot,
           mode,
@@ -81,23 +95,31 @@ export const BookingFlowScreen: React.FC<any> = ({ route, navigation }) => {
         }),
       });
 
-      const json = await res.json();
-      if (json.success && json.data) {
+      if (json && (json.success || json.data)) {
+        const ref = json.data?.bookingReference || json.bookingReference || 'SB-CONFIRMED';
         Alert.alert(
-          'Booking Requested! 🎉',
-          `Your request (${json.data.bookingReference}) has been sent to Pandit Ji. You will receive an immediate confirmation once accepted.`,
+          isHindi ? 'बुकिंग अनुरोध भेजा गया! 🎉' : 'Booking Requested! 🎉',
+          isHindi
+            ? `आपका अनुरोध (${ref}) पंडित जी को भेज दिया गया है। स्वीकृति मिलते ही आपको सूचित किया जाएगा।`
+            : `Your request (${ref}) has been sent to Pandit Ji. You will receive an immediate confirmation once accepted.`,
           [
             {
-              text: 'View My Bookings',
+              text: isHindi ? 'मेरी बुकिंग देखें' : 'View My Bookings',
               onPress: () => navigation.replace('MyBookings'),
             },
           ]
         );
       } else {
-        Alert.alert('Booking Notice', json.error?.message || json.message || 'Unable to complete request.');
+        Alert.alert(
+          isHindi ? 'बुकिंग सूचना' : 'Booking Notice',
+          json?.error?.message || json?.message || (isHindi ? 'अनुरोध पूरा करने में असमर्थ।' : 'Unable to complete request.')
+        );
       }
-    } catch {
-      Alert.alert('Network Error', 'Please check your connection and try again.');
+    } catch (err: any) {
+      Alert.alert(
+        isHindi ? 'त्रुटि' : 'Booking Notice',
+        err?.message || (isHindi ? 'कृपया कनेक्शन जांचें और पुनः प्रयास करें।' : 'Please check your connection and try again.')
+      );
     } finally {
       setSubmitting(false);
     }

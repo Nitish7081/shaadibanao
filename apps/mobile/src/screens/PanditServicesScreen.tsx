@@ -7,6 +7,12 @@ import {
   RefreshControl,
   useWindowDimensions,
   BackHandler,
+  Modal,
+  TextInput,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +28,67 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+
+  // Pandit Registration Form State
+  const [regModalVisible, setRegModalVisible] = useState(false);
+  const [regName, setRegName] = useState('');
+  const [regMobile, setRegMobile] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regCity, setRegCity] = useState('');
+  const [regState, setRegState] = useState('Delhi');
+  const [regExperience, setRegExperience] = useState('5');
+  const [regSpecialization, setRegSpecialization] = useState('Vivah Puja & Vedic Rituals');
+  const [regLanguages, setRegLanguages] = useState('Hindi, Sanskrit');
+  const [regOffersAstrology, setRegOffersAstrology] = useState(true);
+  const [regCharges, setRegCharges] = useState('501');
+  const [submittingReg, setSubmittingReg] = useState(false);
+
+  const handleRegisterPandit = async () => {
+    if (!regName.trim() || !regMobile.trim() || !regCity.trim()) {
+      Alert.alert('अपूर्ण जानकारी', 'कृपया नाम, मोबाइल नंबर और शहर दर्ज करें।');
+      return;
+    }
+
+    setSubmittingReg(true);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch(`${API_BASE}/pandits/register`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: regName.trim(),
+          mobile: regMobile.trim(),
+          email: regEmail.trim() || undefined,
+          city: regCity.trim(),
+          state: regState.trim(),
+          experience: parseInt(regExperience, 10) || 5,
+          specialization: regSpecialization.split(',').map((s) => s.trim()),
+          languages: regLanguages.split(',').map((s) => s.trim()),
+          offersAstrology: regOffersAstrology,
+          consultationCharges: parseInt(regCharges, 10) || 501,
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setRegModalVisible(false);
+        setRegName('');
+        setRegMobile('');
+        setRegEmail('');
+        Alert.alert(
+          'पंजीकरण सफल 🎉',
+          `बधाई हो! आपका आवेदन सफलतापूर्वक दर्ज कर लिया गया है।\n\nआपकी पंडित आईडी: ${json.data?.panditId || 'PND-2026-NEW'}\nस्थिति: समीक्षाधीन (Pending Review)\n\nएडमिन सत्यापन के पश्चात आपकी प्रोफ़ाइल सक्रिय होगी।`,
+          [{ text: 'ठीक है (OK)' }]
+        );
+      } else {
+        Alert.alert('पंजीकरण विफल', json.message || 'पंजीकरण पूरा नहीं हो सका।');
+      }
+    } catch (err: any) {
+      Alert.alert('त्रुटि', err?.message || 'सर्वर से कनेक्ट करने में समस्या आई।');
+    } finally {
+      setSubmittingReg(false);
+    }
+  };
 
   const [pandits, setPandits] = useState<PanditProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +211,24 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
             Request
           </Text>
           <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
+        </PressableScale>
+      </View>
+
+      {/* Pandit Registration Callout Banner */}
+      <View style={styles.panditJoinBanner}>
+        <View style={{ flex: 1, paddingRight: 8 }}>
+          <Text style={styles.panditJoinTitle}>
+            पंडित / ज्योतिषी पंजीकरण (Join as Pandit)
+          </Text>
+          <Text style={styles.panditJoinSub}>
+            शादी बनाओ वैदिक पुरोहित मंडल से जुड़ें और पूजा एवं ज्योतिष सेवाएं प्रदान करें।
+          </Text>
+        </View>
+        <PressableScale
+          style={styles.panditJoinBtn}
+          onPress={() => setRegModalVisible(true)}
+        >
+          <Text style={styles.panditJoinBtnText}>पंजीकरण करें</Text>
         </PressableScale>
       </View>
 
@@ -385,6 +470,166 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
           />
         }
       />
+
+      {/* Pandit Registration Modal */}
+      <Modal
+        visible={regModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setRegModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>पंडित / ज्योतिषी पंजीकरण</Text>
+                <Text style={styles.modalSubtitle}>शादी बनाओ वैदिक पुरोहित मंडल</Text>
+              </View>
+              <PressableScale
+                onPress={() => setRegModalVisible(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={ds.color.text} />
+              </PressableScale>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 460 }}>
+              <Text style={styles.inputLabel}>पूरा नाम (Full Name) *</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="उदा. पंडित विद्याधर शर्मा"
+                value={regName}
+                onChangeText={setRegName}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>मोबाइल नंबर (Mobile Number) *</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="उदा. 9876543210"
+                keyboardType="phone-pad"
+                value={regMobile}
+                onChangeText={setRegMobile}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>ईमेल पता (Email Address)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="pandit@gmail.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={regEmail}
+                onChangeText={setRegEmail}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>शहर (City) *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="उदा. Delhi"
+                    value={regCity}
+                    onChangeText={setRegCity}
+                    placeholderTextColor={ds.color.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>राज्य (State)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="Delhi"
+                    value={regState}
+                    onChangeText={setRegState}
+                    placeholderTextColor={ds.color.textMuted}
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>अनुभव वर्ष (Experience)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="10"
+                    keyboardType="numeric"
+                    value={regExperience}
+                    onChangeText={setRegExperience}
+                    placeholderTextColor={ds.color.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>परामर्श शुल्क (₹ Fees)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    placeholder="501"
+                    keyboardType="numeric"
+                    value={regCharges}
+                    onChangeText={setRegCharges}
+                    placeholderTextColor={ds.color.textMuted}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>विशेषज्ञता (Specialization / Puja Services)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="उदा. Vivah Puja, Griha Pravesh, Rudrabhishek"
+                value={regSpecialization}
+                onChangeText={setRegSpecialization}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>भाषाएं (Languages Spoken)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="Hindi, Sanskrit, English"
+                value={regLanguages}
+                onChangeText={setRegLanguages}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: ds.color.text }}>
+                    ज्योतिष एवं कुंडली परामर्श प्रदान करते हैं?
+                  </Text>
+                  <Text style={{ fontSize: 11, color: ds.color.textMuted }}>
+                    Offers Astrology Consultation
+                  </Text>
+                </View>
+                <Switch
+                  value={regOffersAstrology}
+                  onValueChange={setRegOffersAstrology}
+                  trackColor={{ false: '#E2E8F0', true: ds.color.maroon }}
+                />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalBtnRow}>
+              <PressableScale
+                style={styles.cancelBtn}
+                onPress={() => setRegModalVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>रद्द करें</Text>
+              </PressableScale>
+
+              <PressableScale
+                style={[styles.submitBtn, submittingReg && { opacity: 0.7 }]}
+                onPress={handleRegisterPandit}
+                disabled={submittingReg}
+              >
+                {submittingReg ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>आवेदन भेजें (Register)</Text>
+                )}
+              </PressableScale>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -715,5 +960,133 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  panditJoinBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: ds.space.md,
+  },
+  panditJoinTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#C2410C',
+  },
+  panditJoinSub: {
+    fontSize: 11,
+    color: '#9A3412',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  panditJoinBtn: {
+    backgroundColor: '#EA580C',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  panditJoinBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: ds.color.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: ds.space.lg,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: ds.space.md,
+    paddingBottom: ds.space.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.color.border,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: ds.color.text,
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: ds.color.textMuted,
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: ds.color.text,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  formInput: {
+    backgroundColor: ds.color.surfaceWarm,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: ds.color.text,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: ds.color.border,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: ds.color.border,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: ds.color.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ds.color.surfaceWarm,
+  },
+  cancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: ds.color.text,
+  },
+  submitBtn: {
+    flex: 2,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: ds.color.maroon,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

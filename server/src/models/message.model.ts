@@ -7,6 +7,10 @@ export interface IMessage extends Document {
   senderId: Types.ObjectId;
   receiverId: Types.ObjectId;
   text: string;
+  attachmentUrl?: string;
+  attachmentType?: string;
+  isFreeChat?: boolean;
+  planTier?: string;
   status: MessageDeliveryStatus;
   readAt?: Date;
   createdAt: Date;
@@ -37,7 +41,23 @@ const MessageSchema = new Schema<IMessage>(
       type: String,
       required: true,
       trim: true,
-      maxlength: 1000,
+      maxlength: 2000,
+    },
+    attachmentUrl: {
+      type: String,
+      trim: true,
+    },
+    attachmentType: {
+      type: String,
+      enum: ['image', 'document', 'audio', 'none'],
+      default: 'none',
+    },
+    isFreeChat: {
+      type: Boolean,
+      default: false,
+    },
+    planTier: {
+      type: String,
     },
     status: {
       type: String,

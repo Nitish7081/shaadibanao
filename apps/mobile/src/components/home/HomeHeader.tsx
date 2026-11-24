@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { ShaadiBanaoLogo } from '../royal/ShaadiBanaoLogo';
 import { BackendStatusBadge } from '../common/BackendStatusBadge';
 import { PressableScale, Chip, ds } from '../../design';
@@ -30,7 +31,26 @@ export const HomeHeader: React.FC<Props> = ({
   onNotificationsPress,
   onAccountPress,
 }) => {
-  const status = accountStatus ? STATUS_META[accountStatus] : undefined;
+  const { t } = useTranslation();
+  const statusMeta = accountStatus ? STATUS_META[accountStatus] : undefined;
+
+  const getStatusLabel = (key: string): string => {
+    switch (key) {
+      case 'approved':
+        return t('home.status.approved', 'Approved');
+      case 'pending':
+        return t('home.status.pending', 'Pending Approval');
+      case 'rejected':
+        return t('home.status.rejected', 'Rejected');
+      case 'changes_requested':
+        return t('home.status.changes', 'Changes Requested');
+      default:
+        return key;
+    }
+  };
+
+  const statusLabel = accountStatus ? getStatusLabel(accountStatus) : '';
+
   return (
     <View style={[styles.wrap, { paddingTop: topInset }]}>
       <View style={styles.topRow}>
@@ -50,19 +70,19 @@ export const HomeHeader: React.FC<Props> = ({
       </View>
 
       <Text style={styles.greeting} numberOfLines={1}>
-        Namaste, <Text style={styles.greetingName}>{userName}</Text>
+        {t('home.greeting', { name: userName, defaultValue: `Namaste, ${userName}` }).replace('{{name}}', userName)}
       </Text>
 
       <View style={styles.chipRow}>
         <BackendStatusBadge compact />
-        {status ? (
+        {statusMeta ? (
           <Chip
-            label={status.label}
-            icon={status.icon}
-            color={status.color}
-            bg={status.bg}
+            label={statusLabel}
+            icon={statusMeta.icon}
+            color={statusMeta.color}
+            bg={statusMeta.bg}
             onPress={onAccountPress}
-            accessibilityLabel={`Account status: ${status.label}`}
+            accessibilityLabel={`Account status: ${statusLabel}`}
           />
         ) : null}
       </View>

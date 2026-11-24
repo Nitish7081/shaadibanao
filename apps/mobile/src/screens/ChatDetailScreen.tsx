@@ -11,6 +11,7 @@ import {
   Platform,
   useWindowDimensions,
   BackHandler,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -29,6 +30,7 @@ import {
   leaveConversationRoom,
   getSessionToken,
   getSessionUserId,
+  getCachedUserProfile,
 } from '../services';
 import { ChatMessage, ContactExchangeDetails } from '@bandhansetu/shared';
 import { getInitials } from '../components/home/matchPhoto';
@@ -40,6 +42,9 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+
+  const userProfile = getCachedUserProfile();
+  const isFemale = userProfile?.gender === 'female';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -136,7 +141,26 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         });
       }
     } catch (err: any) {
-      Alert.alert('Message Failed', err?.message || 'Unable to send message.');
+      if (
+        err?.code === 'SUBSCRIPTION_REQUIRED' ||
+        err?.message?.includes('membership plan') ||
+        err?.message?.includes('Plus or Premium') ||
+        err?.status === 402
+      ) {
+        Alert.alert(
+          'सदस्यता आवश्यक (Membership Required)',
+          err?.message || 'पुरुष उपयोगकर्ताओं के लिए चैट शुरू करने हेतु प्लस या प्रीमियम सदस्यता योजना आवश्यक है।',
+          [
+            { text: 'रद्द करें (Cancel)', style: 'cancel' },
+            {
+              text: 'योजना देखें (View Plans)',
+              onPress: () => (navigation as any).navigate('Membership'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Message Failed', err?.message || 'Unable to send message.');
+      }
     } finally {
       setSending(false);
     }
@@ -268,12 +292,70 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
 
-        <View style={styles.avatarMini}>
-          <Text maxFontSizeMultiplier={1.2} style={styles.avatarMiniText}>
-            {getInitials(partnerName)}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => {
+              const partnerId =
+                (route.params as any)?.partnerId ||
+                messages.find((m) => m.senderId !== currentUserId)?.senderId ||
+                conversationId;
+              navigation.navigate('Call', {
+                callType: 'audio',
+                targetUserId: partnerId,
+                targetUserName: partnerName,
+              });
+            }}
+            accessibilityLabel="Audio Call"
+          >
+            <Ionicons name="call" size={18} color={ds.color.maroon} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => {
+              const partnerId =
+                (route.params as any)?.partnerId ||
+                messages.find((m) => m.senderId !== currentUserId)?.senderId ||
+                conversationId;
+              navigation.navigate('Call', {
+                callType: 'video',
+                targetUserId: partnerId,
+                targetUserName: partnerName,
+              });
+            }}
+            accessibilityLabel="Video Call"
+          >
+            <Ionicons name="videocam" size={20} color={ds.color.maroon} />
+          </TouchableOpacity>
+
+          <View style={styles.avatarMini}>
+            <Text maxFontSizeMultiplier={1.2} style={styles.avatarMiniText}>
+              {getInitials(partnerName)}
+            </Text>
+          </View>
         </View>
       </View>
+
+      {/* Free Female Chat Badge or Verified Plan Pill */}
+      {isFemale ? (
+        <View style={styles.freeChatBadgeRow}>
+          <Ionicons name="sparkles" size={13} color="#92400E" />
+          <Text style={styles.freeChatBadgeText}>
+            {t('chatScreen.freeChatBadge', 'निःशुल्क चैट सक्रिय (100% Free Chat for Female Users)')}
+          </Text>
+        </View>
+      ) : (
+        <PressableScale
+          style={styles.malePlanBadgeRow}
+          onPress={() => (navigation as any).navigate('Membership')}
+        >
+          <Ionicons name="shield-checkmark" size={13} color="#1E40AF" />
+          <Text style={styles.malePlanBadgeText}>
+            {t('chatScreen.malePlanBadge', 'सत्यापित योजना: प्लस एवं प्रीमियम सदस्यों के लिए चैट सक्रिय')}
+          </Text>
+        </PressableScale>
+      )}
 
       {/* Contact Exchange Banner */}
       <View style={styles.contactBanner}>
@@ -448,6 +530,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#16A34A',
     fontWeight: '600',
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(128, 0, 32, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarMini: {
     width: 38,
@@ -637,5 +727,37 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     backgroundColor: '#D1C7BD',
+  },
+  freeChatBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#FDE68A',
+  },
+  freeChatBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+  },
+  malePlanBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DBEAFE',
+  },
+  malePlanBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1E40AF',
   },
 });

@@ -28,6 +28,15 @@ export interface IBooking extends Document {
   languagePref?: string;
   budgetRangeInr?: string;
   priceInr: number;
+  paymentStatus: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
+  paymentId?: string;
+  orderId?: string;
+  paidAmount?: number;
+  commissionRate?: number; // e.g. 15%
+  commissionAmount?: number;
+  panditEarnings?: number;
+  isCommunityBooking?: boolean;
+  communityId?: mongoose.Types.ObjectId;
   status: BookingStatus;
   statusHistory: IBookingStatusChange[];
   cancellationReason?: string;
@@ -94,6 +103,20 @@ const BookingSchema = new Schema<IBooking>(
     languagePref: { type: String, trim: true },
     budgetRangeInr: { type: String, trim: true },
     priceInr: { type: Number, required: true, min: 0 },
+    paymentStatus: {
+      type: String,
+      enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded'],
+      default: 'unpaid',
+      index: true,
+    },
+    paymentId: { type: String, trim: true },
+    orderId: { type: String, trim: true },
+    paidAmount: { type: Number, default: 0 },
+    commissionRate: { type: Number, default: 15 },
+    commissionAmount: { type: Number, default: 0 },
+    panditEarnings: { type: Number, default: 0 },
+    isCommunityBooking: { type: Boolean, default: false, index: true },
+    communityId: { type: Schema.Types.ObjectId, ref: 'CommunityPost', required: false },
     status: {
       type: String,
       enum: BOOKING_STATUS,

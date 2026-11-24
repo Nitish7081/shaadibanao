@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
 import { PressableScale, ds } from '../../design';
 
 interface Props {
@@ -15,6 +16,7 @@ const C = 2 * Math.PI * R;
 
 /** Slim progress card with a circular gradient ring and a "Complete now" action. */
 export const CompletionCard: React.FC<Props> = ({ percentage, onCompletePress }) => {
+  const { t } = useTranslation();
   const pct = Math.max(0, Math.min(100, Math.round(percentage || 0)));
   const done = pct >= 100;
   if (done) return null;
@@ -48,19 +50,31 @@ export const CompletionCard: React.FC<Props> = ({ percentage, onCompletePress })
       </View>
 
       <View style={styles.text}>
-        <Text style={ds.type.h3}>{done ? 'Profile complete' : 'Complete your profile'}</Text>
+        <Text style={ds.type.h3}>
+          {done
+            ? t('completionCard.profileComplete', 'Profile complete')
+            : t('completionCard.completeYourProfile', 'Complete your profile')}
+        </Text>
         <Text style={[ds.type.body, { marginTop: 2 }]} numberOfLines={2}>
-          {done ? 'Great! Your profile is ready to get noticed.' : 'A complete profile gets more interests.'}
+          {done
+            ? t('completionCard.completeDoneDesc', 'Great! Your profile is ready to get noticed.')
+            : t('completionCard.completeDesc', 'A complete profile gets more interests.')}
         </Text>
       </View>
 
       <PressableScale
         onPress={onCompletePress}
         accessibilityRole="button"
-        accessibilityLabel={done ? 'Edit profile' : 'Complete profile now'}
+        accessibilityLabel={
+          done
+            ? t('completionCard.editBtn', 'Edit profile')
+            : t('completionCard.completeBtn', 'Complete profile now')
+        }
         style={styles.btn}
       >
-        <Text style={styles.btnText}>{done ? 'Edit' : 'Complete now'}</Text>
+        <Text style={styles.btnText}>
+          {done ? t('common.edit', 'Edit') : t('completionCard.completeBtnShort', 'Complete now')}
+        </Text>
       </PressableScale>
     </View>
   );

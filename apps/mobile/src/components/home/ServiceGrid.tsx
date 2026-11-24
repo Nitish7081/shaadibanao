@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { PressableScale, SectionHeader, ds } from '../../design';
 import { SERVICE_MODULES, ServiceModuleId } from '../../constants/serviceModules';
 import type { ExploreServicesGridProps } from '../royal/ExploreServicesGrid';
@@ -20,6 +21,52 @@ const MODULE_ICON: Record<ServiceModuleId, IconName> = {
   my_profile: 'person-circle-outline',
 };
 
+const MODULE_TRANSLATION_KEYS: Record<
+  ServiceModuleId,
+  { title: string; desc: string; action: string }
+> = {
+  find_match: {
+    title: 'homeServices.find_match_title',
+    desc: 'homeServices.find_match_desc',
+    action: 'homeServices.find_match_action',
+  },
+  kundli_milan: {
+    title: 'homeServices.kundli_milan_title',
+    desc: 'homeServices.kundli_milan_desc',
+    action: 'homeServices.kundli_milan_action',
+  },
+  book_pandit: {
+    title: 'homeServices.book_pandit_title',
+    desc: 'homeServices.book_pandit_desc',
+    action: 'homeServices.book_pandit_action',
+  },
+  muhurat_finder: {
+    title: 'homeServices.muhurat_finder_title',
+    desc: 'homeServices.muhurat_finder_desc',
+    action: 'homeServices.muhurat_finder_action',
+  },
+  astrology: {
+    title: 'homeServices.astrology_title',
+    desc: 'homeServices.astrology_desc',
+    action: 'homeServices.astrology_action',
+  },
+  community: {
+    title: 'homeServices.community_title',
+    desc: 'homeServices.community_desc',
+    action: 'homeServices.community_action',
+  },
+  messages: {
+    title: 'homeServices.messages_title',
+    desc: 'homeServices.messages_desc',
+    action: 'homeServices.messages_action',
+  },
+  my_profile: {
+    title: 'homeServices.my_profile_title',
+    desc: 'homeServices.my_profile_desc',
+    action: 'homeServices.my_profile_action',
+  },
+};
+
 /** Max multiplier for card text – prevents large accessibility font scale from overflowing card boundaries. */
 const TEXT_MAX_SCALE = 1.2;
 
@@ -31,14 +78,19 @@ interface CardProps {
 }
 
 const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => {
+  const { t } = useTranslation();
   const m = SERVICE_MODULES[id];
+  const tr = MODULE_TRANSLATION_KEYS[id];
+  const displayTitle = tr ? t(tr.title, m.title) : m.title;
+  const displayDesc = tr ? t(tr.desc, m.description) : m.description;
   const shownBadge = badge || m.defaultBadge;
+
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={m.accessibilityLabel}
-      accessibilityHint={`Navigates to ${m.title}`}
+      accessibilityHint={`Navigates to ${displayTitle}`}
       containerStyle={[styles.cardContainer, { width: cardWidth }]}
       style={styles.card}
     >
@@ -70,7 +122,7 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
         ellipsizeMode="tail"
         maxFontSizeMultiplier={TEXT_MAX_SCALE}
       >
-        {m.title}
+        {displayTitle}
       </Text>
       <Text
         style={styles.desc}
@@ -78,7 +130,7 @@ const ServiceCard: React.FC<CardProps> = ({ id, badge, onPress, cardWidth }) => 
         ellipsizeMode="tail"
         maxFontSizeMultiplier={TEXT_MAX_SCALE}
       >
-        {m.description}
+        {displayDesc}
       </Text>
       <View style={[styles.arrow, { backgroundColor: m.iconBg }]}>
         <Ionicons name="arrow-forward" size={14} color={m.primaryColor} />
@@ -137,9 +189,14 @@ export const ServiceGrid: React.FC<ExploreServicesGridProps> = ({
     ],
   ];
 
+  const { t } = useTranslation();
+
   return (
     <View style={styles.container}>
-      <SectionHeader title="Explore Services" subtitle="Matrimony, astrology & sacred rituals" />
+      <SectionHeader
+        title={t('homeServices.exploreServices', 'Explore Services')}
+        subtitle={t('homeServices.exploreServicesSub', 'Matrimony, astrology & sacred rituals')}
+      />
       {rows.map((pair, i) => (
         <View key={i} style={styles.row}>
           {pair.map((c) => (

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { PressableScale, ds } from '../../design';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -54,37 +55,41 @@ export const StatTiles: React.FC<Props> = ({
   onInterestsPress,
   onMatchesPress,
   onMessagesPress,
-}) => (
-  <View style={styles.row}>
-    <StatTile
-      icon="heart-outline"
-      tint={ds.color.rose}
-      tintSoft={ds.color.roseSoft}
-      value={newInterests}
-      label="New Interests"
-      emptyHint="Send your first interest"
-      onPress={onInterestsPress}
-    />
-    <StatTile
-      icon="sparkles-outline"
-      tint={ds.color.goldDeep}
-      tintSoft={ds.color.goldSoft}
-      value={mutualMatches}
-      label="Mutual Matches"
-      emptyHint="Matches show up here"
-      onPress={onMatchesPress}
-    />
-    <StatTile
-      icon="chatbubble-ellipses-outline"
-      tint="#0369A1"
-      tintSoft="#E0F2FE"
-      value={messages}
-      label="Messages"
-      emptyHint="Start a conversation"
-      onPress={onMessagesPress}
-    />
-  </View>
-);
+}) => {
+  const { t } = useTranslation();
+
+  return (
+    <View style={styles.row}>
+      <StatTile
+        icon="heart-outline"
+        tint={ds.color.rose}
+        tintSoft={ds.color.roseSoft}
+        value={newInterests}
+        label={t('stats.newInterests', 'New Interests')}
+        emptyHint={t('stats.emptyInterests', 'Send your first interest')}
+        onPress={onInterestsPress}
+      />
+      <StatTile
+        icon="sparkles-outline"
+        tint={ds.color.goldDeep}
+        tintSoft={ds.color.goldSoft}
+        value={mutualMatches}
+        label={t('stats.mutualMatches', 'Mutual Matches')}
+        emptyHint={t('stats.emptyMatches', 'Matches show up here')}
+        onPress={onMatchesPress}
+      />
+      <StatTile
+        icon="chatbubble-ellipses-outline"
+        tint="#0369A1"
+        tintSoft="#E0F2FE"
+        value={messages}
+        label={t('stats.messages', 'Messages')}
+        emptyHint={t('stats.emptyMessages', 'Start a conversation')}
+        onPress={onMessagesPress}
+      />
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: ds.space.md, marginBottom: ds.space.xl },
