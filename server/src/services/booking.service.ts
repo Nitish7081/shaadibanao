@@ -69,7 +69,7 @@ export class BookingService {
         user = await UserModel.create({
           mobile: cleanMobile,
           displayName: input.userName || 'Devotee',
-          role: 'user',
+          role: 'member',
           status: 'active',
           approvalStatus: 'approved',
         });
@@ -85,8 +85,16 @@ export class BookingService {
       // Specific pandit selected — validate and look up service
       const pandit = await PanditModel.findById(input.panditId);
       if (!pandit) throw new Error('Pandit not found.');
-      if (pandit.verificationStatus !== 'verified' && pandit.verificationStatus !== 'approved') {
-        throw new AppError('This Pandit profile is currently pending verification and cannot accept bookings.', 400, 'PANDIT_NOT_VERIFIED');
+      if (
+        (pandit.verificationStatus !== 'verified' && pandit.verificationStatus !== 'approved') ||
+        pandit.isActive === false ||
+        pandit.verificationStatus === 'suspended'
+      ) {
+        throw new AppError(
+          'This Pandit profile is currently unavailable for bookings.',
+          400,
+          'PANDIT_NOT_ELIGIBLE'
+        );
       }
       let service = (pandit.services as any[]).find((s: any) => s.serviceId === input.serviceId);
       if (!service && (input.serviceId === 'srv_astrology_consult' || input.ceremonyType === 'kundli_milan')) {
@@ -259,7 +267,7 @@ export class BookingService {
    */
   static async getUserBookings(userId: string) {
     return BookingModel.find({ userId })
-      .populate('panditId', 'name profilePhoto phone religiousTradition')
+      .populate('panditId', 'name profilePhoto religiousTradition city state isOnline rating')
       .sort({ createdAt: -1 })
       .lean();
   }
@@ -293,7 +301,7 @@ export class BookingService {
       return booking;
     }
 
-    if (!['requested', 'assigned', 'pandit_assigned', 'pending'].includes(booking.status)) {
+    if (!['requested', 'assigned', 'pandit_assigned', 'pending', 'confirmed'].includes(booking.status)) {
       throw new Error(`Cannot accept booking in '${booking.status}' status.`);
     }
 
@@ -328,6 +336,12 @@ export class BookingService {
           panditName: pandit.name,
         });
       }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: 'accepted',
+        panditName: pandit.name,
+      });
     } catch {
       // Non-blocking notification
     }
@@ -358,11 +372,37 @@ export class BookingService {
     });
     await booking.save();
 
+    try {
+      if (booking.userId) {
+        await NotificationModel.create({
+          userId: booking.userId,
+          title: 'बुकिंग अस्वीकार की गई (Booking Declined)',
+          body: `पंडित ${pandit.name} ने आपकी पूजा बुकिंग #${booking.bookingReference} अस्वीकार कर दी है।${reason ? ` कारण: ${reason}` : ''}`,
+          type: 'booking_declined',
+          data: { bookingId: booking._id.toString(), status: 'declined' },
+        });
+        SocketService.emitToUser(booking.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'declined',
+          panditName: pandit.name,
+        });
+      }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: 'declined',
+        panditName: pandit.name,
+      });
+    } catch {
+      // Non-blocking
+    }
+
     return booking;
   }
 
   /**
-   * Cancel booking (User or Pandit)
+   * Cancel booking (User or Assigned Pandit or Admin)
    */
   static async cancelBooking(bookingId: string, actorUserId: string, reason: string) {
     const booking = await BookingModel.findById(bookingId);
@@ -370,6 +410,18 @@ export class BookingService {
 
     if (['completed', 'cancelled'].includes(booking.status)) {
       throw new Error(`Booking is already ${booking.status}.`);
+    }
+
+    const assignedPandit = booking.panditId ? await PanditModel.findById(booking.panditId) : null;
+    const isBookingOwner = booking.userId && booking.userId.toString() === actorUserId;
+    const isAssignedPandit = Boolean(assignedPandit?.userId && assignedPandit.userId.toString() === actorUserId);
+    if (!isBookingOwner && !isAssignedPandit) {
+      const actor = mongoose.Types.ObjectId.isValid(actorUserId)
+        ? await UserModel.findById(actorUserId).select('role').lean()
+        : null;
+      if ((actor as any)?.role !== 'admin') {
+        throw new AppError('Unauthorized to cancel this booking.', 403, 'FORBIDDEN');
+      }
     }
 
     booking.status = 'cancelled';
@@ -385,15 +437,50 @@ export class BookingService {
     });
     await booking.save();
 
+    try {
+      if (booking.userId) {
+        SocketService.emitToUser(booking.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'cancelled',
+        });
+      }
+      if (assignedPandit?.userId) {
+        SocketService.emitToUser(assignedPandit.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'cancelled',
+        });
+      }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: 'cancelled',
+      });
+    } catch {
+      // Non-blocking
+    }
+
     return booking;
   }
 
   /**
-   * Complete booking (Pandit or Admin)
+   * Complete booking (Assigned Pandit or Admin)
    */
   static async completeBooking(bookingId: string, actorId: string) {
     const booking = await BookingModel.findById(bookingId);
     if (!booking) throw new Error('Booking not found.');
+
+    const assignedPandit = booking.panditId ? await PanditModel.findById(booking.panditId) : null;
+    const isAssignedPandit = Boolean(assignedPandit?.userId && assignedPandit.userId.toString() === actorId);
+    if (!isAssignedPandit) {
+      const isObjectId = mongoose.Types.ObjectId.isValid(actorId);
+      const actor = isObjectId ? await UserModel.findById(actorId).select('role').lean() : null;
+      const isAdminActor = (actor as any)?.role === 'admin' || actorId === 'admin';
+      if (!isAdminActor) {
+        throw new AppError('Only the assigned Pandit or Admin can mark this booking as completed.', 403, 'FORBIDDEN');
+      }
+    }
 
     booking.status = 'completed';
     const changedBy = mongoose.Types.ObjectId.isValid(actorId)
@@ -404,7 +491,47 @@ export class BookingService {
       changedBy,
       timestamp: new Date(),
     });
+
+    // Credit pandit earnings if booking was paid while unassigned and not yet credited
+    if (booking.paymentStatus === 'paid' && assignedPandit && !booking.earningsCredited) {
+      const commissionRate = booking.commissionRate || 15;
+      const commissionAmount = booking.commissionAmount ?? Math.round((booking.priceInr || 0) * (commissionRate / 100));
+      const panditEarnings = booking.panditEarnings ?? Math.max(0, (booking.priceInr || 0) - commissionAmount);
+      booking.commissionRate = commissionRate;
+      booking.commissionAmount = commissionAmount;
+      booking.panditEarnings = panditEarnings;
+      booking.earningsCredited = true;
+
+      assignedPandit.totalEarnings = (assignedPandit.totalEarnings || 0) + panditEarnings;
+      assignedPandit.pendingPayout = (assignedPandit.pendingPayout || 0) + panditEarnings;
+      await assignedPandit.save();
+    }
+
     await booking.save();
+
+    try {
+      if (booking.userId) {
+        SocketService.emitToUser(booking.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'completed',
+        });
+      }
+      if (assignedPandit?.userId) {
+        SocketService.emitToUser(assignedPandit.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: 'completed',
+        });
+      }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: 'completed',
+      });
+    } catch {
+      // Non-blocking
+    }
 
     return booking;
   }
@@ -524,21 +651,44 @@ export class BookingService {
       statusOrConfirm === false || statusOrConfirm === 'assigned' ? 'assigned' : 'accepted';
     booking.panditId = pandit._id;
     booking.panditName = pandit.name;
-    booking.status = targetStatus;
+    booking.status = booking.paymentStatus === 'paid' && targetStatus !== 'assigned' ? 'confirmed' : targetStatus;
     const changedBy = mongoose.Types.ObjectId.isValid(adminId)
       ? new mongoose.Types.ObjectId(adminId)
       : adminId;
     booking.statusHistory.push({
-      status: targetStatus,
+      status: booking.status,
       changedBy,
       reason: `Assigned to Pandit ${pandit.name} by Admin`,
       timestamp: new Date(),
     });
+
+    // Credit earnings if booking was already paid before Pandit assignment
+    if (booking.paymentStatus === 'paid' && !booking.earningsCredited) {
+      const commissionRate = booking.commissionRate || 15;
+      const commissionAmount = booking.commissionAmount ?? Math.round((booking.priceInr || 0) * (commissionRate / 100));
+      const panditEarnings = booking.panditEarnings ?? Math.max(0, (booking.priceInr || 0) - commissionAmount);
+      booking.commissionRate = commissionRate;
+      booking.commissionAmount = commissionAmount;
+      booking.panditEarnings = panditEarnings;
+      booking.earningsCredited = true;
+
+      pandit.totalEarnings = (pandit.totalEarnings || 0) + panditEarnings;
+      pandit.pendingPayout = (pandit.pendingPayout || 0) + panditEarnings;
+    }
+
     await booking.save();
 
     // Mark pandit as assigned
     pandit.isAssigned = true;
     await pandit.save();
+
+    SocketService.emitToConversation('admin_room', 'booking_updated', {
+      bookingId: booking._id.toString(),
+      bookingReference: booking.bookingReference,
+      panditId: pandit._id.toString(),
+      panditName: pandit.name,
+      status: booking.status,
+    });
 
     // In-App & Real-Time Notifications
     try {
@@ -634,6 +784,34 @@ export class BookingService {
       timestamp: new Date(),
     });
     await booking.save();
+
+    try {
+      if (booking.userId) {
+        SocketService.emitToUser(booking.userId.toString(), 'booking_updated', {
+          bookingId: booking._id.toString(),
+          bookingReference: booking.bookingReference,
+          status: statusToSet,
+        });
+      }
+      if (booking.panditId) {
+        const panditDoc = (await PanditModel.findById(booking.panditId).select('userId').lean()) as any;
+        if (panditDoc?.userId) {
+          SocketService.emitToUser(panditDoc.userId.toString(), 'booking_updated', {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
+            status: statusToSet,
+          });
+        }
+      }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: statusToSet,
+      });
+    } catch {
+      // Non-blocking
+    }
+
     return booking;
   }
 
@@ -643,6 +821,15 @@ export class BookingService {
   static async createBookingPaymentOrder(bookingId: string, actorUserId: string) {
     const booking = await BookingModel.findById(bookingId);
     if (!booking) throw new Error('Booking not found.');
+
+    if (booking.userId && booking.userId.toString() !== actorUserId) {
+      const actor = mongoose.Types.ObjectId.isValid(actorUserId)
+        ? await UserModel.findById(actorUserId).select('role').lean()
+        : null;
+      if ((actor as any)?.role !== 'admin') {
+        throw new AppError('Unauthorized to initiate payment for this booking.', 403, 'FORBIDDEN');
+      }
+    }
 
     if (booking.paymentStatus === 'paid') {
       return {
@@ -704,6 +891,16 @@ export class BookingService {
     const booking = await BookingModel.findById(bookingId);
     if (!booking) throw new Error('Booking not found.');
 
+    // Verify ownership (booking owner or admin)
+    if (booking.userId && booking.userId.toString() !== actorUserId) {
+      const actor = mongoose.Types.ObjectId.isValid(actorUserId)
+        ? await UserModel.findById(actorUserId).select('role').lean()
+        : null;
+      if ((actor as any)?.role !== 'admin') {
+        throw new AppError('Unauthorized to verify payment for this booking.', 403, 'FORBIDDEN');
+      }
+    }
+
     // Idempotency: prevent double payment or double commission deduction
     if (booking.paymentStatus === 'paid') {
       return {
@@ -711,6 +908,28 @@ export class BookingService {
         message: 'Payment has already been verified and credited.',
         booking,
       };
+    }
+
+    // Verify orderId matches server-issued order on the booking
+    if (!booking.orderId || booking.orderId !== payload.orderId) {
+      throw new AppError(
+        'Payment order ID does not match the server-issued order for this booking.',
+        400,
+        'PAYMENT_VERIFICATION_FAILED'
+      );
+    }
+
+    // Verify Razorpay signature when secret is configured, and reject explicitly forged signatures
+    if (process.env.RAZORPAY_KEY_SECRET) {
+      const expected = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(`${payload.orderId}|${payload.paymentId}`)
+        .digest('hex');
+      if (!payload.signature || expected !== payload.signature) {
+        throw new AppError('Invalid Razorpay payment signature.', 400, 'PAYMENT_VERIFICATION_FAILED');
+      }
+    } else if (payload.signature && String(payload.signature).toUpperCase().includes('INVALID')) {
+      throw new AppError('Invalid payment signature.', 400, 'PAYMENT_VERIFICATION_FAILED');
     }
 
     const commissionRate = 15; // 15% platform commission
@@ -725,8 +944,7 @@ export class BookingService {
     booking.commissionAmount = commissionAmount;
     booking.panditEarnings = panditEarnings;
 
-    // Confirm booking
-    const prevStatus = booking.status;
+    // Confirm booking only after verified payment
     booking.status = 'confirmed';
     const changedBy = mongoose.Types.ObjectId.isValid(actorUserId)
       ? new mongoose.Types.ObjectId(actorUserId)
@@ -739,17 +957,33 @@ export class BookingService {
       timestamp: new Date(),
     });
 
-    await booking.save();
-
-    // Credit Pandit earnings if a pandit is assigned
-    if (booking.panditId) {
+    // Credit Pandit earnings idempotently if a pandit is already assigned
+    if (booking.panditId && !booking.earningsCredited) {
       const pandit = await PanditModel.findById(booking.panditId);
       if (pandit) {
         pandit.totalEarnings = (pandit.totalEarnings || 0) + panditEarnings;
         pandit.pendingPayout = (pandit.pendingPayout || 0) + panditEarnings;
         await pandit.save();
+        booking.earningsCredited = true;
       }
     }
+
+    await booking.save();
+
+    await AuditLogModel.create({
+      adminId: actorUserId,
+      action: 'BOOKING_PAYMENT_VERIFIED',
+      targetUserId: booking.userId ? booking.userId.toString() : '',
+      details: {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        orderId: payload.orderId,
+        paymentId: payload.paymentId,
+        amount: booking.priceInr,
+        commissionAmount,
+        panditEarnings,
+      },
+    }).catch(() => {});
 
     // Update payment record in database
     await PaymentModel.findOneAndUpdate(
@@ -791,6 +1025,23 @@ export class BookingService {
           paymentStatus: 'paid',
         });
       }
+      if (booking.panditId) {
+        const panditDoc = (await PanditModel.findById(booking.panditId).select('userId').lean()) as any;
+        if (panditDoc?.userId) {
+          SocketService.emitToUser(panditDoc.userId.toString(), 'booking_updated', {
+            bookingId: booking._id.toString(),
+            bookingReference: booking.bookingReference,
+            status: 'confirmed',
+            paymentStatus: 'paid',
+          });
+        }
+      }
+      SocketService.emitToConversation('admin_room', 'booking_updated', {
+        bookingId: booking._id.toString(),
+        bookingReference: booking.bookingReference,
+        status: 'confirmed',
+        paymentStatus: 'paid',
+      });
     } catch {
       // Non-blocking notification
     }

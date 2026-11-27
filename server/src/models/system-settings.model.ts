@@ -7,6 +7,16 @@ export interface ISystemSettings extends Document {
   malePaidChatRequired: boolean;
   maleFreeReplyToFemale: boolean;
   maleFreeMessageLimit: number;
+  panditFreeChatEnabled: boolean;
+  panditFreeMessageLimit: number;
+  panditPaidChatRequired: boolean;
+  femaleFreePanditChat: boolean;
+  panditWhatsappEnabled: boolean;
+  panditWhatsappRule:
+    | 'paid_booking_or_subscription'
+    | 'paid_booking_only'
+    | 'paid_subscription_only'
+    | 'always_off';
   plusPlanPriceInr: number;
   premiumPlanPriceInr: number;
   defaultPanditConsultationFee: number;
@@ -41,7 +51,22 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
     femaleFreeChatEnabled: { type: Boolean, default: true },
     malePaidChatRequired: { type: Boolean, default: true },
     maleFreeReplyToFemale: { type: Boolean, default: true },
-    maleFreeMessageLimit: { type: Number, default: 0, min: 0 },
+    maleFreeMessageLimit: { type: Number, default: 1, min: 0 },
+    panditFreeChatEnabled: { type: Boolean, default: true },
+    panditFreeMessageLimit: { type: Number, default: 1, min: 0 },
+    panditPaidChatRequired: { type: Boolean, default: true },
+    femaleFreePanditChat: { type: Boolean, default: false },
+    panditWhatsappEnabled: { type: Boolean, default: true },
+    panditWhatsappRule: {
+      type: String,
+      enum: [
+        'paid_booking_or_subscription',
+        'paid_booking_only',
+        'paid_subscription_only',
+        'always_off',
+      ],
+      default: 'paid_booking_or_subscription',
+    },
     plusPlanPriceInr: { type: Number, default: 2999, min: 0 },
     premiumPlanPriceInr: { type: Number, default: 4999, min: 0 },
     defaultPanditConsultationFee: { type: Number, default: 501, min: 0 },

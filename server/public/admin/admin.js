@@ -2637,6 +2637,35 @@ async function openPanditDetailsModal(panditId) {
       ${bankHtml}
     </div>
 
+    <div style="margin-bottom: 16px; background: rgba(16, 185, 129, 0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.25);">
+      <h5 style="color: #10b981; font-size: 13px; margin-bottom: 8px;">🔐 WhatsApp Privacy, Availability &amp; Consultation Rate Control</h5>
+      <div class="two-col-grid" style="gap: 10px; margin-bottom: 10px;">
+        <div>
+          <label class="text-xs text-muted">Verified WhatsApp Number (Private by default)</label>
+          <input type="text" id="edit-pandit-whatsapp" class="form-input" value="${escapeHtml(p.whatsappNumber || '')}" placeholder="e.g. +919876543210">
+        </div>
+        <div>
+          <label class="text-xs text-muted">Consultation Charges (₹)</label>
+          <input type="number" id="edit-pandit-fee" class="form-input" value="${Number(p.consultationCharges || 501)}" min="0">
+        </div>
+      </div>
+      <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+          <input type="checkbox" id="edit-pandit-whatsapp-enabled" ${p.whatsappEnabled !== false ? 'checked' : ''}>
+          <span>WhatsApp Contact Enabled</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+          <input type="checkbox" id="edit-pandit-online" ${p.isOnline !== false ? 'checked' : ''}>
+          <span>Online Status</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+          <input type="checkbox" id="edit-pandit-chat-available" ${p.isChatAvailable !== false ? 'checked' : ''}>
+          <span>Chat Enabled</span>
+        </label>
+      </div>
+      <button type="button" class="btn-primary btn-xs" onclick="saveAdminPanditConfig('${p.id}')">💾 Save Pandit WhatsApp &amp; Pricing</button>
+    </div>
+
     <div style="margin-bottom: 16px;">
       <h5 style="color: var(--gold-accent-light); font-size: 14px; margin-bottom: 6px;">📄 Identity &amp; Vedic Qualification Documents (${docsList.length})</h5>
       ${docsHtml}
@@ -2660,6 +2689,31 @@ async function openPanditDetailsModal(panditId) {
 function closePanditDetailsModal() {
   const modal = document.getElementById('modal-pandit-details');
   if (modal) modal.style.display = 'none';
+}
+
+async function saveAdminPanditConfig(panditId) {
+  try {
+    const whatsappNumber = document.getElementById('edit-pandit-whatsapp')?.value.trim() || '';
+    const consultationCharges = Number(document.getElementById('edit-pandit-fee')?.value || 501);
+    const whatsappEnabled = Boolean(document.getElementById('edit-pandit-whatsapp-enabled')?.checked);
+    const isOnline = Boolean(document.getElementById('edit-pandit-online')?.checked);
+    const isChatAvailable = Boolean(document.getElementById('edit-pandit-chat-available')?.checked);
+
+    await adminFetch(`/admin/pandits/${panditId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        whatsappNumber,
+        consultationCharges,
+        whatsappEnabled,
+        isOnline,
+        isChatAvailable,
+      }),
+    });
+    showToast('Pandit WhatsApp privacy, availability & consultation pricing updated.');
+    await loadPandits();
+  } catch (err) {
+    showToast(err.message || 'Failed to update Pandit configuration.', 'error');
+  }
 }
 
 async function approvePandit(id) {
@@ -3428,8 +3482,8 @@ window.moderateUserPhoto = moderateUserPhoto;
 window.viewVerificationDocument = viewVerificationDocument;
 window.approveVerification = approveVerification;
 window.rejectVerification = rejectVerification;
-window.verifyPandit = verifyPandit;
-window.rejectPandit = rejectPandit;
+window.verifyPandit = approvePandit;
+window.rejectPandit = openRejectPanditDialog;
 window.actionReport = actionReport;
 window.loadApprovals = loadApprovals;
 window.loadUsers = loadUsers;
@@ -4447,7 +4501,13 @@ async function loadSettings() {
     if (document.getElementById('setting-female-free-chat')) document.getElementById('setting-female-free-chat').checked = s.femaleFreeChatEnabled !== false;
     if (document.getElementById('setting-male-paid-chat')) document.getElementById('setting-male-paid-chat').checked = s.malePaidChatRequired !== false;
     if (document.getElementById('setting-male-free-reply')) document.getElementById('setting-male-free-reply').checked = s.maleFreeReplyToFemale !== false;
-    if (document.getElementById('setting-male-free-limit')) document.getElementById('setting-male-free-limit').value = s.maleFreeMessageLimit || 0;
+    if (document.getElementById('setting-male-free-limit')) document.getElementById('setting-male-free-limit').value = s.maleFreeMessageLimit ?? 1;
+    if (document.getElementById('setting-pandit-free-chat')) document.getElementById('setting-pandit-free-chat').checked = s.panditFreeChatEnabled !== false;
+    if (document.getElementById('setting-pandit-free-limit')) document.getElementById('setting-pandit-free-limit').value = s.panditFreeMessageLimit ?? 1;
+    if (document.getElementById('setting-pandit-paid-chat')) document.getElementById('setting-pandit-paid-chat').checked = s.panditPaidChatRequired !== false;
+    if (document.getElementById('setting-female-free-pandit-chat')) document.getElementById('setting-female-free-pandit-chat').checked = s.femaleFreePanditChat === true;
+    if (document.getElementById('setting-pandit-whatsapp-enabled')) document.getElementById('setting-pandit-whatsapp-enabled').checked = s.panditWhatsappEnabled !== false;
+    if (document.getElementById('setting-pandit-whatsapp-rule')) document.getElementById('setting-pandit-whatsapp-rule').value = s.panditWhatsappRule || 'paid_booking_or_subscription';
     if (document.getElementById('setting-max-message-length')) document.getElementById('setting-max-message-length').value = s.maxMessageLength || 1000;
 
     if (document.getElementById('setting-plus-price')) document.getElementById('setting-plus-price').value = s.plusPlanPriceInr || 2999;
@@ -4478,7 +4538,15 @@ async function saveSystemSettings() {
     const femaleFreeChat = document.getElementById('setting-female-free-chat')?.checked;
     const malePaidChat = document.getElementById('setting-male-paid-chat')?.checked;
     const maleFreeReply = document.getElementById('setting-male-free-reply')?.checked;
-    const maleFreeLimit = Number(document.getElementById('setting-male-free-limit')?.value) || 0;
+    const maleFreeLimitRaw = document.getElementById('setting-male-free-limit')?.value;
+    const maleFreeLimit = maleFreeLimitRaw === '' || maleFreeLimitRaw === undefined ? 1 : Number(maleFreeLimitRaw);
+    const panditFreeChatEnabled = document.getElementById('setting-pandit-free-chat')?.checked;
+    const panditFreeLimitRaw = document.getElementById('setting-pandit-free-limit')?.value;
+    const panditFreeMessageLimit = panditFreeLimitRaw === '' || panditFreeLimitRaw === undefined ? 1 : Number(panditFreeLimitRaw);
+    const panditPaidChatRequired = document.getElementById('setting-pandit-paid-chat')?.checked;
+    const femaleFreePanditChat = document.getElementById('setting-female-free-pandit-chat')?.checked;
+    const panditWhatsappEnabled = document.getElementById('setting-pandit-whatsapp-enabled')?.checked;
+    const panditWhatsappRule = document.getElementById('setting-pandit-whatsapp-rule')?.value || 'paid_booking_or_subscription';
     const maxMsgLength = Number(document.getElementById('setting-max-message-length')?.value) || 1000;
 
     const plusPrice = Number(document.getElementById('setting-plus-price')?.value) || 2999;
@@ -4506,6 +4574,12 @@ async function saveSystemSettings() {
       malePaidChatRequired: malePaidChat,
       maleFreeReplyToFemale: maleFreeReply,
       maleFreeMessageLimit: maleFreeLimit,
+      panditFreeChatEnabled,
+      panditFreeMessageLimit,
+      panditPaidChatRequired,
+      femaleFreePanditChat,
+      panditWhatsappEnabled,
+      panditWhatsappRule,
       maxMessageLength: maxMsgLength,
       plusPlanPriceInr: plusPrice,
       premiumPlanPriceInr: premiumPrice,
@@ -4536,6 +4610,7 @@ window.handlePanditSearch = handlePanditSearch;
 window.loadPandits = loadPandits;
 window.openPanditDetailsModal = openPanditDetailsModal;
 window.closePanditDetailsModal = closePanditDetailsModal;
+window.saveAdminPanditConfig = saveAdminPanditConfig;
 window.approvePandit = approvePandit;
 window.openRejectPanditDialog = openRejectPanditDialog;
 window.closeRejectPanditDialog = closeRejectPanditDialog;
@@ -4812,4 +4887,96 @@ window.rejectWithdrawal = rejectWithdrawal;
 window.loadErrorMonitoring = loadErrorMonitoring;
 window.resolveErrorLog = resolveErrorLog;
 window.loadDatabaseMonitoring = loadDatabaseMonitoring;
+
+// ==========================================================================
+// 20. ACCESSIBLE ANIMATIONS, STAGGER OBSERVER & KEYBOARD ESCAPE HANDLING
+// ==========================================================================
+(function initAdminAnimationsAndA11y() {
+  const prefersReducedMotion =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Escape key & backdrop-click closes any open modal and restores previous focus cleanly
+  let lastFocusedEl = null;
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const openModals = Array.from(document.querySelectorAll('.modal-backdrop')).filter(
+      (el) => el.style.display && el.style.display !== 'none'
+    );
+    if (openModals.length > 0) {
+      const topModal = openModals[openModals.length - 1];
+      topModal.style.display = 'none';
+      if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
+        lastFocusedEl.focus();
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target && target.classList && target.classList.contains('modal-backdrop')) {
+      target.style.display = 'none';
+      if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
+        lastFocusedEl.focus();
+      }
+    } else if (target && target.closest && target.closest('button, .menu-link')) {
+      lastFocusedEl = target.closest('button, .menu-link');
+    }
+  });
+
+  if (prefersReducedMotion) return;
+
+  // Trigger clean 300ms ease-out entrance when switching Admin tabs
+  if (typeof window.navigateToTab === 'function') {
+    const origNav = window.navigateToTab;
+    window.navigateToTab = function wrappedNavigateToTab(tab, pushHash) {
+      origNav.call(this, tab, pushHash);
+      const sec = document.getElementById(`tab-${tab}`);
+      if (sec) {
+        sec.classList.remove('sb-tab-enter');
+        void sec.offsetWidth;
+        sec.classList.add('sb-tab-enter');
+      }
+    };
+  }
+
+  // Cap staggered table row animations at 9 rows (~50ms each) to prevent heavy DOM reflows
+  const observer = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.target && m.target.tagName === 'TBODY') {
+        const rows = Array.from(m.target.children);
+        rows.forEach((row, idx) => {
+          if (idx < 10 && !row.classList.contains('sb-stagger-row')) {
+            row.style.setProperty('--sb-idx', String(idx));
+            row.classList.add('sb-stagger-row');
+          }
+        });
+      }
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.data-table tbody').forEach((tbody) => {
+      observer.observe(tbody, { childList: true });
+    });
+
+    // Scroll-into-view animation via IntersectionObserver (animates each card once, zero scroll jank)
+    if (typeof IntersectionObserver === 'function') {
+      const revealObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('sb-tab-enter');
+              revealObserver.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.08 }
+      );
+      document.querySelectorAll('.kpi-card, .card').forEach((el) => {
+        revealObserver.observe(el);
+      });
+    }
+  });
+})();
 

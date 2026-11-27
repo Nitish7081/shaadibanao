@@ -23,6 +23,7 @@ import {
   getSentInterests,
   updateInterestStatus,
   withdrawInterest,
+  getOrCreateConversation,
   getSessionToken,
 } from '../services';
 import { InterestItem } from '@bandhansetu/shared';
@@ -130,6 +131,40 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
       await fetchInterests();
     } catch (err: any) {
       Alert.alert('Action Failed', err?.message || 'Could not withdraw interest.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleStartChat = async (interest: InterestItem) => {
+    const profile = interest.profile;
+    if (!profile) return;
+    setActionLoadingId(interest.id);
+    try {
+      const token = getSessionToken();
+      const res = await getOrCreateConversation(token, profile.id);
+      if (res?.data?.id) {
+        navigation.navigate('ChatDetail', {
+          conversationId: res.data.id,
+          partnerName: profile.displayName,
+          partnerId: profile.id,
+        });
+      } else {
+        Alert.alert('Chat Error', 'Could not open conversation. Please try again.');
+      }
+    } catch (err: any) {
+      if (err?.status === 402 || err?.code === 'SUBSCRIPTION_REQUIRED') {
+        Alert.alert(
+          'सदस्यता आवश्यक (Membership Required)',
+          err?.message || 'चैट करने के लिए प्लस या प्रीमियम सदस्यता योजना आवश्यक है।',
+          [
+            { text: 'रद्द करें (Cancel)', style: 'cancel' },
+            { text: 'योजना देखें (View Plans)', onPress: () => navigation.navigate('Membership') },
+          ]
+        );
+      } else {
+        Alert.alert('Chat Unavailable', err?.message || 'Unable to start conversation.');
+      }
     } finally {
       setActionLoadingId(null);
     }
@@ -458,13 +493,9 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
 
               <PressableScale
                 style={[styles.actionBtn, styles.chatBtn]}
-                onPress={() =>
-                  profile &&
-                  navigation.navigate('ChatDetail', {
-                    conversationId: `conv-${item.id}`,
-                    partnerName: profile.displayName,
-                  })
-                }
+                onPress={() => handleStartChat(item)}
+                disabled={isActing}
+                accessibilityLabel="Chat Now"
               >
                 <Ionicons name="chatbubble-ellipses" size={15} color="#FFFFFF" />
                 <Text maxFontSizeMultiplier={1.2} style={styles.chatBtnText}>

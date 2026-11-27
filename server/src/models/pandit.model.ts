@@ -45,6 +45,8 @@ export interface IPandit extends Document {
   name: string;
   profilePhoto?: string;
   phone?: string;
+  whatsappNumber?: string;
+  whatsappEnabled?: boolean;
   email?: string;
   gender?: 'male' | 'female' | 'other';
   dateOfBirth?: Date;
@@ -141,6 +143,8 @@ const PanditSchema = new Schema<IPandit>(
     name: { type: String, required: true, trim: true },
     profilePhoto: { type: String, trim: true },
     phone: { type: String, trim: true },
+    whatsappNumber: { type: String, trim: true },
+    whatsappEnabled: { type: Boolean, default: true },
     email: { type: String, trim: true, lowercase: true },
     gender: {
       type: String,

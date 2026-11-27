@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { PanditService } from '../services/pandit.service';
-import { requireAuth } from '../middleware/auth.middleware';
+import { requireAuth, optionalAuth } from '../middleware/auth.middleware';
 import { ApiResponse } from '@bandhansetu/shared';
 
 export const panditRouter = Router();
@@ -146,10 +146,74 @@ panditRouter.put('/me/astrology-profile', requireAuth, async (req: Request, res:
   }
 });
 
-// GET /api/v1/pandits/:id (Public view of single Pandit)
-panditRouter.get('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+// GET /api/v1/pandits/:id/chat-eligibility (Check Free Intro & Paid Chat Entitlement)
+panditRouter.get('/:id/chat-eligibility', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const pandit = await PanditService.getPanditById(req.params.id);
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const data = await PanditService.getPanditChatEligibility(userId, req.params.id);
+    const response: ApiResponse = {
+      success: true,
+      data,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/v1/pandits/:id/whatsapp (Authorized WhatsApp contact reveal)
+panditRouter.get('/:id/whatsapp', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const data = await PanditService.getAuthorizedWhatsapp(userId, req.params.id);
+    const response: ApiResponse = {
+      success: true,
+      data,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/pandits/:id/chat/order (Create Paid Personal Consultation Chat Order)
+panditRouter.post('/:id/chat/order', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const data = await PanditService.createPanditChatOrder(userId, req.params.id);
+    const response: ApiResponse = {
+      success: true,
+      data,
+    };
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/pandits/:id/chat/verify (Verify Consultation Chat Payment)
+panditRouter.post('/:id/chat/verify', requireAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const data = await PanditService.verifyPanditChatPayment(userId, req.params.id, req.body);
+    const response: ApiResponse = {
+      success: true,
+      message: 'Consultation chat access activated.',
+      data,
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/v1/pandits/:id (Public/Member sanitized view of single Pandit)
+panditRouter.get('/:id', optionalAuth, async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const viewer = (req as any).user
+      ? { userId: (req as any).user.id || (req as any).user.userId, role: (req as any).user.role }
+      : undefined;
+    const pandit = await PanditService.getPanditById(req.params.id, viewer);
 
     const response: ApiResponse = {
       success: true,

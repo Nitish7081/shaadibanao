@@ -206,5 +206,7 @@ const UserSchema = new Schema<IUser>(
   }
 );
 
+UserSchema.index({ status: 1, approvalStatus: 1, createdAt: -1 });
+
 // Export model
 export const UserModel = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

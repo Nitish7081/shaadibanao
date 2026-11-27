@@ -37,9 +37,13 @@ export class ChatController {
   ): Promise<void> {
     try {
       const userId = (req as any).user.userId;
-      const { participantId } = req.body;
+      const { participantId, category, panditId, bookingId } = req.body;
 
-      const conversation = await ChatService.getOrCreateConversation(userId, participantId);
+      const conversation = await ChatService.getOrCreateConversation(userId, participantId, {
+        category,
+        panditId,
+        bookingId,
+      });
 
       res.status(201).json({
         success: true,
@@ -67,8 +71,9 @@ export class ChatController {
       const { conversationId } = req.params;
       const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const before = typeof req.query.before === 'string' ? req.query.before : undefined;
 
-      const result = await ChatService.getMessages(userId, conversationId, page, limit);
+      const result = await ChatService.getMessages(userId, conversationId, page, limit, before);
 
       res.status(200).json({
         success: true,

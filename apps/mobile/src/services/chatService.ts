@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import {
   ApiResponse,
   ConversationItem,
+  ConversationCategory,
   ChatMessage,
   PaginatedResponse,
   ContactExchangeDetails,
@@ -14,6 +15,7 @@ import {
  */
 
 let socketInstance: Socket | null = null;
+let currentSocketToken: string | null = null;
 
 // ======================== REST API CLIENTS ========================
 
@@ -30,14 +32,24 @@ export async function getConversations(
 
 export async function getOrCreateConversation(
   accessToken: string,
-  participantId: string
+  participantId: string,
+  options?: {
+    category?: ConversationCategory;
+    panditId?: string;
+    bookingId?: string;
+  }
 ): Promise<ApiResponse<ConversationItem>> {
   return apiClient<ApiResponse<ConversationItem>>('/conversations', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ participantId }),
+    body: JSON.stringify({
+      participantId,
+      ...(options?.category ? { category: options.category } : {}),
+      ...(options?.panditId ? { panditId: options.panditId } : {}),
+      ...(options?.bookingId ? { bookingId: options.bookingId } : {}),
+    }),
   });
 }
 
@@ -107,13 +119,24 @@ export async function requestContactExchange(
  * Initializes authenticated Socket.IO connection
  */
 export function initChatSocket(accessToken: string): Socket {
-  if (socketInstance?.connected) {
+  if (socketInstance && currentSocketToken === accessToken) {
+    if (!socketInstance.connected) {
+      socketInstance.connect();
+    }
     return socketInstance;
+  }
+
+  // Disconnect previous user's socket when token changes (e.g. logout/login or refresh)
+  if (socketInstance) {
+    socketInstance.disconnect();
+    socketInstance = null;
+    currentSocketToken = null;
   }
 
   // Base server URL (without /api/v1)
   const baseUrl = getApiBaseUrl().replace('/api/v1', '');
 
+  currentSocketToken = accessToken;
   socketInstance = io(baseUrl, {
     auth: {
       token: accessToken,
@@ -148,4 +171,5 @@ export function disconnectChatSocket(): void {
     socketInstance.disconnect();
     socketInstance = null;
   }
+  currentSocketToken = null;
 }

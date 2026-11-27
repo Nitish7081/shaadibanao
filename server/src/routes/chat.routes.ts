@@ -18,11 +18,10 @@ chatRouter.use(requireAuth, requireApproved);
 // GET /api/v1/conversations
 chatRouter.get('/', requireAuth, ChatController.getConversations);
 
-// POST /api/v1/conversations (Subscription gate enforced when initiating chat with female match)
+// POST /api/v1/conversations (Allows female free chat, mutual matches, or existing conversations; message gate enforces male single free message + paid subscription)
 chatRouter.post(
   '/',
   requireAuth,
-  requireSubscriptionForFemaleProfile,
   validateRequest({ body: createConversationSchema }),
   ChatController.getOrCreateConversation
 );

@@ -1,14 +1,37 @@
 import { ProfileService } from './profile.service';
 import { PartnerPreferences, MatchAlignment } from '@bandhansetu/shared';
 
+export interface PreparedPreferences {
+  raw: PartnerPreferences;
+  maritalSet: Set<string>;
+  religionSet: Set<string>;
+  motherTongueSet: Set<string>;
+  lowerCities: string[];
+}
+
 export class MatchExplanationService {
+  /**
+   * Pre-compile preference criteria into O(1) Hash Sets for fast candidate scoring
+   */
+  public static preparePreferences(preferences: PartnerPreferences | null): PreparedPreferences | null {
+    if (!preferences) return null;
+    return {
+      raw: preferences,
+      maritalSet: new Set(preferences.maritalStatuses || []),
+      religionSet: new Set((preferences.religions || []).map((r) => r.toLowerCase())),
+      motherTongueSet: new Set((preferences.motherTongues || []).map((t) => t.toLowerCase())),
+      lowerCities: (preferences.cities || []).map((c) => c.toLowerCase()),
+    };
+  }
+
   /**
    * Evaluates factual preference alignment between a profile and partner preferences
    * Never generates arbitrary percentages!
    */
   public static calculateAlignment(
     profile: any,
-    preferences: PartnerPreferences | null
+    preferences: PartnerPreferences | null,
+    prepared?: PreparedPreferences | null
   ): MatchAlignment {
     if (!preferences) {
       return {
@@ -19,6 +42,7 @@ export class MatchExplanationService {
       };
     }
 
+    const prep = prepared || this.preparePreferences(preferences)!;
     const matchedCriteria: string[] = [];
     let evaluatedCount = 0;
     let matchedCount = 0;
@@ -38,47 +62,38 @@ export class MatchExplanationService {
       matchedCriteria.push(`Height matches preferred range (${preferences.minHeightCm}-${preferences.maxHeightCm} cm)`);
     }
 
-    // 3. Marital Status
-    if (preferences.maritalStatuses && preferences.maritalStatuses.length > 0) {
+    // 3. Marital Status (O(1) Set lookup)
+    if (prep.maritalSet.size > 0) {
       evaluatedCount++;
-      if (preferences.maritalStatuses.includes(profile.maritalStatus)) {
+      if (prep.maritalSet.has(profile.maritalStatus)) {
         matchedCount++;
         matchedCriteria.push(`Marital status aligns (${profile.maritalStatus.replace('_', ' ')})`);
       }
     }
 
-    // 4. Religion
-    if (preferences.religions && preferences.religions.length > 0) {
+    // 4. Religion (O(1) Set lookup)
+    if (prep.religionSet.size > 0) {
       evaluatedCount++;
-      const match = preferences.religions.some(
-        (r) => r.toLowerCase() === (profile.religion || '').toLowerCase()
-      );
-      if (match) {
+      if (prep.religionSet.has((profile.religion || '').toLowerCase())) {
         matchedCount++;
         matchedCriteria.push(`Religion matches (${profile.religion})`);
       }
     }
 
-    // 5. Mother Tongue
-    if (preferences.motherTongues && preferences.motherTongues.length > 0) {
+    // 5. Mother Tongue (O(1) Set lookup)
+    if (prep.motherTongueSet.size > 0) {
       evaluatedCount++;
-      const match = preferences.motherTongues.some(
-        (t) => t.toLowerCase() === (profile.motherTongue || '').toLowerCase()
-      );
-      if (match) {
+      if (prep.motherTongueSet.has((profile.motherTongue || '').toLowerCase())) {
         matchedCount++;
         matchedCriteria.push(`Mother tongue matches (${profile.motherTongue})`);
       }
     }
 
     // 6. City / Region
-    if (preferences.cities && preferences.cities.length > 0) {
+    if (prep.lowerCities.length > 0) {
       evaluatedCount++;
-      const match = preferences.cities.some(
-        (c) =>
-          c.toLowerCase() === (profile.city || '').toLowerCase() ||
-          (profile.city || '').toLowerCase().includes(c.toLowerCase())
-      );
+      const pCity = (profile.city || '').toLowerCase();
+      const match = pCity && prep.lowerCities.some((c) => c === pCity || pCity.includes(c));
       if (match) {
         matchedCount++;
         matchedCriteria.push(`Location matches (${profile.city})`);

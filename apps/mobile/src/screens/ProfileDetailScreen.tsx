@@ -19,13 +19,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
 import { PaywallModal } from '../components/common/PaywallModal';
-import { ds, PressableScale, Skeleton, Chip } from '../design';
+import { ds, PressableScale, Skeleton, Chip, AnimatedPage } from '../design';
 import { photoSrc } from '../services/cloudinaryUrl';
 import {
   getPublicProfile,
   sendInterest,
   addShortlist,
+  getOrCreateConversation,
   getSessionToken,
+  getCachedUserProfile,
 } from '../services';
 import { PublicProfile } from '@bandhansetu/shared';
 import { getInitials, formatHeight } from '../components/home/matchPhoto';
@@ -42,6 +44,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [interestLoading, setInterestLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
   const [shortlistLoading, setShortlistLoading] = useState(false);
   const [isShortlisted, setIsShortlisted] = useState(false);
   const [isInterestSent, setIsInterestSent] = useState(false);
@@ -114,6 +117,37 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleReport = () => {
     navigation.navigate('ReportBlock', { profileId, name: profile?.displayName || name });
+  };
+
+  const viewerGender = getCachedUserProfile()?.gender?.toLowerCase?.();
+  const isFemaleViewer = viewerGender === 'female';
+
+  const handleStartChat = async () => {
+    if (chatLoading) return;
+    setChatLoading(true);
+    try {
+      const token = getSessionToken();
+      const targetId = profile?.id || profileId;
+      const res = await getOrCreateConversation(token, targetId);
+      if (res?.data?.id) {
+        navigation.navigate('ChatDetail', {
+          conversationId: res.data.id,
+          partnerName: profile?.displayName || name,
+          partnerId: targetId,
+        });
+      }
+    } catch (err: any) {
+      if (err?.status === 402 || err?.code === 'SUBSCRIPTION_REQUIRED') {
+        setShowPaywallModal(true);
+      } else {
+        Alert.alert(
+          'Unable to Start Chat',
+          err?.message || 'Send an interest and wait for mutual acceptance to chat.'
+        );
+      }
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   const displayName = profile?.displayName || name;
@@ -256,6 +290,7 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           ]}
           showsVerticalScrollIndicator={false}
         >
+          <AnimatedPage duration={300}>
           {/* Photo Gallery Carousel */}
           <View style={styles.galleryCard}>
             {photos.length > 0 ? (
@@ -484,11 +519,12 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               {t('profileDetail.contactProtectedDesc')}
             </Text>
           </View>
+          </AnimatedPage>
         </ScrollView>
       )}
 
       {/* Sticky Bottom Action Bar */}
-      {!loading && !error && (
+      {!loading && !error && !showPaywallModal && (
         <View
           style={[
             styles.bottomStickyBar,
@@ -516,6 +552,18 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
               {isShortlisted
                 ? t('profileDetail.shortlisted')
                 : t('profileDetail.shortlist')}
+            </Text>
+          </PressableScale>
+
+          <PressableScale
+            style={styles.chatActionBtn}
+            onPress={handleStartChat}
+            disabled={chatLoading}
+            accessibilityLabel={isFemaleViewer ? 'Chat Free' : 'Message'}
+          >
+            <Ionicons name="chatbubble-ellipses" size={18} color={ds.color.maroon} />
+            <Text maxFontSizeMultiplier={1.2} style={styles.chatActionBtnText}>
+              {isFemaleViewer ? 'मुफ्त चैट' : 'Message'}
             </Text>
           </PressableScale>
 
@@ -905,6 +953,23 @@ const styles = StyleSheet.create({
   },
   shortlistedActiveBtnText: {
     color: '#DC2626',
+  },
+  chatActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF6E8',
+    borderWidth: 1,
+    borderColor: '#E8D29F',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    gap: 5,
+  },
+  chatActionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: ds.color.maroon,
   },
   interestActionBtn: {
     flex: 1,

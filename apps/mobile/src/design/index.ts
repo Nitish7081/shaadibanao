@@ -4,3 +4,5 @@ export { PressableScale } from './PressableScale';
 export { Skeleton } from './Skeleton';
 export { GradientRingAvatar } from './GradientRingAvatar';
 export { Chip, SectionHeader } from './Primitives';
+export { useReducedMotion } from './useReducedMotion';
+export { AnimatedPage, AnimatedStaggerItem, AnimatedModalSurface } from './AnimatedEntrance';

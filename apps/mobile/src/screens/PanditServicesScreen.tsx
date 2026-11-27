@@ -13,12 +13,13 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
+  Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { ds, PressableScale, Skeleton } from '../design';
+import { ds, PressableScale, Skeleton, AnimatedStaggerItem } from '../design';
 import { PanditProfile } from '@bandhansetu/shared';
 import { API_BASE } from '../services/authSession';
 import { getAuthHeader } from '../services/authSession';
@@ -33,6 +34,7 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
   const [regModalVisible, setRegModalVisible] = useState(false);
   const [regName, setRegName] = useState('');
   const [regMobile, setRegMobile] = useState('');
+  const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regCity, setRegCity] = useState('');
   const [regState, setRegState] = useState('Delhi');
@@ -58,6 +60,8 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
         body: JSON.stringify({
           name: regName.trim(),
           mobile: regMobile.trim(),
+          phone: regMobile.trim(),
+          whatsappNumber: regWhatsapp.trim() || undefined,
           email: regEmail.trim() || undefined,
           city: regCity.trim(),
           state: regState.trim(),
@@ -74,6 +78,7 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
         setRegModalVisible(false);
         setRegName('');
         setRegMobile('');
+        setRegWhatsapp('');
         setRegEmail('');
         Alert.alert(
           'पंजीकरण सफल 🎉',
@@ -267,22 +272,26 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
     </View>
   );
 
-  const renderPanditCard = ({ item }: { item: PanditProfile }) => {
+  const renderPanditCard = ({ item, index }: { item: PanditProfile; index: number }) => {
     const mainService = (item.services || [])[0];
     const initials = getInitials(item.name);
 
     return (
-      <View style={styles.panditCard}>
+      <AnimatedStaggerItem index={index} style={styles.panditCard}>
         {/* Pandit Header */}
         <View style={styles.panditHeaderRow}>
-          <LinearGradient
-            colors={['#7A1528', '#A22842']}
-            style={styles.avatarCircle}
-          >
-            <Text maxFontSizeMultiplier={1.2} style={styles.avatarText}>
-              {initials || 'P'}
-            </Text>
-          </LinearGradient>
+          {item.profilePhoto ? (
+            <Image source={{ uri: item.profilePhoto }} style={styles.avatarCircle} />
+          ) : (
+            <LinearGradient
+              colors={['#7A1528', '#A22842']}
+              style={styles.avatarCircle}
+            >
+              <Text maxFontSizeMultiplier={1.2} style={styles.avatarText}>
+                {initials || 'P'}
+              </Text>
+            </LinearGradient>
+          )}
 
           <View style={styles.panditInfoCol}>
             <View style={styles.nameRow}>
@@ -394,7 +403,7 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
             </LinearGradient>
           </PressableScale>
         </View>
-      </View>
+      </AnimatedStaggerItem>
     );
   };
 
@@ -456,6 +465,9 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
         renderItem={renderPanditCard}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyOrLoading}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: Math.max(insets.bottom + 90, 110) },
@@ -587,6 +599,16 @@ export const PanditServicesScreen: React.FC<any> = ({ navigation, route }) => {
                 placeholder="Hindi, Sanskrit, English"
                 value={regLanguages}
                 onChangeText={setRegLanguages}
+                placeholderTextColor={ds.color.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>व्हाट्सएप नंबर (वैकल्पिक — गोपनीय रहेगा)</Text>
+              <TextInput
+                style={styles.formInput}
+                placeholder="+91 98XXXXXXXX (Kept private by default)"
+                keyboardType="phone-pad"
+                value={regWhatsapp}
+                onChangeText={setRegWhatsapp}
                 placeholderTextColor={ds.color.textMuted}
               />
 

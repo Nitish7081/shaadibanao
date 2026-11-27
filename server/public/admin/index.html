@@ -1576,8 +1576,64 @@
 
                 <div class="form-group">
                   <label class="form-label" style="font-weight: 600;">Male Free Message Trial Limit</label>
-                  <input type="number" id="setting-male-free-limit" class="form-input" value="0" min="0">
-                  <small class="text-muted">0 = strictly require active paid plan; >0 = free trial message count</small>
+                  <input type="number" id="setting-male-free-limit" class="form-input" value="1" min="0">
+                  <small class="text-muted">1 = 1 free message before Plus/Premium plan required</small>
+                </div>
+              </div>
+
+              <!-- 2B. PANDIT CHAT, WHATSAPP PRIVACY & ELIGIBILITY -->
+              <h4 style="font-size: 15px; color: var(--gold-accent-light); margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px;">🕉️ Pandit Free Chat, Paid Rules &amp; WhatsApp Privacy</h4>
+              <div class="two-col-grid" style="margin-bottom: 16px; gap: 16px;">
+                <div class="form-group" style="background: rgba(16, 185, 129, 0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                    <input type="checkbox" id="setting-pandit-free-chat" checked style="width: 18px; height: 18px; accent-color: #10b981;">
+                    <span>Enable One Free Introductory Pandit Chat</span>
+                  </label>
+                  <p class="text-muted text-xs" style="margin-top: 6px; margin-left: 28px;">Allows eligible users one free introductory chat per approved Pandit.</p>
+                </div>
+
+                <div class="form-group" style="background: rgba(217, 119, 6, 0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(217, 119, 6, 0.2);">
+                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                    <input type="checkbox" id="setting-pandit-paid-chat" checked style="width: 18px; height: 18px; accent-color: #d97706;">
+                    <span>Require Subscription / Payment After Free Intro Chat</span>
+                  </label>
+                  <p class="text-muted text-xs" style="margin-top: 6px; margin-left: 28px;">Enforces active Plus/Premium plan or verified consultation fee after intro limit.</p>
+                </div>
+              </div>
+
+              <div class="two-col-grid" style="margin-bottom: 16px; gap: 16px;">
+                <div class="form-group">
+                  <label class="form-label" style="font-weight: 600;">Free Introductory Messages Per Pandit</label>
+                  <input type="number" id="setting-pandit-free-limit" class="form-input" value="1" min="0">
+                  <small class="text-muted">Default 1 introductory message per user+pandit pair</small>
+                </div>
+
+                <div class="form-group" style="background: rgba(139, 92, 246, 0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.2);">
+                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                    <input type="checkbox" id="setting-female-free-pandit-chat" style="width: 18px; height: 18px; accent-color: #8b5cf6;">
+                    <span>Exempt Female Accounts from Paid Pandit Chat</span>
+                  </label>
+                  <p class="text-muted text-xs" style="margin-top: 6px; margin-left: 28px;">Keep unchecked so paid consultation rules apply cleanly after free intro.</p>
+                </div>
+              </div>
+
+              <div class="two-col-grid" style="margin-bottom: 16px; gap: 16px;">
+                <div class="form-group" style="background: rgba(34, 197, 94, 0.08); padding: 12px; border-radius: 8px; border: 1px solid rgba(34, 197, 94, 0.2);">
+                  <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600;">
+                    <input type="checkbox" id="setting-pandit-whatsapp-enabled" checked style="width: 18px; height: 18px; accent-color: #22c55e;">
+                    <span>Allow Authorized Pandit WhatsApp Contact</span>
+                  </label>
+                  <p class="text-muted text-xs" style="margin-top: 6px; margin-left: 28px;">Kept strictly private by default; revealed only when rule below is met.</p>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" style="font-weight: 600;">WhatsApp Eligibility Rule</label>
+                  <select id="setting-pandit-whatsapp-rule" class="form-input">
+                    <option value="paid_booking_or_subscription">Paid Booking OR Active Paid Subscription/Pass</option>
+                    <option value="paid_booking_only">Confirmed Paid Booking Only</option>
+                    <option value="paid_subscription_only">Active Paid Subscription / Consultation Pass Only</option>
+                    <option value="always_off">Always Hidden (Disable WhatsApp Reveal)</option>
+                  </select>
                 </div>
               </div>
 

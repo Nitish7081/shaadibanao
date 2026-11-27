@@ -1,7 +1,16 @@
 import { z } from 'zod';
 
+export const conversationCategorySchema = z.enum([
+  'matrimonial',
+  'pandit_consultation',
+  'booking_consultation',
+]);
+
 export const createConversationSchema = z.object({
   participantId: z.string().min(1, 'Target participant profile or user ID is required'),
+  category: conversationCategorySchema.optional(),
+  panditId: z.string().optional(),
+  bookingId: z.string().optional(),
 });
 
 export const sendMessageSchema = z.object({

@@ -11,7 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { ds, PressableScale } from '../../design';
+import { ds, PressableScale, AnimatedModalSurface } from '../../design';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -32,13 +32,13 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.backdrop}>
           <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <View style={styles.sheetContainer}>
+            <AnimatedModalSurface visible={visible} style={styles.sheetContainer}>
               {/* Gold decorative grab bar */}
               <View style={styles.grabBar} />
 
@@ -163,7 +163,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({
                   <Text style={styles.closeBtnText}>{t('paywall.closeBtn')}</Text>
                 </PressableScale>
               </ScrollView>
-            </View>
+            </AnimatedModalSurface>
           </TouchableWithoutFeedback>
         </View>
       </TouchableWithoutFeedback>

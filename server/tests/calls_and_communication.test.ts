@@ -187,6 +187,7 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
         femaleFreeChatEnabled: true,
         malePaidChatRequired: true,
         maleFreeReplyToFemale: true,
+        maleFreeMessageLimit: 1,
         audioConsultationPriceInr: 501,
         videoConsultationPriceInr: 1100,
         callCommissionRate: 15,
@@ -270,7 +271,7 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
   });
 
   // =========================================================================
-  // SECTION 2: MALE SUBSCRIPTION CHAT RULES & MALE REPLY EXEMPTION
+  // SECTION 2: MALE SUBSCRIPTION CHAT RULES (1 FREE MESSAGE, THEN 402 PAYWALL)
   // =========================================================================
   describe('2. Male Subscription Chat Rules', () => {
     const freshFemaleId = new mongoose.Types.ObjectId().toString();
@@ -281,25 +282,30 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
       registerMockUserApprovalForTesting(freshFemaleId, { status: 'active', approvalStatus: 'approved', role: 'member' });
     });
 
-    it('2.1 Unsubscribed male candidate CANNOT initiate new conversation (requires subscription)', async () => {
-      const eligibility = await ChatService.checkChatEligibility(maleCandidateId, freshFemaleId);
-      expect(eligibility.allowed).toBe(false);
-      expect(eligibility.reason).toBe('MALE_PLAN_REQUIRED');
-    });
-
-    it('2.2 Unsubscribed male trying to send message to uninitiated female receives 402 Payment Required', async () => {
-      // Create a direct conversation stub
-      const conv = await ConversationModel.create({
-        user1Id: maleCandidateId,
-        user2Id: freshFemaleId,
-        contactExchange: { status: 'none' },
-        isFreeChat: false,
-      });
+    it('2.1 Unsubscribed male candidate can send ONLY 1 free message (reply to female)', async () => {
+      const eligibility = await ChatService.checkChatEligibility(maleCandidateId, femaleDevoteeId, sharedConvId);
+      expect(eligibility.allowed).toBe(true);
+      expect(eligibility.isFree).toBe(true);
 
       const res = await request(app)
-        .post(`/api/v1/conversations/${conv._id}/messages`)
+        .post(`/api/v1/conversations/${sharedConvId}/messages`)
         .set('Authorization', `Bearer ${maleToken}`)
-        .send({ text: 'Hello Priya, are you free?' });
+        .send({ text: 'Namaste Priya Ji, thank you! This is my single free message.' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.isFreeChat).toBe(true);
+    });
+
+    it('2.2 Unsubscribed male trying to send a 2nd message receives 402 SUBSCRIPTION_REQUIRED', async () => {
+      const eligibility = await ChatService.checkChatEligibility(maleCandidateId, femaleDevoteeId, sharedConvId);
+      expect(eligibility.allowed).toBe(false);
+      expect(eligibility.reason).toBe('MALE_PLAN_REQUIRED');
+
+      const res = await request(app)
+        .post(`/api/v1/conversations/${sharedConvId}/messages`)
+        .set('Authorization', `Bearer ${maleToken}`)
+        .send({ text: 'Second message without subscription' });
 
       expect(res.status).toBe(402);
       expect(res.body.success).toBe(false);
@@ -312,41 +318,41 @@ describe('SHAADIBANAO – COMMUNICATION SYSTEM (FREE CHAT, PAID CHAT, PANDIT MES
       expect(eligibility.planId).toBe('premium');
     });
 
-    it('2.4 Male candidate can reply for free when female initiated the conversation', async () => {
-      // In sharedConvId, Priya (female) sent a message to Rohit (male) in test 1.3
-      const eligibility = await ChatService.checkChatEligibility(maleCandidateId, femaleDevoteeId, sharedConvId);
-      expect(eligibility.allowed).toBe(true);
-      expect(eligibility.isFree).toBe(true);
-      expect(eligibility.reason).toBe('MALE_REPLY_TO_FEMALE_ALLOWED');
+    it('2.4 Unsubscribed male who used his single free message is also blocked on new conversations (402)', async () => {
+      const conv = await ConversationModel.create({
+        user1Id: maleCandidateId,
+        user2Id: freshFemaleId,
+        contactExchange: { status: 'none' },
+        isFreeChat: false,
+      });
 
-      // Male sends free reply
       const res = await request(app)
-        .post(`/api/v1/conversations/${sharedConvId}/messages`)
+        .post(`/api/v1/conversations/${conv._id}/messages`)
         .set('Authorization', `Bearer ${maleToken}`)
-        .send({ text: 'Namaste Priya Ji, thank you! I would love to connect with your family.' });
+        .send({ text: 'Hello fresh female after using free message' });
 
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.isFreeChat).toBe(true);
+      expect(res.status).toBe(402);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error?.code).toBe('SUBSCRIPTION_REQUIRED');
     });
   });
 
   // =========================================================================
-  // SECTION 3: PANDIT TO DEVOTEE CONSULTATION CHAT (NO SUBSCRIPTION PAYWALL)
+  // SECTION 3: PANDIT TO DEVOTEE CONSULTATION CHAT (1 FREE INTRO, SEPARATE FROM MATRIMONIAL)
   // =========================================================================
   describe('3. Pandit Consultation Chat Rules', () => {
-    it('3.1 Devotee communicating with Pandit is exempted from matrimonial subscription paywall', async () => {
+    it('3.1 Devotee gets one free introductory chat with Pandit independent of matrimonial paywall', async () => {
       const eligibility = await ChatService.checkChatEligibility(maleCandidateId, panditUserId);
       expect(eligibility.allowed).toBe(true);
       expect(eligibility.isFree).toBe(true);
-      expect(eligibility.reason).toBe('PANDIT_CONSULTATION_CHAT');
+      expect(eligibility.reason).toBe('PANDIT_FREE_INTRO_CHAT');
     });
 
     it('3.2 Pandit communicating with Devotee is exempted from matrimonial subscription paywall', async () => {
       const eligibility = await ChatService.checkChatEligibility(panditUserId, maleCandidateId);
       expect(eligibility.allowed).toBe(true);
       expect(eligibility.isFree).toBe(true);
-      expect(eligibility.reason).toBe('PANDIT_CONSULTATION_CHAT');
+      expect(eligibility.reason).toBe('PANDIT_REPLY_ALLOWED');
     });
   });
 

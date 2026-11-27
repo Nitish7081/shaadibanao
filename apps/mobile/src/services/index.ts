@@ -12,4 +12,5 @@ export * from './membershipService';
 export * from './firebaseAuthService';
 export * from './storageService';
 export * from './astrologyService';
+export * from './panditService';
 

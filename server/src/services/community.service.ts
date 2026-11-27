@@ -126,21 +126,26 @@ export class CommunityService {
     ]);
 
     return {
-      items: items.map((p: any) => ({
-        id: p._id.toString(),
-        userId: p.userId ? p.userId.toString() : '',
-        authorName: p.authorName,
-        authorAvatar: p.authorAvatar,
-        mediaUrl: p.mediaUrl,
-        publicId: p.publicId,
-        caption: p.caption,
-        category: p.category,
-        moderationStatus: p.moderationStatus,
-        likesCount: p.likes?.length || 0,
-        isLikedByMe: currentUserId ? (p.likes || []).some((uid: any) => uid.toString() === currentUserId) : false,
-        reportsCount: p.reportsCount || 0,
-        createdAt: p.createdAt?.toISOString(),
-      })),
+      items: items.map((p: any) => {
+        const likedSet = currentUserId
+          ? new Set((p.likes || []).map((uid: any) => uid.toString()))
+          : null;
+        return {
+          id: p._id.toString(),
+          userId: p.userId ? p.userId.toString() : '',
+          authorName: p.authorName,
+          authorAvatar: p.authorAvatar,
+          mediaUrl: p.mediaUrl,
+          publicId: p.publicId,
+          caption: p.caption,
+          category: p.category,
+          moderationStatus: p.moderationStatus,
+          likesCount: p.likes?.length || 0,
+          isLikedByMe: likedSet ? likedSet.has(currentUserId!) : false,
+          reportsCount: p.reportsCount || 0,
+          createdAt: p.createdAt?.toISOString(),
+        };
+      }),
       pagination: {
         page,
         limit,

@@ -36,3 +36,21 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction): vo
     throw new AppError('Invalid authentication token.', 401, 'INVALID_TOKEN');
   }
 };
+
+export const optionalAuth = (req: Request, _res: Response, next: NextFunction): void => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = TokenService.verifyAccessToken(token);
+    payload.id = payload.userId;
+    req.user = payload;
+  } catch {
+    // Ignore invalid/expired optional token on public endpoints
+  }
+  next();
+};

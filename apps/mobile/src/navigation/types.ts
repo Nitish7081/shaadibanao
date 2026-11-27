@@ -8,7 +8,14 @@ export type RootStackParamList = {
   ProfileCreation: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   ProfileDetail: { profileId: string; name: string };
-  ChatDetail: { conversationId: string; partnerName: string; partnerId?: string };
+  ChatDetail: {
+    conversationId: string;
+    partnerName: string;
+    partnerId?: string;
+    category?: 'matrimonial' | 'pandit_consultation' | 'booking_consultation';
+    panditId?: string;
+    bookingId?: string;
+  };
   Membership: undefined;
   Notifications: undefined;
   PrivacySettings: undefined;

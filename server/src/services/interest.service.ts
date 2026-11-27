@@ -311,23 +311,38 @@ export class InterestService {
       await interest.save();
     }
 
-    // If accepted: Create mutual match
+    // If accepted: Create mutual match (idempotently)
     if (newStatus === 'accepted') {
       const senderId = interest.senderId?.toString?.() || interest.senderId;
       if (isDbConnected) {
-        await MatchModel.create({
-          user1Id: senderId,
-          user2Id: receiverId,
-          interestId: interest._id,
+        const existingMatch = await MatchModel.findOne({
+          $or: [
+            { user1Id: senderId, user2Id: receiverId },
+            { user1Id: receiverId, user2Id: senderId },
+          ],
         });
+        if (!existingMatch) {
+          await MatchModel.create({
+            user1Id: senderId,
+            user2Id: receiverId,
+            interestId: interest._id,
+          });
+        }
       } else {
-        inMemoryMatchStore.push({
-          id: `match_${Date.now()}`,
-          user1Id: senderId,
-          user2Id: receiverId,
-          interestId,
-          createdAt: new Date(),
-        });
+        const existingMatch = inMemoryMatchStore.find(
+          (m) =>
+            (m.user1Id === senderId && m.user2Id === receiverId) ||
+            (m.user1Id === receiverId && m.user2Id === senderId)
+        );
+        if (!existingMatch) {
+          inMemoryMatchStore.push({
+            id: `match_${Date.now()}`,
+            user1Id: senderId,
+            user2Id: receiverId,
+            interestId,
+            createdAt: new Date(),
+          });
+        }
       }
     }
 

@@ -19,7 +19,9 @@ import { useTranslation } from 'react-i18next';
 import { colors, fonts, spacing, borderRadius } from '../constants/theme';
 import { ds, PressableScale } from '../design';
 import { apiClient } from '../services/apiClient';
-import { getSessionUser } from '../services/authSession';
+import { getSessionUser, getSessionToken } from '../services/authSession';
+import { initChatSocket } from '../services/chatService';
+import { openBookingConsultationChat } from '../services/panditService';
 
 export const PanditDashboardScreen: React.FC<any> = ({ navigation }) => {
   const { t, i18n } = useTranslation();
@@ -74,7 +76,37 @@ export const PanditDashboardScreen: React.FC<any> = ({ navigation }) => {
 
   useEffect(() => {
     fetchDashboard();
+    const token = getSessionToken();
+    if (!token) return;
+    const socket = initChatSocket(token);
+    const handleSync = () => {
+      fetchDashboard();
+    };
+    socket.on('booking_assigned', handleSync);
+    socket.on('booking_updated', handleSync);
+    return () => {
+      socket.off('booking_assigned', handleSync);
+      socket.off('booking_updated', handleSync);
+    };
   }, [fetchDashboard]);
+
+  const handleOpenBookingChat = async (booking: any) => {
+    try {
+      const bookingId = booking._id || booking.id;
+      const res = await openBookingConsultationChat(bookingId);
+      if (res?.data?.id) {
+        navigation.navigate('ChatDetail', {
+          conversationId: res.data.id,
+          partnerName: booking.userName || 'Devotee',
+          partnerId: res.data.participant?.id,
+          category: 'booking_consultation',
+          bookingId,
+        });
+      }
+    } catch (err: any) {
+      Alert.alert('Consultation Chat', err?.message || 'Unable to open booking consultation chat.');
+    }
+  };
 
   // Online / Offline Availability Toggle
   const handleToggleAvailability = async (newVal: boolean) => {
@@ -557,6 +589,13 @@ export const PanditDashboardScreen: React.FC<any> = ({ navigation }) => {
                       </View>
                     )}
                   </View>
+
+                  <TouchableOpacity
+                    style={[styles.btnCompleteBooking, { backgroundColor: '#1E40AF', marginBottom: 8 }]}
+                    onPress={() => handleOpenBookingChat(b)}
+                  >
+                    <Text style={styles.btnCompleteText}>Open Devotee Consultation Chat 💬</Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.btnCompleteBooking}

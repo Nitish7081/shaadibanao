@@ -13,9 +13,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { colors, typography, spacing, borderRadius } from '../constants/theme';
+import { AnimatedStaggerItem } from '../design';
 import { PujaBooking } from '@bandhansetu/shared';
-import { API_BASE, getAuthHeader } from '../services/authSession';
+import { API_BASE, getAuthHeader, getSessionToken } from '../services/authSession';
 import { apiClient } from '../services/apiClient';
+import { initChatSocket } from '../services/chatService';
+import { openBookingConsultationChat } from '../services/panditService';
 
 export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useTranslation();
@@ -25,6 +28,16 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
 
   useEffect(() => {
     fetchBookings();
+    const token = getSessionToken();
+    if (!token) return;
+    const socket = initChatSocket(token);
+    const handleSync = () => {
+      fetchBookings();
+    };
+    socket.on('booking_updated', handleSync);
+    return () => {
+      socket.off('booking_updated', handleSync);
+    };
   }, []);
 
   const handleSafeBack = () => {
@@ -124,6 +137,24 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
+  const handleOpenBookingChat = async (booking: PujaBooking) => {
+    try {
+      const res = await openBookingConsultationChat(booking.id);
+      if (res?.data?.id) {
+        navigation.navigate('ChatDetail', {
+          conversationId: res.data.id,
+          partnerName: booking.panditName || 'Pandit Ji',
+          partnerId: res.data.participant?.id,
+          category: 'booking_consultation',
+          bookingId: booking.id,
+          panditId: booking.panditId,
+        });
+      }
+    } catch (err: any) {
+      Alert.alert('Consultation Chat', err?.message || 'Unable to open booking consultation chat.');
+    }
+  };
+
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'confirmed':
@@ -143,13 +174,13 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
-  const renderBookingItem = ({ item }: { item: PujaBooking }) => {
+  const renderBookingItem = ({ item, index }: { item: PujaBooking; index: number }) => {
     const isOnline = item.mode === 'online';
     const isConfirmed = item.status === 'accepted' || item.status === 'confirmed' || item.status === 'assigned';
     const canCancel = item.status === 'requested' || item.status === 'pending' || item.status === 'accepted' || item.status === 'confirmed';
 
     return (
-      <View style={styles.bookingCard}>
+      <AnimatedStaggerItem index={index} style={styles.bookingCard}>
         <View style={styles.cardTopRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.refCode}>{item.bookingReference || 'SB-BOOKING'}</Text>
@@ -202,10 +233,24 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
           <View style={styles.detailRow}>
             <Ionicons name="cash-outline" size={15} color={colors.royalMaroon} />
             <Text style={[styles.detailText, { fontWeight: '700', color: colors.royalMaroon }]}>
-              ₹{(item.priceInr || 0).toLocaleString('en-IN')}
+              ₹{(item.priceInr || 0).toLocaleString('en-IN')} •{' '}
+              <Text style={{ color: item.paymentStatus === 'paid' ? '#059669' : '#B45309' }}>
+                {item.paymentStatus === 'paid' ? 'Paid ✓' : 'Payment Pending'}
+              </Text>
             </Text>
           </View>
         </View>
+
+        {/* Booking Consultation Chat (Never blocked by matrimonial subscription) */}
+        {(item.paymentStatus === 'paid' || isConfirmed) && item.panditId && (
+          <TouchableOpacity
+            style={[styles.joinVideoBtn, { backgroundColor: '#7A1528', marginBottom: 8 }]}
+            onPress={() => handleOpenBookingChat(item)}
+          >
+            <Ionicons name="chatbubble-ellipses" size={18} color="#FFFFFF" />
+            <Text style={styles.joinVideoText}>Consultation Chat</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Online Video Consultation Join Button */}
         {isOnline && isConfirmed && (
@@ -245,7 +290,7 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
             <Text style={styles.cancelBtnText}>{t('myBookings.cancelBooking')}</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </AnimatedStaggerItem>
     );
   };
 
@@ -275,6 +320,9 @@ export const MyBookingsScreen: React.FC<any> = ({ navigation }) => {
           data={bookings}
           keyExtractor={(b) => b.id || b.bookingReference}
           renderItem={renderBookingItem}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={5}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl

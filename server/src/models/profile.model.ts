@@ -143,6 +143,8 @@ const ProfileSchema = new Schema<IProfile>(
 ProfileSchema.index({ gender: 1, city: 1 });
 ProfileSchema.index({ gender: 1, religion: 1 });
 ProfileSchema.index({ gender: 1, heightCm: 1 });
+ProfileSchema.index({ gender: 1, hideProfile: 1, createdAt: -1 });
+ProfileSchema.index({ gender: 1, isVerified: 1, dateOfBirth: 1 });
 
 export const ProfileModel =
   mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema);

@@ -1,5 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookingService } from '../services/booking.service';
+import { ChatService } from '../services/chat.service';
+import { BookingModel } from '../models/booking.model';
+import { PanditModel } from '../models/pandit.model';
 import { requireAuth } from '../middleware/auth.middleware';
 import { ApiResponse } from '@bandhansetu/shared';
 
@@ -162,6 +165,42 @@ bookingRouter.post('/:id/cancel', async (req: Request, res: Response, next: Next
       data: booking,
     };
     res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/v1/bookings/:id/chat (Open or retrieve authorized booking consultation chat)
+bookingRouter.post('/:id/chat', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = (req as any).user.id || (req as any).user.userId;
+    const booking = (await BookingModel.findById(req.params.id).lean()) as any;
+    if (!booking) {
+      res.status(404).json({ success: false, message: 'Booking not found.' });
+      return;
+    }
+    if (!booking.panditId) {
+      res.status(400).json({ success: false, message: 'A Pandit has not been assigned to this booking yet.' });
+      return;
+    }
+    const pandit = (await PanditModel.findById(booking.panditId).select('userId').lean()) as any;
+    if (!pandit?.userId) {
+      res.status(400).json({ success: false, message: 'Assigned Pandit account unavailable.' });
+      return;
+    }
+    const partnerUserId =
+      booking.userId.toString() === userId ? pandit.userId.toString() : booking.userId.toString();
+
+    const conversation = await ChatService.getOrCreateConversation(userId, partnerUserId, {
+      category: 'booking_consultation',
+      bookingId: booking._id.toString(),
+      panditId: booking.panditId.toString(),
+    });
+
+    res.status(200).json({
+      success: true,
+      data: conversation,
+    });
   } catch (error) {
     next(error);
   }

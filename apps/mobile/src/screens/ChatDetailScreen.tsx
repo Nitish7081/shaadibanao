@@ -20,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { RootStackParamList } from '../navigation/types';
 import { ds, PressableScale } from '../design';
+import { PaywallModal } from '../components/common/PaywallModal';
 import {
   getMessages,
   sendMessage,
@@ -31,30 +32,51 @@ import {
   getSessionToken,
   getSessionUserId,
   getCachedUserProfile,
+  getCachedUserMembership,
+  setCachedUserMembership,
+  getMyMembership,
+  getPanditChatEligibility,
+  createPanditChatOrder,
+  verifyPanditChatPayment,
 } from '../services';
-import { ChatMessage, ContactExchangeDetails } from '@bandhansetu/shared';
+import {
+  ChatMessage,
+  ContactExchangeDetails,
+  PanditChatEntitlementSummary,
+} from '@bandhansetu/shared';
 import { getInitials } from '../components/home/matchPhoto';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatDetail'>;
 
 export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { conversationId, partnerName } = route.params;
+  const { conversationId, partnerName, category, panditId } = route.params;
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
   const userProfile = getCachedUserProfile();
   const isFemale = userProfile?.gender === 'female';
+  const isPanditConsultation = category === 'pandit_consultation';
+  const isBookingConsultation = category === 'booking_consultation';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [panditEntitlement, setPanditEntitlement] =
+    useState<PanditChatEntitlementSummary | null>(null);
   const [contactExchange, setContactExchange] = useState<ContactExchangeDetails>({
     status: 'none',
   });
   const [contactActionLoading, setContactActionLoading] = useState(false);
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
+  const [isPaidMale, setIsPaidMale] = useState<boolean>(() => {
+    const m = getCachedUserMembership();
+    return Boolean(
+      m && (m.planId === 'plus' || m.planId === 'premium') && m.status === 'active'
+    );
+  });
 
   const flatListRef = useRef<FlatList>(null);
   const token = getSessionToken();
@@ -81,7 +103,30 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   useEffect(() => {
     loadMessages();
 
+    if (isPanditConsultation && panditId && token) {
+      getPanditChatEligibility(panditId)
+        .then((res) => {
+          if (res?.data) setPanditEntitlement(res.data);
+        })
+        .catch(() => {});
+    } else if (!isFemale && token) {
+      getMyMembership(token)
+        .then((res) => {
+          if (res?.data) {
+            setCachedUserMembership(res.data);
+            const activePaid =
+              (res.data.planId === 'plus' || res.data.planId === 'premium') &&
+              res.data.status === 'active';
+            setIsPaidMale(activePaid);
+          }
+        })
+        .catch(() => {});
+    }
+
     const socket = initChatSocket(token);
+    const handleConnect = () => {
+      joinConversationRoom(conversationId);
+    };
     joinConversationRoom(conversationId);
 
     const handleNewMessage = (msg: ChatMessage) => {
@@ -113,43 +158,116 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
 
+    const handlePanditUnlocked = (payload: { panditId?: string }) => {
+      if (isPanditConsultation && panditId && payload?.panditId === panditId) {
+        getPanditChatEligibility(panditId)
+          .then((res) => {
+            if (res?.data) setPanditEntitlement(res.data);
+          })
+          .catch(() => {});
+      }
+    };
+
+    socket.on('connect', handleConnect);
     socket.on('new_message', handleNewMessage);
     socket.on('messages_read', handleMessagesRead);
     socket.on('contact_exchange_updated', handleContactUpdate);
+    socket.on('pandit_chat_unlocked', handlePanditUnlocked);
 
     return () => {
       leaveConversationRoom(conversationId);
+      socket.off('connect', handleConnect);
       socket.off('new_message', handleNewMessage);
       socket.off('messages_read', handleMessagesRead);
       socket.off('contact_exchange_updated', handleContactUpdate);
+      socket.off('pandit_chat_unlocked', handlePanditUnlocked);
     };
-  }, [conversationId, token, currentUserId, loadMessages]);
+  }, [conversationId, token, currentUserId, isFemale, isPanditConsultation, panditId, loadMessages]);
+
+  const promptPanditConsultationPayment = async () => {
+    if (!panditId) {
+      setShowPaywallModal(true);
+      return;
+    }
+    try {
+      const orderRes = await createPanditChatOrder(panditId);
+      const order = orderRes?.data;
+      if (!order?.orderId) {
+        setShowPaywallModal(true);
+        return;
+      }
+
+      Alert.alert(
+        t('chatScreen.unlockPanditChatTitle'),
+        t('chatScreen.panditFreeIntroUsed'),
+        [
+          { text: 'रद्द करें (Cancel)', style: 'cancel' },
+          {
+            text: 'योजना देखें (Plans)',
+            onPress: () => (navigation as any).navigate('Membership'),
+          },
+          {
+            text: t('chatScreen.payConsultationBtn', { amount: order.amountInr }),
+            onPress: async () => {
+              try {
+                const verifyRes = await verifyPanditChatPayment(panditId, {
+                  orderId: order.orderId,
+                  paymentId: `pay_pchat_${Date.now()}`,
+                });
+                if (verifyRes?.data?.entitlement) {
+                  setPanditEntitlement(verifyRes.data.entitlement);
+                }
+                Alert.alert('Unlocked ✓', t('chatScreen.panditPaidActive'));
+              } catch (payErr: any) {
+                Alert.alert('Payment Failed', payErr?.message || 'Unable to verify payment.');
+              }
+            },
+          },
+        ]
+      );
+    } catch {
+      setShowPaywallModal(true);
+    }
+  };
 
   const handleSend = async () => {
     const text = inputMessage.trim();
     if (!text || sending) return;
 
-    setInputMessage('');
     setSending(true);
 
     try {
       const res = await sendMessage(token, conversationId, text);
+      setInputMessage('');
       if (res.data) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === res.data?.id)) return prev;
           return [...prev, res.data!];
         });
       }
+      if (isPanditConsultation && panditId) {
+        getPanditChatEligibility(panditId)
+          .then((entRes) => {
+            if (entRes?.data) setPanditEntitlement(entRes.data);
+          })
+          .catch(() => {});
+      }
     } catch (err: any) {
       if (
+        err?.code === 'PANDIT_CHAT_PAYMENT_REQUIRED' ||
+        (isPanditConsultation && err?.status === 402)
+      ) {
+        await promptPanditConsultationPayment();
+      } else if (
         err?.code === 'SUBSCRIPTION_REQUIRED' ||
         err?.message?.includes('membership plan') ||
         err?.message?.includes('Plus or Premium') ||
         err?.status === 402
       ) {
+        setShowPaywallModal(true);
         Alert.alert(
           'सदस्यता आवश्यक (Membership Required)',
-          err?.message || 'पुरुष उपयोगकर्ताओं के लिए चैट शुरू करने हेतु प्लस या प्रीमियम सदस्यता योजना आवश्यक है।',
+          err?.message || 'फ्री प्लान में केवल 1 संदेश भेजा जा सकता है। आगे चैट करने के लिए प्लस या प्रीमियम प्लान चुनें।',
           [
             { text: 'रद्द करें (Cancel)', style: 'cancel' },
             {
@@ -337,8 +455,43 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
       </View>
 
-      {/* Free Female Chat Badge or Verified Plan Pill */}
-      {isFemale ? (
+      {/* Category-aware Entitlement & Status Banner */}
+      {isBookingConsultation ? (
+        <View style={styles.freeChatBadgeRow}>
+          <Ionicons name="checkmark-circle" size={14} color="#166534" />
+          <Text style={styles.freeChatBadgeText}>
+            {t('chatScreen.bookingChatActive')}
+          </Text>
+        </View>
+      ) : isPanditConsultation ? (
+        <PressableScale
+          style={styles.malePlanBadgeRow}
+          onPress={() => {
+            if (panditEntitlement?.requiresPayment) {
+              promptPanditConsultationPayment();
+            }
+          }}
+        >
+          <Ionicons
+            name={
+              panditEntitlement?.paidAccessActive
+                ? 'shield-checkmark'
+                : panditEntitlement?.requiresPayment
+                ? 'lock-closed'
+                : 'sparkles'
+            }
+            size={13}
+            color="#1E40AF"
+          />
+          <Text style={styles.malePlanBadgeText}>
+            {panditEntitlement?.paidAccessActive
+              ? t('chatScreen.panditPaidActive')
+              : panditEntitlement?.requiresPayment
+              ? t('chatScreen.panditFreeIntroUsed')
+              : t('chatScreen.panditFreeIntroAvailable')}
+          </Text>
+        </PressableScale>
+      ) : isFemale ? (
         <View style={styles.freeChatBadgeRow}>
           <Ionicons name="sparkles" size={13} color="#92400E" />
           <Text style={styles.freeChatBadgeText}>
@@ -350,14 +503,17 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           style={styles.malePlanBadgeRow}
           onPress={() => (navigation as any).navigate('Membership')}
         >
-          <Ionicons name="shield-checkmark" size={13} color="#1E40AF" />
+          <Ionicons name={isPaidMale ? 'shield-checkmark' : 'sparkles'} size={13} color="#1E40AF" />
           <Text style={styles.malePlanBadgeText}>
-            {t('chatScreen.malePlanBadge', 'सत्यापित योजना: प्लस एवं प्रीमियम सदस्यों के लिए चैट सक्रिय')}
+            {isPaidMale
+              ? t('chatScreen.malePlanBadge', 'सत्यापित योजना: प्लस एवं प्रीमियम सदस्यों के लिए चैट सक्रिय')
+              : 'फ्री प्लान: केवल 1 संदेश निःशुल्क • आगे चैट के लिए प्लान लें'}
           </Text>
         </PressableScale>
       )}
 
-      {/* Contact Exchange Banner */}
+      {/* Contact Exchange Banner (Matrimonial Only) */}
+      {!isPanditConsultation && !isBookingConsultation && (
       <View style={styles.contactBanner}>
         {contactExchange.status === 'accepted' ? (
           <View style={styles.contactSharedBox}>
@@ -414,6 +570,7 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </PressableScale>
         )}
       </View>
+      )}
 
       {/* Keyboard-avoiding message area */}
       <KeyboardAvoidingView
@@ -477,6 +634,16 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <PaywallModal
+        visible={showPaywallModal}
+        onClose={() => setShowPaywallModal(false)}
+        onUpgrade={() => {
+          setShowPaywallModal(false);
+          (navigation as any).navigate('Membership');
+        }}
+        targetName={partnerName}
+      />
     </SafeAreaView>
   );
 };

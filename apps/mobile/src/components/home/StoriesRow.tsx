@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { UserProfile, SearchResultProfile } from '@bandhansetu/shared';
-import { GradientRingAvatar, PressableScale, Skeleton, ds } from '../../design';
+import { GradientRingAvatar, PressableScale, Skeleton, AnimatedStaggerItem, ds } from '../../design';
 import { photoSrc } from '../../services/cloudinaryUrl';
 import { getInitials, getSafeMatchPhoto } from './matchPhoto';
 
@@ -26,8 +26,22 @@ export const StoriesRow: React.FC<Props> = ({
   onYourProfilePress,
   onMatchPress,
 }) => {
+  const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
   const ownPhoto = profile?.photos?.find((p) => p.isMain && p.url) || profile?.photos?.find((p) => p.url);
   const completion = profile?.completenessPercent ?? 0;
+
+  const handleMatchStoryPress = useCallback(
+    (m: SearchResultProfile) => {
+      setViewedIds((prev) => {
+        if (prev.has(m.id)) return prev;
+        const next = new Set(prev);
+        next.add(m.id);
+        return next;
+      });
+      onMatchPress(m);
+    },
+    [onMatchPress]
+  );
 
   return (
     <ScrollView
@@ -62,27 +76,30 @@ export const StoriesRow: React.FC<Props> = ({
             </View>
           ))
         : matches.length > 0
-        ? matches.map((m) => {
+        ? matches.map((m, idx) => {
             const photo = getSafeMatchPhoto(m, 'avatar');
             const first = (m.displayName || 'Member').split(' ')[0];
+            const isViewed = viewedIds.has(m.id);
             return (
-              <PressableScale
-                key={m.id}
-                onPress={() => onMatchPress(m)}
-                accessibilityRole="button"
-                accessibilityLabel={`View ${m.displayName || 'member'}`}
-                style={styles.item}
-              >
-                <GradientRingAvatar
-                  size={SIZE}
-                  uri={photo?.uri}
-                  blurred={photo?.blurred}
-                  initials={getInitials(m.displayName)}
-                />
-                <Text style={styles.label} numberOfLines={1}>
-                  {first}
-                </Text>
-              </PressableScale>
+              <AnimatedStaggerItem key={m.id} index={idx}>
+                <PressableScale
+                  onPress={() => handleMatchStoryPress(m)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${m.displayName || 'member'}`}
+                  style={[styles.item, isViewed ? { opacity: 0.78 } : undefined]}
+                >
+                  <GradientRingAvatar
+                    size={SIZE}
+                    uri={photo?.uri}
+                    blurred={photo?.blurred}
+                    initials={getInitials(m.displayName)}
+                    active={!isViewed}
+                  />
+                  <Text style={styles.label} numberOfLines={1}>
+                    {first}
+                  </Text>
+                </PressableScale>
+              </AnimatedStaggerItem>
             );
           })
         : null}

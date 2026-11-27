@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   RefreshControl,
   FlatList,
   Image,
+  TextInput,
+  Platform,
   useWindowDimensions,
   BackHandler,
 } from 'react-native';
@@ -20,7 +22,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { ds, PressableScale, Chip, Skeleton } from '../design';
+import { ds, PressableScale, Chip, Skeleton, AnimatedStaggerItem } from '../design';
+import { LRUCache } from '../utils/lruCache';
+
+const searchFilterCache = new LRUCache<
+  string,
+  { items: SearchResultProfile[]; totalPages: number; totalItems: number }
+>(40);
 import { colors } from '../constants/theme';
 import {
   searchProfiles,
@@ -49,6 +57,8 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const { width: screenWidth } = useWindowDimensions();
 
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [cityQuery, setCityQuery] = useState('');
+  const [debouncedCity, setDebouncedCity] = useState('');
   const [results, setResults] = useState<SearchResultProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -58,6 +68,14 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const lastFetchAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCity(cityQuery.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [cityQuery]);
 
   const handleSafeBack = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -84,28 +102,48 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     { id: 'engineer', label: isHindi ? 'तकनीकी व इंजीनियर' : 'Tech & Engineers', icon: 'briefcase' as const },
   ];
 
-  const buildFilterParams = useCallback((chipId: string, pageNum: number): Partial<SearchFilterInput> => {
-    const params: Partial<SearchFilterInput> = {
-      page: pageNum,
-      limit: 10,
-    };
+  const buildFilterParams = useCallback(
+    (chipId: string, pageNum: number, cityFilter: string): Partial<SearchFilterInput> => {
+      const params: Partial<SearchFilterInput> = {
+        page: pageNum,
+        limit: 10,
+      };
 
-    if (chipId === 'verified') {
-      params.verifiedOnly = true;
-    } else if (chipId === 'delhi') {
-      params.city = 'Delhi';
-    } else if (chipId === 'age24_28') {
-      params.minAge = 24;
-      params.maxAge = 28;
-    } else if (chipId === 'engineer') {
-      params.occupation = 'Engineer';
-    }
+      if (chipId === 'verified') {
+        params.verifiedOnly = true;
+      } else if (chipId === 'delhi') {
+        params.city = 'Delhi';
+      } else if (chipId === 'age24_28') {
+        params.minAge = 24;
+        params.maxAge = 28;
+      } else if (chipId === 'engineer') {
+        params.occupation = 'Engineer';
+      }
 
-    return params;
-  }, []);
+      if (cityFilter) {
+        params.city = cityFilter;
+      }
+
+      return params;
+    },
+    []
+  );
 
   const fetchProfiles = useCallback(
-    async (chipId: string, pageNum = 1, isRefresh = false) => {
+    async (chipId: string, pageNum = 1, isRefresh = false, cityFilter = debouncedCity) => {
+      const cacheKey = `search:${chipId}:${cityFilter}:${pageNum}`;
+      if (!isRefresh && pageNum === 1) {
+        const cached = searchFilterCache.get(cacheKey);
+        if (cached) {
+          setResults(cached.items);
+          setTotalPages(cached.totalPages);
+          setTotalItems(cached.totalItems);
+          setPage(1);
+          setLoading(false);
+          return;
+        }
+      }
+
       if (isRefresh) {
         setRefreshing(true);
       } else if (pageNum > 1) {
@@ -116,6 +154,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
       setError(null);
 
       try {
+        lastFetchAtRef.current = Date.now();
         const token = getSessionToken();
 
         // Ensure viewer gender is ALWAYS known before searching (compulsory boy->girl / girl->boy rule)
@@ -132,7 +171,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
           }
         }
 
-        const filters = buildFilterParams(chipId, pageNum);
+        const filters = buildFilterParams(chipId, pageNum, cityFilter);
         const viewerGender = userProfile?.gender?.toLowerCase?.();
         const requiredOpposite =
           viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : undefined;
@@ -148,8 +187,22 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
             ? items.filter((p: any) => String(p.gender || '').toLowerCase() === requiredOpposite)
             : items;
 
+          const computedTotal =
+            strictlyFiltered.length < items.length
+              ? strictlyFiltered.length
+              : res.data.pagination.totalCount;
+
           if (pageNum === 1) {
             setResults(strictlyFiltered);
+            searchFilterCache.set(
+              cacheKey,
+              {
+                items: strictlyFiltered,
+                totalPages: res.data.pagination.totalPages,
+                totalItems: computedTotal,
+              },
+              30_000
+            );
           } else {
             setResults((prev) => {
               const existingIds = new Set(prev.map((p) => p.id));
@@ -158,7 +211,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
             });
           }
           setTotalPages(res.data.pagination.totalPages);
-          setTotalItems(strictlyFiltered.length < items.length ? strictlyFiltered.length : res.data.pagination.totalCount);
+          setTotalItems(computedTotal);
           setPage(pageNum);
         }
       } catch (err: any) {
@@ -169,19 +222,22 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         setRefreshing(false);
       }
     },
-    [buildFilterParams, isHindi]
+    [buildFilterParams, debouncedCity, isHindi]
   );
 
   useEffect(() => {
-    fetchProfiles(selectedFilter, 1);
-  }, [selectedFilter, fetchProfiles]);
+    fetchProfiles(selectedFilter, 1, false, debouncedCity);
+  }, [selectedFilter, debouncedCity, fetchProfiles]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      fetchProfiles(selectedFilter, 1);
+      // Prevent duplicate immediate API call on initial screen mount
+      if (Date.now() - lastFetchAtRef.current > 5000) {
+        fetchProfiles(selectedFilter, 1, true, debouncedCity);
+      }
     });
     return unsubscribe;
-  }, [navigation, selectedFilter, fetchProfiles]);
+  }, [navigation, selectedFilter, debouncedCity, fetchProfiles]);
 
   const handleFilterSelect = (chipId: string) => {
     setSelectedFilter(chipId);
@@ -295,6 +351,37 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         })}
       </ScrollView>
 
+      {/* Debounced City Search Input */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: ds.color.surface,
+          borderRadius: ds.radius.md,
+          borderWidth: 1,
+          borderColor: ds.color.border,
+          paddingHorizontal: 12,
+          marginBottom: 10,
+          height: 42,
+        }}
+      >
+        <Ionicons name="search-outline" size={16} color={ds.color.textMuted} />
+        <TextInput
+          style={{ flex: 1, marginLeft: 8, fontSize: 13, color: ds.color.text }}
+          placeholder={isHindi ? 'शहर से खोजें (जैसे Delhi, Mumbai)...' : 'Filter by city (e.g. Delhi, Mumbai)...'}
+          placeholderTextColor={ds.color.textMuted}
+          value={cityQuery}
+          onChangeText={setCityQuery}
+          returnKeyType="search"
+          accessibilityLabel="Filter matches by city"
+        />
+        {cityQuery.length > 0 && (
+          <PressableScale onPress={() => setCityQuery('')} accessibilityLabel="Clear city search">
+            <Ionicons name="close-circle" size={16} color={ds.color.textMuted} />
+          </PressableScale>
+        )}
+      </View>
+
       {/* Meta Bar */}
       <View style={styles.resultsMeta}>
         <Text style={styles.countText} maxFontSizeMultiplier={1.2}>
@@ -310,14 +397,14 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderItem = ({ item }: { item: SearchResultProfile }) => {
+  const renderItem = ({ item, index }: { item: SearchResultProfile; index: number }) => {
     const isActing = actionLoadingId === item.id;
     const matchLabel = item.matchAlignment ? item.matchAlignment.scoreText : (isHindi ? 'अनुकूलता का विश्लेषण...' : 'Evaluating compatibility...');
     const photo = getSafeMatchPhoto(item, 'card');
     const heightStr = formatHeight(item.heightCm);
 
     return (
-      <View style={styles.cardContainer}>
+      <AnimatedStaggerItem index={index} style={styles.cardContainer}>
         {/* Main Card Tap to Profile Detail */}
         <PressableScale
           onPress={() =>
@@ -454,7 +541,7 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
             </PressableScale>
           </View>
         </PressableScale>
-      </View>
+      </AnimatedStaggerItem>
     );
   };
 
@@ -546,6 +633,10 @@ export const SearchScreen: React.FC<Props> = ({ navigation }) => {
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         ListEmptyComponent={renderEmpty}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + 90 },

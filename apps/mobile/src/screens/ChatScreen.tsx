@@ -12,8 +12,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { ds, PressableScale, Skeleton, GradientRingAvatar } from '../design';
-import { getConversations, getSessionToken } from '../services';
+import { ds, PressableScale, Skeleton, GradientRingAvatar, AnimatedStaggerItem } from '../design';
+import { getConversations, getSessionToken, initChatSocket } from '../services';
 import { ConversationItem } from '@bandhansetu/shared';
 import { getInitials } from '../components/home/matchPhoto';
 
@@ -75,7 +75,24 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
       fetchConversations();
     });
     fetchConversations();
-    return unsubscribe;
+
+    const token = getSessionToken();
+    if (!token) {
+      return unsubscribe;
+    }
+
+    const socket = initChatSocket(token);
+    const handleIncomingUpdate = () => {
+      fetchConversations(true);
+    };
+    socket.on('new_message_notification', handleIncomingUpdate);
+    socket.on('new_message', handleIncomingUpdate);
+
+    return () => {
+      unsubscribe();
+      socket.off('new_message_notification', handleIncomingUpdate);
+      socket.off('new_message', handleIncomingUpdate);
+    };
   }, [navigation, fetchConversations]);
 
   const formatTime = (dateStr?: string) => {
@@ -122,7 +139,7 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderConversationItem = ({ item }: { item: ConversationItem }) => {
+  const renderConversationItem = ({ item, index }: { item: ConversationItem; index: number }) => {
     const hasUnread = item.unreadCount > 0;
     const partnerName = item.participant?.displayName || 'Connection';
     const initials = getInitials(partnerName);
@@ -131,12 +148,17 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
     const lastMsgText = item.lastMessage?.text || 'Say Namaste to begin your auspicious conversation...';
 
     return (
+      <AnimatedStaggerItem index={index}>
       <PressableScale
         style={[styles.convCard, hasUnread && styles.convCardUnread]}
         onPress={() =>
           navigation.navigate('ChatDetail', {
             conversationId: item.id,
             partnerName,
+            partnerId: item.participant?.id,
+            category: item.category,
+            panditId: item.panditId,
+            bookingId: item.bookingId,
           })
         }
       >
@@ -195,6 +217,7 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
           )}
         </View>
       </PressableScale>
+      </AnimatedStaggerItem>
     );
   };
 
@@ -270,6 +293,9 @@ export const ChatScreen: React.FC<Props> = ({ navigation }) => {
         renderItem={renderConversationItem}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyOrLoading}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={5}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: Math.max(insets.bottom + 90, 110) },

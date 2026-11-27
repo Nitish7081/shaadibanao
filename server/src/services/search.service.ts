@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import { ProfileModel } from '../models/profile.model';
-import { UserModel } from '../models/user.model';
 import { ReportModel } from '../models/report.model';
 import { PreferenceService } from './preference.service';
 import { ProfileService, inMemoryProfileStore } from './profile.service';
@@ -11,6 +10,10 @@ import {
   SearchResultProfile,
   PaginatedResponse,
 } from '@bandhansetu/shared';
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 // In-memory profiles repository for dev / test mode
 export const inMemoryProfileRegistry: any[] = [];
@@ -57,20 +60,14 @@ export class SearchService {
         ? new mongoose.Types.ObjectId(requestingUserId)
         : requestingUserId;
 
-      // Parallelize independent DB reads to minimize latency on Render + MongoDB Atlas
-      const [prefs, viewerDoc, approvedUsers, reports] = await Promise.all([
+      // Parallelize independent DB reads: preferences, viewer gender, and safety report exclusions
+      // Avoids loading every User document into Node memory!
+      const [prefs, viewerDoc, reports] = await Promise.all([
         PreferenceService.getMyPreferences(requestingUserId),
         ProfileModel.findOne({
           $or: [{ userId: queryUserId }, { userId: requestingUserId }],
         })
           .select('gender')
-          .lean(),
-        UserModel.find({
-          status: 'active',
-          approvalStatus: 'approved',
-          _id: { $ne: queryUserId },
-        })
-          .select('_id')
           .lean(),
         ReportModel.find({
           $or: [{ reporterId: queryUserId }, { reportedUserId: queryUserId }],
@@ -107,55 +104,58 @@ export class SearchService {
         };
       }
 
-      const approvedUserIds = approvedUsers.map((u: any) => u._id);
-
-      const excludedIds = new Set<string>();
-      reports.forEach((r: any) => {
-        if (r.reporterId && r.reporterId.toString() === requestingUserId.toString()) {
-          if (r.reportedUserId) excludedIds.add(r.reportedUserId.toString());
-        } else {
-          if (r.reporterId) excludedIds.add(r.reporterId.toString());
+      const excludedObjectIds: any[] = [];
+      if (mongoose.Types.ObjectId.isValid(requestingUserId)) {
+        excludedObjectIds.push(new mongoose.Types.ObjectId(requestingUserId));
+      }
+      const seenExcluded = new Set<string>([requestingUserId.toString()]);
+      for (const r of reports as any[]) {
+        const partnerStr =
+          r.reporterId && r.reporterId.toString() === requestingUserId.toString()
+            ? r.reportedUserId?.toString()
+            : r.reporterId?.toString();
+        if (partnerStr && !seenExcluded.has(partnerStr)) {
+          seenExcluded.add(partnerStr);
+          if (mongoose.Types.ObjectId.isValid(partnerStr)) {
+            excludedObjectIds.push(new mongoose.Types.ObjectId(partnerStr));
+          }
         }
-      });
+      }
 
-      const eligibleUserIds = approvedUserIds.filter(
-        (id: any) => !excludedIds.has(id.toString())
-      );
-
-      const query: any = {
-        userId: { $in: eligibleUserIds },
+      const matchQuery: any = {
+        gender: targetGender, // Compulsory opposite-gender indexed prefix
         hideProfile: { $ne: true },
-        gender: targetGender, // Compulsory opposite-gender filter
+        ...(excludedObjectIds.length > 0 ? { userId: { $nin: excludedObjectIds } } : {}),
       };
 
-      if (maritalStatus) query.maritalStatus = maritalStatus;
-      if (religion) query.religion = new RegExp(`^${religion}$`, 'i');
-      if (motherTongue) query.motherTongue = new RegExp(`^${motherTongue}$`, 'i');
-      if (city) query.city = new RegExp(city, 'i');
-      if (education) query.education = new RegExp(education, 'i');
-      if (occupation) query.occupation = new RegExp(occupation, 'i');
-      if (manglik) query.manglik = manglik;
-      if (verifiedOnly) query.isVerified = true;
+      if (maritalStatus) matchQuery.maritalStatus = maritalStatus;
+      if (religion) matchQuery.religion = new RegExp(`^${escapeRegex(religion)}$`, 'i');
+      if (motherTongue) matchQuery.motherTongue = new RegExp(`^${escapeRegex(motherTongue)}$`, 'i');
+      if (city) matchQuery.city = new RegExp(escapeRegex(city), 'i');
+      if (education) matchQuery.education = new RegExp(escapeRegex(education), 'i');
+      if (occupation) matchQuery.occupation = new RegExp(escapeRegex(occupation), 'i');
+      if (manglik) matchQuery.manglik = manglik;
+      if (verifiedOnly) matchQuery.isVerified = true;
 
       // Age to Date of Birth conversion
       if (minAge || maxAge) {
         const today = new Date();
-        query.dateOfBirth = {};
+        matchQuery.dateOfBirth = {};
         if (maxAge) {
           const minDob = new Date(today.getFullYear() - maxAge - 1, today.getMonth(), today.getDate());
-          query.dateOfBirth.$gte = minDob;
+          matchQuery.dateOfBirth.$gte = minDob;
         }
         if (minAge) {
           const maxDob = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-          query.dateOfBirth.$lte = maxDob;
+          matchQuery.dateOfBirth.$lte = maxDob;
         }
       }
 
       // Height filter
       if (minHeightCm || maxHeightCm) {
-        query.heightCm = {};
-        if (minHeightCm) query.heightCm.$gte = minHeightCm;
-        if (maxHeightCm) query.heightCm.$lte = maxHeightCm;
+        matchQuery.heightCm = {};
+        if (minHeightCm) matchQuery.heightCm.$gte = minHeightCm;
+        if (maxHeightCm) matchQuery.heightCm.$lte = maxHeightCm;
       }
 
       // Sorting
@@ -164,17 +164,46 @@ export class SearchService {
       if (sortBy === 'age_asc') sort = { dateOfBirth: -1, _id: -1 }; // youngest first
       if (sortBy === 'age_desc') sort = { dateOfBirth: 1, _id: -1 }; // oldest first
 
-      const [count, found] = await Promise.all([
-        ProfileModel.countDocuments(query),
-        ProfileModel.find(query)
-          .sort(sort)
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
+      // Single indexed aggregation pipeline with $lookup against UserModel + $facet pagination
+      const aggResult = await ProfileModel.aggregate([
+        { $match: matchQuery },
+        { $sort: sort },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            pipeline: [
+              { $match: { status: 'active', approvalStatus: 'approved' } },
+              { $project: { _id: 1 } },
+            ],
+            as: 'approvedUser',
+          },
+        },
+        { $match: { 'approvedUser.0': { $exists: true } } },
+        {
+          $facet: {
+            total: [{ $count: 'count' }],
+            items: [
+              { $skip: (page - 1) * limit },
+              { $limit: limit },
+              { $project: { approvedUser: 0 } },
+            ],
+          },
+        },
       ]);
-      totalCount = count;
-      // Defensive final guard ensuring zero same-gender leakage
-      candidateProfiles = found.filter((p: any) => String(p.gender || '').toLowerCase() === targetGender);
+
+      totalCount = aggResult?.[0]?.total?.[0]?.count || 0;
+      const found = aggResult?.[0]?.items || [];
+      // Defensive final guard ensuring zero same-gender leakage or duplicate profiles
+      const seenUserIds = new Set<string>();
+      candidateProfiles = found.filter((p: any) => {
+        if (String(p.gender || '').toLowerCase() !== targetGender) return false;
+        const uid = p.userId?.toString();
+        if (!uid || seenUserIds.has(uid)) return false;
+        seenUserIds.add(uid);
+        return true;
+      });
     } else {
       // In-memory filter for dev/testing
       myPreferences = await PreferenceService.getMyPreferences(requestingUserId);
@@ -234,7 +263,8 @@ export class SearchService {
       candidateProfiles = candidateProfiles.slice((page - 1) * limit, page * limit);
     }
 
-    // Transform candidate profiles to redacted public profiles with factual match alignment
+    // Transform candidate profiles to redacted public profiles with pre-compiled O(1) preference scoring
+    const preparedPrefs = MatchExplanationService.preparePreferences(myPreferences);
     const acceptedUserIds = await getAcceptedUserIds(
       requestingUserId,
       candidateProfiles.map((p) => p.userId)
@@ -244,7 +274,11 @@ export class SearchService {
         viewerId: requestingUserId,
         acceptedUserIds,
       });
-      const matchAlignment = MatchExplanationService.calculateAlignment(p, myPreferences);
+      const matchAlignment = MatchExplanationService.calculateAlignment(
+        p,
+        myPreferences,
+        preparedPrefs
+      );
 
       return {
         ...publicProfile,

@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type PaymentType = 'booking' | 'membership' | 'astrology';
+export type PaymentType = 'booking' | 'membership' | 'astrology' | 'pandit_chat';
 export type PaymentStatus = 'created' | 'pending' | 'captured' | 'failed' | 'refunded';
 
 export interface IPayment extends Document {
@@ -53,7 +53,7 @@ const PaymentSchema = new Schema<IPayment>(
     userEmail: { type: String, trim: true },
     type: {
       type: String,
-      enum: ['booking', 'membership', 'astrology'],
+      enum: ['booking', 'membership', 'astrology', 'pandit_chat'],
       required: true,
       index: true,
     },

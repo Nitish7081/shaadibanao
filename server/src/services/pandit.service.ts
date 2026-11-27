@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { PanditModel, IPandit } from '../models/pandit.model';
 import { UserModel } from '../models/user.model';
 import { BookingModel } from '../models/booking.model';
@@ -7,10 +8,99 @@ import { NotificationModel } from '../models/notification.model';
 import { WithdrawalModel } from '../models/withdrawal.model';
 import { PaymentModel } from '../models/payment.model';
 import { CallSessionModel } from '../models/call-session.model';
+import { SystemSettingsModel } from '../models/system-settings.model';
+import { PanditChatEntitlementModel } from '../models/pandit-chat-entitlement.model';
+import { MembershipService } from './membership.service';
 import { SocketService } from '../socket/socket.service';
 import { AppError } from '../middleware/errorHandler';
+import { readCache } from '../utils/cache';
 
 export class PanditService {
+  /**
+   * Normalize an explicitly supplied WhatsApp number without inventing or substituting any number.
+   */
+  static normalizeWhatsappNumber(raw?: string): string | undefined {
+    if (raw === undefined || raw === null) return undefined;
+    const cleaned = String(raw).replace(/[\s\-().]/g, '').trim();
+    if (!cleaned) return undefined;
+    if (!/^\+?\d{10,15}$/.test(cleaned)) {
+      throw new AppError(
+        'Please provide a valid 10 to 15 digit WhatsApp number (with optional + country code).',
+        400,
+        'INVALID_WHATSAPP_NUMBER'
+      );
+    }
+    return cleaned;
+  }
+
+  /**
+   * Format a WhatsApp number for wa.me URL (digits only). Never called unless already present & authorized.
+   */
+  private static formatWhatsappDigits(raw: string): string {
+    const digits = raw.replace(/[^\d]/g, '');
+    if (digits.length === 10 && /^[6-9]/.test(digits)) {
+      return `91${digits}`;
+    }
+    return digits;
+  }
+
+  /**
+   * Public sanitized Pandit DTO (never leaks phone, email, whatsappNumber, bankDetails, documents).
+   */
+  static toPublicPanditDTO(p: any) {
+    return {
+      id: p._id ? p._id.toString() : p.id,
+      _id: p._id ? p._id.toString() : p.id,
+      panditId: p.panditId || (p._id ? `PND-${p._id.toString().slice(-4).toUpperCase()}` : ''),
+      userId: p.userId ? p.userId.toString() : '',
+      name: p.name,
+      profilePhoto: p.profilePhoto,
+      city: p.city || p.address?.city || '',
+      state: p.state || p.address?.state || '',
+      bio: p.bio,
+      experienceYears: p.experienceYears,
+      languages: p.languages,
+      specialization: p.specialization,
+      serviceLocations: p.serviceLocations,
+      religiousTradition: p.religiousTradition,
+      services: p.services,
+      availability: p.availability,
+      offersAstrology: p.offersAstrology ?? true,
+      astrologyExpertise: p.astrologyExpertise || ['Kundli Milan', 'Horoscope Analysis'],
+      consultationCharges: p.consultationCharges ?? 501,
+      isOnline: p.isOnline ?? true,
+      isChatAvailable: p.isChatAvailable ?? true,
+      isAudioCallAvailable: p.isAudioCallAvailable ?? true,
+      isVideoCallAvailable: p.isVideoCallAvailable ?? true,
+      verificationStatus: p.verificationStatus,
+      isActive: p.isActive ?? true,
+      rating: p.rating,
+      reviewsCount: p.reviewsCount,
+      whatsappAvailable: Boolean(p.whatsappNumber && String(p.whatsappNumber).trim() && p.whatsappEnabled !== false),
+    };
+  }
+
+  /**
+   * Look up an approved & active Pandit by _id, panditId, or userId.
+   */
+  static async findApprovedPanditOrThrow(idOrPanditId: string): Promise<IPandit> {
+    let pandit: any = null;
+    if (mongoose.Types.ObjectId.isValid(idOrPanditId)) {
+      pandit = await PanditModel.findOne({
+        $or: [{ _id: idOrPanditId }, { userId: idOrPanditId }],
+      });
+    } else {
+      pandit = await PanditModel.findOne({ panditId: idOrPanditId });
+    }
+    if (!pandit) {
+      throw new AppError('Pandit profile not found.', 404, 'PANDIT_NOT_FOUND');
+    }
+    if (!['approved', 'verified'].includes(pandit.verificationStatus) || pandit.isActive === false) {
+      throw new AppError('Pandit is not currently approved or active.', 403, 'PANDIT_UNAVAILABLE');
+    }
+    return pandit;
+  }
+
   /**
    * Generate a unique Pandit ID (e.g. PND-2026-1042)
    */
@@ -92,6 +182,9 @@ export class PanditService {
     ];
 
     const panditId = await this.generateUniquePanditId();
+    const normalizedWhatsapp = data.whatsappNumber
+      ? this.normalizeWhatsappNumber(data.whatsappNumber)
+      : undefined;
 
     const pandit = await PanditModel.create({
       panditId,
@@ -99,6 +192,8 @@ export class PanditService {
       name: data.name?.trim() || user.displayName || 'Vedic Pandit Ji',
       profilePhoto: data.profilePhoto || user.avatarUrl,
       phone: data.phone?.trim() || user.mobile,
+      whatsappNumber: normalizedWhatsapp,
+      whatsappEnabled: data.whatsappEnabled !== undefined ? Boolean(data.whatsappEnabled) : true,
       email: data.email?.trim() || user.email,
       gender: data.gender || 'male',
       dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
@@ -238,32 +333,17 @@ export class PanditService {
       query.serviceLocations = { $regex: filters.location, $options: 'i' };
     }
 
+    const cacheKey = `pandits:verified:${filters.ceremonyType || 'all'}:${filters.location || 'all'}:${page}:${limit}`;
+    const cached = readCache.get(cacheKey);
+    if (cached) return cached;
+
     const [items, totalCount] = await Promise.all([
       PanditModel.find(query).sort({ rating: -1, experienceYears: -1 }).skip(skip).limit(limit).lean(),
       PanditModel.countDocuments(query),
     ]);
 
-    return {
-      items: items.map((p: any) => ({
-        id: p._id.toString(),
-        panditId: p.panditId || `PND-${p._id.toString().slice(-4).toUpperCase()}`,
-        userId: p.userId ? p.userId.toString() : '',
-        name: p.name,
-        profilePhoto: p.profilePhoto,
-        bio: p.bio,
-        experienceYears: p.experienceYears,
-        languages: p.languages,
-        specialization: p.specialization,
-        serviceLocations: p.serviceLocations,
-        religiousTradition: p.religiousTradition,
-        services: p.services,
-        availability: p.availability,
-        offersAstrology: p.offersAstrology ?? true,
-        consultationCharges: p.consultationCharges ?? 501,
-        isOnline: p.isOnline ?? true,
-        rating: p.rating,
-        reviewsCount: p.reviewsCount,
-      })),
+    const result = {
+      items: items.map((p: any) => this.toPublicPanditDTO(p)),
       pagination: {
         page,
         limit,
@@ -271,6 +351,8 @@ export class PanditService {
         totalPages: Math.ceil(totalCount / limit) || 1,
       },
     };
+    readCache.set(cacheKey, result, 15_000);
+    return result;
   }
 
   /**
@@ -328,22 +410,7 @@ export class PanditService {
       PanditModel.countDocuments(filter),
     ]);
 
-    const mapped = items.map((p: any) => ({
-      id: p._id.toString(),
-      panditId: p.panditId || `PND-${p._id.toString().slice(-4).toUpperCase()}`,
-      userId: p.userId ? p.userId.toString() : '',
-      name: p.name,
-      profilePhoto: p.profilePhoto,
-      bio: p.bio,
-      experienceYears: p.experienceYears,
-      languages: p.languages,
-      offersAstrology: p.offersAstrology ?? true,
-      astrologyExpertise: p.astrologyExpertise || ['Kundli Milan', 'Horoscope Analysis'],
-      consultationCharges: p.consultationCharges ?? 501,
-      isOnline: p.isOnline ?? true,
-      rating: p.rating,
-      reviewsCount: p.reviewsCount,
-    }));
+    const mapped = items.map((p: any) => this.toPublicPanditDTO(p));
 
     return {
       astrologers: mapped,
@@ -356,17 +423,406 @@ export class PanditService {
   }
 
   /**
-   * Get Pandit Public Details by ID
+   * Get Pandit Public Details by ID (sanitized for public/member access; full for Owner/Admin)
    */
-  static async getPanditById(id: string) {
+  static async getPanditById(id: string, viewer?: { userId?: string; role?: string }) {
     let pandit: any = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       pandit = await PanditModel.findById(id).lean();
     } else {
       pandit = await PanditModel.findOne({ panditId: id }).lean();
     }
-    if (!pandit) throw new Error('Pandit profile not found.');
-    return pandit;
+    if (!pandit) {
+      throw new AppError('Pandit profile not found.', 404, 'PANDIT_NOT_FOUND');
+    }
+
+    const isAdmin = viewer?.role === 'admin';
+    const isOwner = Boolean(viewer?.userId && pandit.userId && pandit.userId.toString() === viewer.userId);
+    const isApprovedAndActive =
+      ['approved', 'verified'].includes(pandit.verificationStatus) && pandit.isActive !== false;
+
+    if (!isAdmin && !isOwner && !isApprovedAndActive) {
+      throw new AppError('Pandit profile is currently unavailable.', 404, 'PANDIT_UNAVAILABLE');
+    }
+
+    if (isAdmin || isOwner) {
+      return {
+        ...pandit,
+        id: pandit._id.toString(),
+        whatsappAvailable: Boolean(pandit.whatsappNumber && pandit.whatsappEnabled !== false),
+      };
+    }
+
+    const publicDto: any = this.toPublicPanditDTO(pandit);
+    if (viewer?.userId && mongoose.connection.readyState === 1) {
+      try {
+        publicDto.entitlement = await this.getPanditChatEligibility(viewer.userId, pandit._id.toString());
+      } catch {
+        // Non-blocking enrichment
+      }
+    }
+    return publicDto;
+  }
+
+  /**
+   * Evaluate Pandit Free Intro Chat, Paid Personal Chat & WhatsApp Authorization for a User
+   */
+  static async getPanditChatEligibility(userId: string, panditIdOrId: string) {
+    const pandit = await this.findApprovedPanditOrThrow(panditIdOrId);
+    const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+    const user = (await UserModel.findById(userId).lean()) as any;
+    if (!user) {
+      throw new AppError('User account not found.', 404, 'USER_NOT_FOUND');
+    }
+
+    const freeChatEnabled = settings?.panditFreeChatEnabled !== false;
+    const freeMessageLimit = Math.max(0, Number(settings?.panditFreeMessageLimit ?? 1));
+    const paidChatRequired = settings?.panditPaidChatRequired !== false;
+    const femaleFreePanditChat = settings?.femaleFreePanditChat === true;
+    const whatsappEnabledGlobal = settings?.panditWhatsappEnabled !== false;
+    const whatsappRule = settings?.panditWhatsappRule || 'paid_booking_or_subscription';
+
+    const entitlement = await PanditChatEntitlementModel.findOne({
+      userId,
+      panditId: pandit._id,
+    }).lean();
+
+    const freeMessagesUsed = Number(entitlement?.freeMessagesUsed || 0);
+    const freeRemaining = freeChatEnabled ? Math.max(0, freeMessageLimit - freeMessagesUsed) : 0;
+
+    let hasActiveSubscription = Boolean(
+      ['plus', 'premium'].includes(user.subscriptionTier) &&
+        (!user.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date())
+    );
+    if (!hasActiveSubscription) {
+      try {
+        const membership = await MembershipService.getUserMembership(userId);
+        const notExpired =
+          !membership.expiresAt || new Date(membership.expiresAt).getTime() > Date.now();
+        hasActiveSubscription = Boolean(
+          (membership.planId === 'plus' || membership.planId === 'premium') &&
+            membership.status === 'active' &&
+            notExpired
+        );
+      } catch {
+        // Ignore non-blocking membership lookup failure
+      }
+    }
+
+    const hasPaidBooking = Boolean(
+      await BookingModel.exists({
+        userId,
+        panditId: pandit._id,
+        paymentStatus: 'paid',
+        status: { $nin: ['cancelled', 'declined'] },
+      })
+    );
+
+    const hasPaidConsultationPass = Boolean(
+      entitlement?.paidAccessActive &&
+        (!entitlement.paidExpiresAt || new Date(entitlement.paidExpiresAt) > new Date())
+    );
+
+    const isFemaleExempt = femaleFreePanditChat && String((user as any).gender || '').toLowerCase() === 'female';
+    const isOwnerPandit = pandit.userId && pandit.userId.toString() === userId;
+    const isAdminUser = user.role === 'admin';
+
+    const paidAccessActive = Boolean(
+      isOwnerPandit ||
+        isAdminUser ||
+        !paidChatRequired ||
+        isFemaleExempt ||
+        hasActiveSubscription ||
+        hasPaidBooking ||
+        hasPaidConsultationPass
+    );
+
+    const whatsappConfigured = Boolean(
+      pandit.whatsappNumber && String(pandit.whatsappNumber).trim() && pandit.whatsappEnabled !== false
+    );
+
+    let whatsappAuthorized = false;
+    if (whatsappConfigured && whatsappEnabledGlobal && whatsappRule !== 'always_off') {
+      if (isOwnerPandit || isAdminUser) {
+        whatsappAuthorized = true;
+      } else if (whatsappRule === 'paid_booking_only') {
+        whatsappAuthorized = hasPaidBooking;
+      } else if (whatsappRule === 'paid_subscription_only') {
+        whatsappAuthorized = hasActiveSubscription || hasPaidConsultationPass;
+      } else {
+        // paid_booking_or_subscription
+        whatsappAuthorized = hasPaidBooking || hasActiveSubscription || hasPaidConsultationPass;
+      }
+    }
+
+    const consultationPriceInr = Math.max(
+      1,
+      Number(pandit.consultationCharges || settings?.chatConsultationPriceInr || 501)
+    );
+
+    const canSendPersonalMessage = paidAccessActive || freeRemaining > 0;
+    const requiresPayment = !canSendPersonalMessage;
+
+    let reason = 'FREE_INTRO_AVAILABLE';
+    if (isOwnerPandit) reason = 'PANDIT_OWNER';
+    else if (hasPaidBooking) reason = 'PAID_BOOKING_ACTIVE';
+    else if (hasPaidConsultationPass) reason = 'PANDIT_CONSULTATION_PAID';
+    else if (hasActiveSubscription) reason = 'ACTIVE_SUBSCRIPTION';
+    else if (isFemaleExempt) reason = 'FEMALE_PANDIT_FREE_RULE';
+    else if (!paidChatRequired) reason = 'FREE_PANDIT_CHAT_SETTING';
+    else if (freeRemaining > 0) reason = 'FREE_INTRO_AVAILABLE';
+    else reason = 'PANDIT_CHAT_PAYMENT_REQUIRED';
+
+    return {
+      panditId: pandit._id.toString(),
+      freeChatEnabled,
+      freeMessagesUsed,
+      freeMessageLimit,
+      freeRemaining,
+      paidAccessActive,
+      hasActiveSubscription,
+      hasPaidBooking,
+      requiresPayment,
+      consultationPriceInr,
+      whatsappAvailable: whatsappConfigured && whatsappEnabledGlobal && whatsappRule !== 'always_off',
+      whatsappAuthorized,
+      whatsappRule,
+      reason,
+    };
+  }
+
+  /**
+   * Authorized WhatsApp Contact Reveal (Never leaks number on public routes, logs or unverified access)
+   */
+  static async getAuthorizedWhatsapp(userId: string, panditIdOrId: string) {
+    const pandit = await this.findApprovedPanditOrThrow(panditIdOrId);
+
+    if (!pandit.whatsappNumber || !String(pandit.whatsappNumber).trim()) {
+      throw new AppError(
+        'This Pandit has not configured a verified WhatsApp contact number.',
+        404,
+        'WHATSAPP_NOT_CONFIGURED'
+      );
+    }
+
+    if (pandit.whatsappEnabled === false) {
+      await AuditLogModel.create({
+        adminId: userId,
+        action: 'PANDIT_WHATSAPP_DENIED',
+        targetUserId: pandit.userId ? pandit.userId.toString() : '',
+        details: { panditId: pandit._id.toString(), reason: 'PANDIT_WHATSAPP_DISABLED' },
+      }).catch(() => {});
+      throw new AppError('WhatsApp contact is currently disabled for this Pandit.', 403, 'WHATSAPP_DISABLED');
+    }
+
+    const eligibility = await this.getPanditChatEligibility(userId, pandit._id.toString());
+    if (!eligibility.whatsappAvailable) {
+      await AuditLogModel.create({
+        adminId: userId,
+        action: 'PANDIT_WHATSAPP_DENIED',
+        targetUserId: pandit.userId ? pandit.userId.toString() : '',
+        details: { panditId: pandit._id.toString(), reason: 'WHATSAPP_GLOBALLY_DISABLED' },
+      }).catch(() => {});
+      throw new AppError('WhatsApp consultation contact is currently disabled by Admin.', 403, 'WHATSAPP_DISABLED');
+    }
+
+    if (!eligibility.whatsappAuthorized) {
+      await AuditLogModel.create({
+        adminId: userId,
+        action: 'PANDIT_WHATSAPP_DENIED',
+        targetUserId: pandit.userId ? pandit.userId.toString() : '',
+        details: { panditId: pandit._id.toString(), rule: eligibility.whatsappRule },
+      }).catch(() => {});
+      throw new AppError(
+        'WhatsApp contact requires an active paid subscription, paid consultation pass, or confirmed paid booking.',
+        403,
+        'WHATSAPP_NOT_AUTHORIZED'
+      );
+    }
+
+    const waDigits = this.formatWhatsappDigits(pandit.whatsappNumber);
+    await AuditLogModel.create({
+      adminId: userId,
+      action: 'PANDIT_WHATSAPP_AUTHORIZED',
+      targetUserId: pandit.userId ? pandit.userId.toString() : '',
+      details: { panditId: pandit._id.toString(), rule: eligibility.whatsappRule },
+    }).catch(() => {});
+
+    return {
+      authorized: true,
+      panditId: pandit._id.toString(),
+      panditName: pandit.name,
+      whatsappNumber: pandit.whatsappNumber,
+      whatsappUrl: `https://wa.me/${waDigits}`,
+    };
+  }
+
+  /**
+   * Create Consultation Chat Payment Order (Backend-verified Unlock)
+   */
+  static async createPanditChatOrder(userId: string, panditIdOrId: string) {
+    const pandit = await this.findApprovedPanditOrThrow(panditIdOrId);
+    const user = (await UserModel.findById(userId).lean()) as any;
+    if (!user) throw new AppError('User account not found.', 404, 'USER_NOT_FOUND');
+
+    const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+    const amountInr = Math.max(1, Number(pandit.consultationCharges || settings?.chatConsultationPriceInr || 501));
+
+    let orderId = `order_pchat_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    let mode: 'live' | 'test_mode' = 'test_mode';
+
+    if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      try {
+        const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+        const rzpRes = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Basic ${auth}`,
+          },
+          body: JSON.stringify({
+            amount: amountInr * 100,
+            currency: 'INR',
+            receipt: `pchat_${pandit._id.toString().slice(-8)}_${Date.now()}`,
+            notes: {
+              type: 'pandit_chat',
+              panditId: pandit._id.toString(),
+              userId,
+            },
+          }),
+        });
+        if (rzpRes.ok) {
+          const order = (await rzpRes.json()) as any;
+          if (order?.id) {
+            orderId = order.id;
+            mode = 'live';
+          }
+        }
+      } catch {
+        // Fallback to test order ID when Razorpay credentials aren't live
+      }
+    }
+
+    await PaymentModel.create({
+      orderId,
+      userId,
+      userName: user.displayName || 'User',
+      userMobile: user.mobile,
+      userEmail: user.email,
+      type: 'pandit_chat',
+      referenceId: pandit._id.toString(),
+      referenceDescription: `Pandit Consultation Chat - ${pandit.name}`,
+      amount: amountInr,
+      currency: 'INR',
+      status: 'created',
+      gateway: mode === 'live' ? 'razorpay' : 'test_gateway',
+      metadata: { panditId: pandit._id.toString(), panditName: pandit.name },
+    });
+
+    return {
+      orderId,
+      amount: amountInr * 100,
+      amountInr,
+      currency: 'INR',
+      keyId: process.env.RAZORPAY_KEY_ID || '',
+      panditId: pandit._id.toString(),
+      panditName: pandit.name,
+      mode,
+    };
+  }
+
+  /**
+   * Verify Consultation Chat Payment on Backend & Grant Paid Access
+   */
+  static async verifyPanditChatPayment(
+    userId: string,
+    panditIdOrId: string,
+    payload: { orderId: string; paymentId: string; signature?: string; paymentMethod?: string }
+  ) {
+    const pandit = await this.findApprovedPanditOrThrow(panditIdOrId);
+    const { orderId, paymentId, signature, paymentMethod } = payload || {};
+
+    if (!orderId || !paymentId) {
+      throw new AppError('orderId and paymentId are required for payment verification.', 400, 'INVALID_PAYMENT_PAYLOAD');
+    }
+
+    const payment = await PaymentModel.findOne({
+      orderId,
+      userId,
+      type: 'pandit_chat',
+      referenceId: pandit._id.toString(),
+    });
+    if (!payment) {
+      throw new AppError('Consultation payment order not found for this account.', 404, 'PAYMENT_ORDER_NOT_FOUND');
+    }
+
+    if (process.env.RAZORPAY_KEY_SECRET) {
+      const expected = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+      if (!signature || expected !== signature) {
+        throw new AppError('Invalid payment verification signature.', 400, 'PAYMENT_VERIFICATION_FAILED');
+      }
+    }
+
+    const wasAlreadyCaptured = payment.status === 'captured';
+    if (!wasAlreadyCaptured) {
+      payment.paymentId = paymentId;
+      payment.signature = signature;
+      payment.paymentMethod = paymentMethod || 'upi';
+      payment.status = 'captured';
+      payment.capturedAt = new Date();
+      await payment.save();
+
+      const settings = (await SystemSettingsModel.findOne({ key: 'global_settings' }).lean()) as any;
+      const commissionRate = Number(settings?.commissionRate ?? 15);
+      const commissionAmount = Math.round((payment.amount * commissionRate) / 100);
+      const panditEarnings = Math.max(0, payment.amount - commissionAmount);
+
+      await PanditModel.findByIdAndUpdate(pandit._id, {
+        $inc: {
+          totalEarnings: panditEarnings,
+          pendingPayout: panditEarnings,
+        },
+      });
+    }
+
+    const paidExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await PanditChatEntitlementModel.findOneAndUpdate(
+      { userId, panditId: pandit._id },
+      {
+        $set: {
+          paidAccessActive: true,
+          paidSource: 'pandit_chat',
+          paidActivatedAt: new Date(),
+          paidExpiresAt,
+          lastOrderId: orderId,
+          lastPaymentId: paymentId,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    await AuditLogModel.create({
+      adminId: userId,
+      action: 'PANDIT_CHAT_PAYMENT_VERIFIED',
+      targetUserId: pandit.userId ? pandit.userId.toString() : '',
+      details: { panditId: pandit._id.toString(), orderId, paymentId, amount: payment.amount },
+    }).catch(() => {});
+
+    SocketService.emitToUser(userId, 'pandit_chat_unlocked', {
+      panditId: pandit._id.toString(),
+      paidAccessActive: true,
+      paidExpiresAt,
+    });
+
+    const entitlement = await this.getPanditChatEligibility(userId, pandit._id.toString());
+    return {
+      verified: true,
+      paymentStatus: 'captured',
+      entitlement,
+    };
   }
 
   /**
@@ -397,10 +853,15 @@ export class PanditService {
     if (data.offersAstrology !== undefined) pandit.offersAstrology = Boolean(data.offersAstrology);
     if (data.astrologyExpertise) pandit.astrologyExpertise = data.astrologyExpertise;
     if (data.consultationCharges !== undefined) pandit.consultationCharges = Number(data.consultationCharges);
+    if (data.whatsappNumber !== undefined) {
+      pandit.whatsappNumber = data.whatsappNumber ? this.normalizeWhatsappNumber(data.whatsappNumber) : undefined;
+    }
+    if (data.whatsappEnabled !== undefined) pandit.whatsappEnabled = Boolean(data.whatsappEnabled);
     if (data.bankDetails) pandit.bankDetails = { ...pandit.bankDetails, ...data.bankDetails };
     if (data.documents && Array.isArray(data.documents)) pandit.documents = data.documents;
 
     await pandit.save();
+    readCache.invalidatePrefix('pandits:');
     return pandit;
   }
 
@@ -436,6 +897,7 @@ export class PanditService {
     }
 
     await pandit.save();
+    readCache.invalidatePrefix('pandits:');
 
     // Broadcast status change
     SocketService.emitToConversation('pandits_status', 'pandit_online_change', {
@@ -779,6 +1241,8 @@ export class PanditService {
     }
     pandit.verifiedAt = new Date();
     await pandit.save();
+    readCache.invalidatePrefix('pandits:');
+    readCache.invalidate('admin:dashboard:stats');
 
     await AuditLogModel.create({
       adminId,
@@ -905,6 +1369,8 @@ export class PanditService {
 
     pandit.isActive = !pandit.isActive;
     await pandit.save();
+    readCache.invalidatePrefix('pandits:');
+    readCache.invalidate('admin:dashboard:stats');
 
     await AuditLogModel.create({
       adminId,
@@ -961,6 +1427,18 @@ export class PanditService {
 
     if (updateData.name) pandit.name = updateData.name.trim();
     if (updateData.phone) pandit.phone = updateData.phone.trim();
+    if (updateData.whatsappNumber !== undefined) {
+      pandit.whatsappNumber = updateData.whatsappNumber
+        ? this.normalizeWhatsappNumber(updateData.whatsappNumber)
+        : undefined;
+    }
+    if (updateData.whatsappEnabled !== undefined) {
+      pandit.whatsappEnabled = Boolean(updateData.whatsappEnabled);
+    }
+    if (updateData.isOnline !== undefined) pandit.isOnline = Boolean(updateData.isOnline);
+    if (updateData.isChatAvailable !== undefined) pandit.isChatAvailable = Boolean(updateData.isChatAvailable);
+    if (updateData.isAudioCallAvailable !== undefined) pandit.isAudioCallAvailable = Boolean(updateData.isAudioCallAvailable);
+    if (updateData.isVideoCallAvailable !== undefined) pandit.isVideoCallAvailable = Boolean(updateData.isVideoCallAvailable);
     if (updateData.email) pandit.email = updateData.email.trim();
     if (updateData.bio) pandit.bio = updateData.bio.trim();
     if (updateData.city) pandit.city = updateData.city.trim();
@@ -973,6 +1451,16 @@ export class PanditService {
     if (updateData.services) pandit.services = updateData.services;
 
     await pandit.save();
+    readCache.invalidatePrefix('pandits:');
+    await AuditLogModel.create({
+      adminId,
+      action: 'ADMIN_UPDATE_PANDIT',
+      targetUserId: pandit.userId ? pandit.userId.toString() : '',
+      details: {
+        panditId,
+        updatedFields: Object.keys(updateData).filter((k) => k !== 'whatsappNumber'),
+      },
+    }).catch(() => {});
     return pandit;
   }
 }

@@ -9,6 +9,7 @@ import {
 } from './authService';
 import { registerTokenRefresher, getApiBaseUrl, ApiError } from './apiClient';
 import { isFirebaseNativeAvailable, signOutNativeAuth } from './firebaseAuthService';
+import { disconnectChatSocket } from './chatService';
 
 /**
  * BandhanSetu Mobile Session & Auth State Manager
@@ -274,6 +275,7 @@ export function clearSessionAuth(): void {
   currentUser = null;
   cachedUserProfile = null;
   cachedUserMembership = null;
+  disconnectChatSocket();
   notifyUserUpdated(null);
 
   AsyncStorage.multiRemove([

@@ -41,7 +41,7 @@ import {
   FeedSkeleton,
   VipBanner,
 } from '../components/home';
-import { SectionHeader, ds } from '../design';
+import { SectionHeader, ds, AnimatedPage, AnimatedStaggerItem } from '../design';
 
 type HomeScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -306,6 +306,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           />
         }
       >
+        <AnimatedPage duration={300}>
         {offline && <OfflineBanner onRetry={() => loadAllData(true)} />}
 
         {/* Stories: your profile (+) then today's matches with real photos */}
@@ -364,13 +365,18 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             keyExtractor={(item) => item.id}
             snapToInterval={matchCardWidth + 12}
             decelerationRate="fast"
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            windowSize={4}
             contentContainerStyle={styles.horizontalMatchesContent}
-            renderItem={({ item }) => (
-              <CompactMatchCard
-                match={item}
-                width={matchCardWidth}
-                onPress={() => openMatch(item)}
-              />
+            renderItem={({ item, index }) => (
+              <AnimatedStaggerItem index={index}>
+                <CompactMatchCard
+                  match={item}
+                  width={matchCardWidth}
+                  onPress={() => openMatch(item)}
+                />
+              </AnimatedStaggerItem>
             )}
           />
         ) : (
@@ -402,6 +408,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
             profile?.isVerified || (sessionUser as any)?.identityVerificationStatus === 'verified'
           )}
         />
+        </AnimatedPage>
 
         <View style={{ height: ds.space.md }} />
 

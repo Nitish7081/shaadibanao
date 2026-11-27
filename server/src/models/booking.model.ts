@@ -35,6 +35,7 @@ export interface IBooking extends Document {
   commissionRate?: number; // e.g. 15%
   commissionAmount?: number;
   panditEarnings?: number;
+  earningsCredited?: boolean;
   isCommunityBooking?: boolean;
   communityId?: mongoose.Types.ObjectId;
   status: BookingStatus;
@@ -115,6 +116,7 @@ const BookingSchema = new Schema<IBooking>(
     commissionRate: { type: Number, default: 15 },
     commissionAmount: { type: Number, default: 0 },
     panditEarnings: { type: Number, default: 0 },
+    earningsCredited: { type: Boolean, default: false },
     isCommunityBooking: { type: Boolean, default: false, index: true },
     communityId: { type: Schema.Types.ObjectId, ref: 'CommunityPost', required: false },
     status: {
@@ -136,8 +138,12 @@ const BookingSchema = new Schema<IBooking>(
   }
 );
 
-// Compound index for double-booking conflict detection
+// Compound indexes for double-booking conflict detection & fast user/pandit/admin lookups
 BookingSchema.index({ panditId: 1, bookingDate: 1, timeSlot: 1 });
+BookingSchema.index({ userId: 1, createdAt: -1 });
+BookingSchema.index({ panditId: 1, createdAt: -1 });
+BookingSchema.index({ status: 1, createdAt: -1 });
+BookingSchema.index({ paymentStatus: 1, createdAt: -1 });
 
 export const BookingModel =
   mongoose.models.Booking || mongoose.model<IBooking>('Booking', BookingSchema);

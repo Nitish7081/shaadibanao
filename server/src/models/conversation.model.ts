@@ -4,6 +4,10 @@ export type ContactExchangeState = 'none' | 'requested' | 'accepted' | 'declined
 
 export interface IConversation extends Document {
   matchId?: Types.ObjectId;
+  category?: 'matrimonial' | 'pandit_consultation' | 'booking_consultation';
+  participantPairKey?: string;
+  panditId?: Types.ObjectId;
+  bookingId?: Types.ObjectId;
   user1Id: Types.ObjectId;
   user2Id: Types.ObjectId;
   contactExchange: {
@@ -22,6 +26,28 @@ const ConversationSchema = new Schema<IConversation>(
     matchId: {
       type: Schema.Types.ObjectId,
       ref: 'Match',
+      required: false,
+      index: true,
+    },
+    category: {
+      type: String,
+      enum: ['matrimonial', 'pandit_consultation', 'booking_consultation'],
+      default: 'matrimonial',
+      index: true,
+    },
+    participantPairKey: {
+      type: String,
+      trim: true,
+    },
+    panditId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Pandit',
+      required: false,
+      index: true,
+    },
+    bookingId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Booking',
       required: false,
       index: true,
     },
@@ -65,7 +91,9 @@ const ConversationSchema = new Schema<IConversation>(
   }
 );
 
-ConversationSchema.index({ user1Id: 1, user2Id: 1 });
+ConversationSchema.index({ user1Id: 1, lastMessageAt: -1 });
+ConversationSchema.index({ user2Id: 1, lastMessageAt: -1 });
+ConversationSchema.index({ participantPairKey: 1 }, { unique: true, sparse: true });
 ConversationSchema.index({ lastMessageAt: -1 });
 
 export const ConversationModel =

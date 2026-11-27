@@ -62,8 +62,11 @@ const CommunityPostSchema = new Schema<ICommunityPost>(
   }
 );
 
-// Compound index for public feed
+// Compound indexes for public feed and moderation queues
 CommunityPostSchema.index({ moderationStatus: 1, createdAt: -1 });
+CommunityPostSchema.index({ moderationStatus: 1, isPinned: -1, createdAt: -1 });
+CommunityPostSchema.index({ category: 1, moderationStatus: 1, isPinned: -1, createdAt: -1 });
+CommunityPostSchema.index({ userId: 1, moderationStatus: 1, createdAt: -1 });
 
 export const CommunityPostModel =
   mongoose.models.CommunityPost ||

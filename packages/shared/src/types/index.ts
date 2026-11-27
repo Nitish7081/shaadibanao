@@ -327,14 +327,37 @@ export interface ContactExchangeDetails {
   email?: string; // Revealed ONLY after mutual consent
 }
 
+export type ConversationCategory = 'matrimonial' | 'pandit_consultation' | 'booking_consultation';
+
+export interface PanditChatEntitlementSummary {
+  panditId: string;
+  freeChatEnabled: boolean;
+  freeMessagesUsed: number;
+  freeMessageLimit: number;
+  freeRemaining: number;
+  paidAccessActive: boolean;
+  hasActiveSubscription: boolean;
+  hasPaidBooking: boolean;
+  requiresPayment: boolean;
+  consultationPriceInr: number;
+  whatsappAvailable: boolean;
+  whatsappAuthorized: boolean;
+  whatsappRule: string;
+  reason: string;
+}
+
 export interface ConversationItem {
   id: string;
   matchId: string;
+  category?: ConversationCategory;
+  panditId?: string;
+  bookingId?: string;
   participant: PublicProfile;
   lastMessage?: ChatMessage;
   unreadCount: number;
   contactExchange: ContactExchangeDetails;
   isFreeChat?: boolean;
+  entitlement?: PanditChatEntitlementSummary;
   createdAt: string;
   updatedAt: string;
 }

@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { ds, PressableScale, Skeleton } from '../design';
+import { ds, PressableScale, Skeleton, AnimatedStaggerItem } from '../design';
 import { OfflineBanner } from '../components/royal';
 import { getSessionToken } from '../services/authSession';
 import {
@@ -140,7 +140,8 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 
-  const renderNotificationCard = ({ item }: { item: ActivityItem }) => (
+  const renderNotificationCard = ({ item, index }: { item: ActivityItem; index: number }) => (
+    <AnimatedStaggerItem index={index}>
     <PressableScale
       style={[
         styles.notifCard,
@@ -188,6 +189,7 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
     </PressableScale>
+    </AnimatedStaggerItem>
   );
 
   const renderEmptyOrLoading = () => {

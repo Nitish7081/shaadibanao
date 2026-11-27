@@ -59,5 +59,8 @@ const ReportSchema = new Schema<IReport>(
   }
 );
 
+ReportSchema.index({ reporterId: 1, status: 1 });
+ReportSchema.index({ reportedUserId: 1, status: 1 });
+
 export const ReportModel =
   mongoose.models.Report || mongoose.model<IReport>('Report', ReportSchema);

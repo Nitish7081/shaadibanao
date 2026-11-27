@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { CommunityPostItem } from '@bandhansetu/shared';
-import { ds, PressableScale, Skeleton } from '../design';
+import { ds, PressableScale, Skeleton, AnimatedStaggerItem } from '../design';
 import { apiClient } from '../services/apiClient';
 import { cloudinaryUrl } from '../services/cloudinaryUrl';
 import { getAuthHeader } from '../services/authSession';
@@ -187,7 +187,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
     </View>
   );
 
-  const renderPostItem = ({ item }: { item: CommunityPostItem }) => {
+  const renderPostItem = ({ item, index }: { item: CommunityPostItem; index: number }) => {
     const formattedDate = item.createdAt
       ? new Date(item.createdAt).toLocaleDateString('en-IN', {
           month: 'short',
@@ -198,7 +198,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
     const authorInitials = getInitials(item.authorName || 'Community Member');
 
     return (
-      <View style={styles.postCard}>
+      <AnimatedStaggerItem index={index} style={styles.postCard}>
         {/* Author Header */}
         <View style={styles.authorRow}>
           <LinearGradient
@@ -278,7 +278,7 @@ export const CommunityScreen: React.FC<any> = ({ navigation }) => {
             </PressableScale>
           </View>
         </View>
-      </View>
+      </AnimatedStaggerItem>
     );
   };
 

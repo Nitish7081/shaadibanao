@@ -75,6 +75,8 @@ const MessageSchema = new Schema<IMessage>(
 );
 
 MessageSchema.index({ conversationId: 1, createdAt: -1 });
+MessageSchema.index({ conversationId: 1, receiverId: 1, status: 1 });
+MessageSchema.index({ senderId: 1, conversationId: 1 });
 
 export const MessageModel =
   mongoose.models.Message || mongoose.model<IMessage>('Message', MessageSchema);

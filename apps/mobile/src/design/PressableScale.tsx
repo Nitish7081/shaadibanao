@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, PressableProps, StyleProp, ViewStyle } from 'react-native';
+import { useReducedMotion } from './useReducedMotion';
 
 interface Props extends Omit<PressableProps, 'style' | 'children'> {
   style?: StyleProp<ViewStyle>;
@@ -8,7 +9,7 @@ interface Props extends Omit<PressableProps, 'style' | 'children'> {
   children?: React.ReactNode;
 }
 
-/** Pressable that gently scales down while pressed (native-driven spring). */
+/** Pressable that gently scales down while pressed (native-driven spring, respects Reduce Motion). */
 export const PressableScale: React.FC<Props> = ({
   style,
   containerStyle,
@@ -16,15 +17,20 @@ export const PressableScale: React.FC<Props> = ({
   children,
   onPressIn,
   onPressOut,
+  disabled,
   ...rest
 }) => {
+  const reducedMotion = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
-  const animate = (to: number) =>
+  const animate = (to: number) => {
+    if (reducedMotion || disabled) return;
     Animated.spring(scale, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  };
 
   return (
     <Pressable
       {...rest}
+      disabled={disabled}
       style={containerStyle}
       onPressIn={(e) => {
         animate(scaleTo);
@@ -35,7 +41,9 @@ export const PressableScale: React.FC<Props> = ({
         onPressOut?.(e);
       }}
     >
-      <Animated.View style={[style, { transform: [{ scale }] }]}>{children}</Animated.View>
+      <Animated.View style={[style, disabled ? { opacity: 0.6 } : undefined, { transform: [{ scale }] }]}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 };

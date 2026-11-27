@@ -25,6 +25,7 @@ import { presentPhoto, presentPhotoUrl } from './photoPrivacy';
 import { TokenService } from './token.service';
 import { SocketService } from '../socket/socket.service';
 import { AppError } from '../middleware/errorHandler';
+import { readCache } from '../utils/cache';
 import { AuthTokens, UserSummary, PendingApprovalItem, ApprovalStatus } from '@bandhansetu/shared';
 import { inMemoryProfileStore } from './profile.service';
 
@@ -177,6 +178,11 @@ export class AdminService {
       };
     }
 
+    const cachedStats = readCache.get('admin:dashboard:stats');
+    if (cachedStats) {
+      return cachedStats;
+    }
+
     const [
       totalUsers,
       pendingApprovals,
@@ -256,7 +262,7 @@ export class AdminService {
       }
     }
 
-    return {
+    const statsPayload = {
       databaseConnected: true,
       totalUsers,
       pendingApprovals,
@@ -295,6 +301,8 @@ export class AdminService {
         createdAt: b.createdAt,
       })),
     };
+    readCache.set('admin:dashboard:stats', statsPayload, 10_000);
+    return statsPayload;
   }
 
   /**
@@ -2097,7 +2105,14 @@ export class AdminService {
             appName: 'ShaadiBanao',
             femaleFreeChatEnabled: true,
             malePaidChatRequired: true,
-            maleFreeMessageLimit: 0,
+            maleFreeReplyToFemale: true,
+            maleFreeMessageLimit: 1,
+            panditFreeChatEnabled: true,
+            panditFreeMessageLimit: 1,
+            panditPaidChatRequired: true,
+            femaleFreePanditChat: false,
+            panditWhatsappEnabled: true,
+            panditWhatsappRule: 'paid_booking_or_subscription',
             plusPlanPriceInr: 2999,
             premiumPlanPriceInr: 4999,
             defaultPanditConsultationFee: 501,
@@ -2125,7 +2140,19 @@ export class AdminService {
       appName: settingsDoc?.appName || 'ShaadiBanao',
       femaleFreeChatEnabled: settingsDoc?.femaleFreeChatEnabled !== false,
       malePaidChatRequired: settingsDoc?.malePaidChatRequired !== false,
-      maleFreeMessageLimit: settingsDoc?.maleFreeMessageLimit || 0,
+      maleFreeReplyToFemale: settingsDoc?.maleFreeReplyToFemale !== false,
+      maleFreeMessageLimit:
+        typeof settingsDoc?.maleFreeMessageLimit === 'number' ? settingsDoc.maleFreeMessageLimit : 1,
+      panditFreeChatEnabled: settingsDoc?.panditFreeChatEnabled !== false,
+      panditFreeMessageLimit:
+        typeof settingsDoc?.panditFreeMessageLimit === 'number' ? settingsDoc.panditFreeMessageLimit : 1,
+      panditPaidChatRequired: settingsDoc?.panditPaidChatRequired !== false,
+      femaleFreePanditChat: settingsDoc?.femaleFreePanditChat === true,
+      panditWhatsappEnabled: settingsDoc?.panditWhatsappEnabled !== false,
+      panditWhatsappRule: settingsDoc?.panditWhatsappRule || 'paid_booking_or_subscription',
+      audioConsultationPriceInr: settingsDoc?.audioConsultationPriceInr || 301,
+      videoConsultationPriceInr: settingsDoc?.videoConsultationPriceInr || 501,
+      chatConsultationPriceInr: settingsDoc?.chatConsultationPriceInr || 201,
       plusPlanPriceInr: settingsDoc?.plusPlanPriceInr || 2999,
       premiumPlanPriceInr: settingsDoc?.premiumPlanPriceInr || 4999,
       defaultPanditConsultationFee: settingsDoc?.defaultPanditConsultationFee || 501,
@@ -2168,6 +2195,21 @@ export class AdminService {
     if (data.malePaidChatRequired !== undefined) settings.malePaidChatRequired = Boolean(data.malePaidChatRequired);
     if (data.maleFreeReplyToFemale !== undefined) settings.maleFreeReplyToFemale = Boolean(data.maleFreeReplyToFemale);
     if (data.maleFreeMessageLimit !== undefined) settings.maleFreeMessageLimit = Number(data.maleFreeMessageLimit);
+    if (data.panditFreeChatEnabled !== undefined) settings.panditFreeChatEnabled = Boolean(data.panditFreeChatEnabled);
+    if (data.panditFreeMessageLimit !== undefined) {
+      settings.panditFreeMessageLimit = Math.max(0, Number(data.panditFreeMessageLimit));
+    }
+    if (data.panditPaidChatRequired !== undefined) settings.panditPaidChatRequired = Boolean(data.panditPaidChatRequired);
+    if (data.femaleFreePanditChat !== undefined) settings.femaleFreePanditChat = Boolean(data.femaleFreePanditChat);
+    if (data.panditWhatsappEnabled !== undefined) settings.panditWhatsappEnabled = Boolean(data.panditWhatsappEnabled);
+    if (
+      data.panditWhatsappRule &&
+      ['paid_booking_or_subscription', 'paid_booking_only', 'paid_subscription_only', 'always_off'].includes(
+        data.panditWhatsappRule
+      )
+    ) {
+      settings.panditWhatsappRule = data.panditWhatsappRule;
+    }
     if (data.plusPlanPriceInr !== undefined) settings.plusPlanPriceInr = Number(data.plusPlanPriceInr);
     if (data.premiumPlanPriceInr !== undefined) settings.premiumPlanPriceInr = Number(data.premiumPlanPriceInr);
     if (data.defaultPanditConsultationFee !== undefined) settings.defaultPanditConsultationFee = Number(data.defaultPanditConsultationFee);
