@@ -3,7 +3,8 @@ import mongoose, { Schema, Document } from 'mongoose';
 export interface IMatch extends Document {
   user1Id: mongoose.Types.ObjectId | string;
   user2Id: mongoose.Types.ObjectId | string;
-  interestId: mongoose.Types.ObjectId | string;
+  interestId?: mongoose.Types.ObjectId | string;
+  friendRequestId?: mongoose.Types.ObjectId | string;
   createdAt: Date;
 }
 
@@ -24,7 +25,12 @@ const MatchSchema = new Schema<IMatch>(
     interestId: {
       type: Schema.Types.ObjectId,
       ref: 'Interest',
-      required: true,
+      required: false,
+    },
+    friendRequestId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FriendRequest',
+      required: false,
     },
   },
   {

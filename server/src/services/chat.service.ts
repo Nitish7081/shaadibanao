@@ -19,6 +19,11 @@ import { inMemoryMatchStore } from './interest.service';
 import { SocketService } from '../socket/socket.service';
 import { AppError } from '../middleware/errorHandler';
 import {
+  assertPairNotBlocked,
+  isPairBlocked,
+  getFriendRequestBetween,
+} from './relationshipGuard';
+import {
   ConversationItem,
   ChatMessage,
   PaginatedResponse,
@@ -29,6 +34,7 @@ import {
 export interface InMemoryConversation {
   id: string;
   matchId?: string;
+  friendRequestId?: string;
   category?: 'matrimonial' | 'pandit_consultation' | 'booking_consultation';
   participantPairKey?: string;
   panditId?: string;
@@ -388,7 +394,7 @@ export class ChatService {
     // 2. Fetch system settings
     let femaleFreeChatEnabled = true;
     let malePaidChatRequired = true;
-    let maleFreeReplyToFemale = true;
+    let maleFreeReplyToFemale = false;
     let maleFreeMessageLimit = 1;
 
     if (isDbConnected) {
@@ -397,7 +403,7 @@ export class ChatService {
         if (settings) {
           femaleFreeChatEnabled = settings.femaleFreeChatEnabled !== false;
           malePaidChatRequired = settings.malePaidChatRequired !== false;
-          maleFreeReplyToFemale = settings.maleFreeReplyToFemale !== false;
+          maleFreeReplyToFemale = settings.maleFreeReplyToFemale === true;
           maleFreeMessageLimit =
             typeof settings.maleFreeMessageLimit === 'number' ? settings.maleFreeMessageLimit : 1;
         }
@@ -659,6 +665,63 @@ export class ChatService {
   }
 
   /**
+   * Ensures a conversation is accessible (participant check + not blocked + not pending/rejected friend request)
+   */
+  public static async assertConversationAccessAllowed(conv: any, userId: string): Promise<void> {
+    const user1 = conv.user1Id?.toString() || conv.user1Id;
+    const user2 = conv.user2Id?.toString() || conv.user2Id;
+
+    if (user1 !== userId && user2 !== userId) {
+      throw new AppError('Unauthorized. You are not a participant in this conversation.', 403, 'FORBIDDEN');
+    }
+
+    await assertPairNotBlocked(user1, user2);
+
+    const category = conv.category || 'matrimonial';
+    if (category === 'matrimonial') {
+      const fr = await getFriendRequestBetween(user1, user2);
+      if (fr.status === 'rejected') {
+        throw new AppError('Chat is unavailable because the friend request was rejected.', 403, 'FRIEND_REQUEST_REJECTED');
+      }
+      if (fr.status === 'pending') {
+        const isDbConnected = mongoose.connection.readyState === 1;
+        const hasMatch = isDbConnected
+          ? await MatchModel.exists({
+              $or: [
+                { user1Id: user1, user2Id: user2 },
+                { user1Id: user2, user2Id: user1 },
+              ],
+            })
+          : inMemoryMatchStore.some(
+              (m) =>
+                (m.user1Id === user1 && m.user2Id === user2) ||
+                (m.user1Id === user2 && m.user2Id === user1)
+            );
+        if (!hasMatch) {
+          throw new AppError('Chat will unlock once the friend request is accepted.', 403, 'FRIEND_REQUEST_PENDING');
+        }
+      }
+    }
+  }
+
+  public static async assertConversationAccessForUser(conversationId: string, userId: string): Promise<void> {
+    const isDbConnected = mongoose.connection.readyState === 1;
+    let conv: any = null;
+    if (isDbConnected) {
+      if (!mongoose.Types.ObjectId.isValid(conversationId)) {
+        throw new AppError('Invalid conversation ID', 400, 'INVALID_CONVERSATION_ID');
+      }
+      conv = await ConversationModel.findById(conversationId).lean();
+    } else {
+      conv = inMemoryConversationStore.find((c) => c.id === conversationId);
+    }
+    if (!conv) {
+      throw new AppError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
+    }
+    await this.assertConversationAccessAllowed(conv, userId);
+  }
+
+  /**
    * GET /api/v1/conversations
    * Retrieves all conversations for the user using batch aggregation + Hash Maps (O(1) DB round-trips)
    */
@@ -774,6 +837,10 @@ export class ChatService {
       const user1 = conv.user1Id?.toString() || conv.user1Id;
       const user2 = conv.user2Id?.toString() || conv.user2Id;
       const partnerId = user1 === userId ? user2 : user1;
+
+      if (await isPairBlocked(user1, user2)) {
+        continue;
+      }
 
       let participant: any;
       if (isDbConnected) {
@@ -1114,6 +1181,13 @@ export class ChatService {
       throw new AppError('Cannot start a conversation with yourself', 400, 'SELF_CONVERSATION_PROHIBITED');
     }
 
+    // Enforce user block and friend-request gate before opening/creating matrimonial chat
+    await assertPairNotBlocked(userId, targetUserId);
+    const friendState = await getFriendRequestBetween(userId, targetUserId);
+    if (friendState.status === 'rejected') {
+      throw new AppError('Chat is unavailable because the friend request was rejected.', 403, 'FRIEND_REQUEST_REJECTED');
+    }
+
     // Check Genders
     const senderGender = await this.resolveUserGender(userId);
     const targetGender = await this.resolveUserGender(targetUserId);
@@ -1160,15 +1234,28 @@ export class ChatService {
       );
     }
 
-    if (!conv && !matchRecord && !isFemaleFreeChat) {
+    if (friendState.status === 'pending' && !matchRecord) {
       throw new AppError(
-        'Messaging is restricted to mutual matches. You may only start a conversation after an interest is mutually accepted.',
+        'Chat will unlock once your friend request is accepted.',
+        403,
+        'FRIEND_REQUEST_PENDING'
+      );
+    }
+
+    const isAcceptedFriend = friendState.status === 'accepted';
+    if (!conv && !matchRecord && !isAcceptedFriend && !isFemaleFreeChat) {
+      throw new AppError(
+        'Messaging is restricted to mutual matches or accepted friends. Send an interest or friend request first.',
         403,
         'NO_MUTUAL_MATCH'
       );
     }
 
-    const matchId = conv?.matchId?.toString() || matchRecord?._id?.toString() || matchRecord?.id || 'free_female_chat';
+    const matchId =
+      conv?.matchId?.toString() ||
+      matchRecord?._id?.toString() ||
+      matchRecord?.id ||
+      (isAcceptedFriend ? `friend_${friendState.request?._id?.toString() || friendState.request?.id || 'accepted'}` : 'free_female_chat');
 
     // STEP 3: Create conversation if not already found
     if (!conv) {
@@ -1226,10 +1313,7 @@ export class ChatService {
     limit = 20,
     before?: string
   ): Promise<PaginatedResponse<ChatMessage>> {
-    const isMember = await this.isUserInConversation(conversationId, userId);
-    if (!isMember) {
-      throw new AppError('Unauthorized. You are not a participant in this conversation.', 403, 'FORBIDDEN');
-    }
+    await this.assertConversationAccessForUser(conversationId, userId);
 
     const isDbConnected = mongoose.connection.readyState === 1;
 
@@ -1327,6 +1411,8 @@ export class ChatService {
     if (user1 !== userId && user2 !== userId) {
       throw new AppError('Unauthorized. You are not a participant in this conversation.', 403, 'FORBIDDEN');
     }
+
+    await this.assertConversationAccessAllowed(conv, userId);
 
     const receiverId = user1 === userId ? user2 : user1;
 
@@ -1466,10 +1552,7 @@ export class ChatService {
    * Marks unread messages as read
    */
   public static async markMessagesAsRead(userId: string, conversationId: string): Promise<void> {
-    const isMember = await this.isUserInConversation(conversationId, userId);
-    if (!isMember) {
-      throw new AppError('Unauthorized. You are not a participant in this conversation.', 403, 'FORBIDDEN');
-    }
+    await this.assertConversationAccessForUser(conversationId, userId);
 
     const isDbConnected = mongoose.connection.readyState === 1;
 

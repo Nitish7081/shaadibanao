@@ -26,6 +26,9 @@ import {
   sendInterest,
   addShortlist,
   getOrCreateConversation,
+  sendFreeHello,
+  getHelloStatus,
+  sendFriendRequest,
   getSessionToken,
   getCachedUserProfile,
 } from '../services';
@@ -48,6 +51,10 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const [shortlistLoading, setShortlistLoading] = useState(false);
   const [isShortlisted, setIsShortlisted] = useState(false);
   const [isInterestSent, setIsInterestSent] = useState(false);
+  const [helloSent, setHelloSent] = useState(false);
+  const [helloLoading, setHelloLoading] = useState(false);
+  const [friendRequested, setFriendRequested] = useState(false);
+  const [friendLoading, setFriendLoading] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [showPaywallModal, setShowPaywallModal] = useState(false);
 
@@ -80,7 +87,50 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
 
   useEffect(() => {
     fetchProfile();
+    const token = getSessionToken();
+    if (token) {
+      getHelloStatus(token, profileId)
+        .then((res) => {
+          if (res?.data?.sent) setHelloSent(true);
+        })
+        .catch(() => {});
+    }
   }, [profileId]);
+
+  const handleSendHello = async () => {
+    if (helloSent || helloLoading) return;
+    setHelloLoading(true);
+    try {
+      const token = getSessionToken();
+      await sendFreeHello(token, profile?.id || profileId);
+      setHelloSent(true);
+      Alert.alert('Hello Sent 👋', `Your one free Hello has been sent to ${profile?.displayName || name}.`);
+    } catch (err: any) {
+      if (err?.status === 409 || err?.code === 'HELLO_ALREADY_SENT') {
+        setHelloSent(true);
+        Alert.alert('Already Sent', 'You already sent your one free Hello to this member.');
+      } else {
+        Alert.alert('Unable to Say Hello', err?.message || 'Could not send Hello.');
+      }
+    } finally {
+      setHelloLoading(false);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (friendRequested || friendLoading) return;
+    setFriendLoading(true);
+    try {
+      const token = getSessionToken();
+      await sendFriendRequest(token, profile?.id || profileId);
+      setFriendRequested(true);
+      Alert.alert('Friend Request Sent', `Friend request sent to ${profile?.displayName || name}.`);
+    } catch (err: any) {
+      Alert.alert('Friend Request Notice', err?.message || 'Could not send friend request.');
+    } finally {
+      setFriendLoading(false);
+    }
+  };
 
   const handleSendInterest = async () => {
     if (isInterestSent) return;
@@ -518,6 +568,29 @@ export const ProfileDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text maxFontSizeMultiplier={1.2} style={styles.protectedBody}>
               {t('profileDetail.contactProtectedDesc')}
             </Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: ds.space.lg }}>
+            <PressableScale
+              style={[styles.chatActionBtn, { flex: 1, opacity: helloSent ? 0.65 : 1 }]}
+              onPress={handleSendHello}
+              disabled={helloSent || helloLoading}
+            >
+              <Ionicons name={helloSent ? 'checkmark-done' : 'hand-left-outline'} size={17} color={ds.color.maroon} />
+              <Text maxFontSizeMultiplier={1.2} style={styles.chatActionBtnText}>
+                {helloSent ? 'Hello Sent ✓' : 'Free Hello'}
+              </Text>
+            </PressableScale>
+            <PressableScale
+              style={[styles.chatActionBtn, { flex: 1, opacity: friendRequested ? 0.65 : 1 }]}
+              onPress={handleSendFriendRequest}
+              disabled={friendRequested || friendLoading}
+            >
+              <Ionicons name={friendRequested ? 'checkmark-circle' : 'person-add-outline'} size={17} color={ds.color.maroon} />
+              <Text maxFontSizeMultiplier={1.2} style={styles.chatActionBtnText}>
+                {friendRequested ? 'Requested' : 'Add Friend'}
+              </Text>
+            </PressableScale>
           </View>
           </AnimatedPage>
         </ScrollView>

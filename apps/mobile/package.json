@@ -1,6 +1,6 @@
 {
   "name": "@bandhansetu/mobile",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "main": "index.ts",
   "dependencies": {
     "@bandhansetu/shared": "*",
@@ -43,6 +43,7 @@
     "build:bundle:local": "eas build -p android --profile production --local",
     "build:apk": "eas build -p android --profile preview",
     "build:apk:local": "eas build -p android --profile preview --local",
+    "test": "jest",
     "start": "expo start --lan",
     "start:lan": "expo start --lan",
     "start:tunnel": "expo start --tunnel",

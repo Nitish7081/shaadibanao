@@ -178,11 +178,6 @@ export class AdminService {
       };
     }
 
-    const cachedStats = readCache.get('admin:dashboard:stats');
-    if (cachedStats) {
-      return cachedStats;
-    }
-
     const [
       totalUsers,
       pendingApprovals,
@@ -301,7 +296,6 @@ export class AdminService {
         createdAt: b.createdAt,
       })),
     };
-    readCache.set('admin:dashboard:stats', statsPayload, 10_000);
     return statsPayload;
   }
 
@@ -2105,7 +2099,7 @@ export class AdminService {
             appName: 'ShaadiBanao',
             femaleFreeChatEnabled: true,
             malePaidChatRequired: true,
-            maleFreeReplyToFemale: true,
+            maleFreeReplyToFemale: false,
             maleFreeMessageLimit: 1,
             panditFreeChatEnabled: true,
             panditFreeMessageLimit: 1,
@@ -2140,7 +2134,7 @@ export class AdminService {
       appName: settingsDoc?.appName || 'ShaadiBanao',
       femaleFreeChatEnabled: settingsDoc?.femaleFreeChatEnabled !== false,
       malePaidChatRequired: settingsDoc?.malePaidChatRequired !== false,
-      maleFreeReplyToFemale: settingsDoc?.maleFreeReplyToFemale !== false,
+      maleFreeReplyToFemale: settingsDoc?.maleFreeReplyToFemale === true,
       maleFreeMessageLimit:
         typeof settingsDoc?.maleFreeMessageLimit === 'number' ? settingsDoc.maleFreeMessageLimit : 1,
       panditFreeChatEnabled: settingsDoc?.panditFreeChatEnabled !== false,

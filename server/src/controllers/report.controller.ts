@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { ReportModel } from '../models/report.model';
+import { UserBlockModel } from '../models/user-block.model';
 import { ProfileModel } from '../models/profile.model';
 import { UserModel } from '../models/user.model';
+import { recordInMemoryBlock } from '../services/relationshipGuard';
 import { AppError } from '../middleware/errorHandler';
 
 export class ReportController {
@@ -80,6 +82,7 @@ export class ReportController {
         if (existing) {
           existing.reason = reason;
           if (comments) existing.comments = comments;
+          if (alsoBlock) existing.actionTaken = 'warning';
           await existing.save();
         } else {
           await ReportModel.create({
@@ -92,6 +95,16 @@ export class ReportController {
             actionTaken: alsoBlock ? 'warning' : 'none',
           });
         }
+
+        if (alsoBlock && mongoose.Types.ObjectId.isValid(reporterId) && mongoose.Types.ObjectId.isValid(resolvedUserId)) {
+          await UserBlockModel.findOneAndUpdate(
+            { blockerId: reporterId, blockedUserId: resolvedUserId },
+            { $set: { reason: reason || 'Blocked via report' } },
+            { upsert: true, new: true }
+          );
+        }
+      } else if (alsoBlock) {
+        await recordInMemoryBlock(reporterId, resolvedUserId);
       }
 
       res.status(201).json({

@@ -20,6 +20,10 @@ import { bannerRouter } from './banner.routes';
 import { reportRouter } from './report.routes';
 import { publicRouter } from './public.routes';
 import { callRouter } from './call.routes';
+import { storiesRouter, helloRouter, friendRequestRouter, blockRouter } from './social.routes';
+import { SocialController } from '../controllers/social.controller';
+import { requireAuth } from '../middleware/auth.middleware';
+import { requireApproved } from '../middleware/approval.middleware';
 
 export const apiV1Router = Router();
 
@@ -46,4 +50,9 @@ apiV1Router.use('/community', communityRouter);
 apiV1Router.use('/banners', bannerRouter);
 apiV1Router.use('/reports', reportRouter);
 apiV1Router.use('/calls', callRouter);
+apiV1Router.use('/stories', storiesRouter);
+apiV1Router.use('/hello', helloRouter);
+apiV1Router.use('/friend-requests', friendRequestRouter);
+apiV1Router.get('/friends', requireAuth, requireApproved, SocialController.getFriends);
+apiV1Router.use('/blocks', blockRouter);
 

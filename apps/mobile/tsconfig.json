@@ -6,5 +6,6 @@
       "@bandhansetu/shared": ["../../packages/shared/dist"],
       "@bandhansetu/shared/*": ["../../packages/shared/dist/*"]
     }
-  }
+  },
+  "exclude": ["__tests__", "jest.config.js"]
 }

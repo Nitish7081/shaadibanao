@@ -7,6 +7,7 @@ import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { LoginOtpScreen } from '../screens/LoginOtpScreen';
 import { ProfileCreationScreen } from '../screens/ProfileCreationScreen';
 import { MainTabNavigator } from './MainTabNavigator';
+import { StoryViewerScreen } from '../screens/StoryViewerScreen';
 import { ProfileDetailScreen } from '../screens/ProfileDetailScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ChatDetailScreen } from '../screens/ChatDetailScreen';
@@ -47,6 +48,7 @@ export const RootNavigator: React.FC = () => {
       <Stack.Screen name="LoginOtp" component={LoginOtpScreen} />
       <Stack.Screen name="ProfileCreation" component={ProfileCreationScreen} />
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+      <Stack.Screen name="StoryViewer" component={StoryViewerScreen} />
       <Stack.Screen name="ProfileDetail" component={ProfileDetailScreen} />
       <Stack.Screen name="ChatDetail" component={ChatDetailScreen} />
       <Stack.Screen name="Membership" component={MembershipScreen} />

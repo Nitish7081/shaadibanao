@@ -24,9 +24,13 @@ import {
   updateInterestStatus,
   withdrawInterest,
   getOrCreateConversation,
+  getReceivedFriendRequests,
+  getSentFriendRequests,
+  getFriends,
+  respondToFriendRequest,
   getSessionToken,
 } from '../services';
-import { InterestItem } from '@bandhansetu/shared';
+import { FriendRequestItem, InterestItem } from '@bandhansetu/shared';
 import { getSafeMatchPhoto, getInitials, formatHeight } from '../components/home/matchPhoto';
 
 type InterestsNavProp = CompositeNavigationProp<
@@ -46,6 +50,9 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState<'received' | 'sent' | 'accepted'>('received');
   const [receivedList, setReceivedList] = useState<InterestItem[]>([]);
   const [sentList, setSentList] = useState<InterestItem[]>([]);
+  const [friendRequestsReceived, setFriendRequestsReceived] = useState<FriendRequestItem[]>([]);
+  const [friendRequestsSent, setFriendRequestsSent] = useState<FriendRequestItem[]>([]);
+  const [friendsList, setFriendsList] = useState<FriendRequestItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +68,12 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       const token = getSessionToken();
-      const [recRes, sentRes] = await Promise.all([
+      const [recRes, sentRes, frRecRes, frSentRes, frFriendsRes] = await Promise.all([
         getReceivedInterests(token),
         getSentInterests(token),
+        getReceivedFriendRequests(token).catch(() => null),
+        getSentFriendRequests(token).catch(() => null),
+        getFriends(token).catch(() => null),
       ]);
 
       if (recRes?.data) {
@@ -71,6 +81,15 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
       }
       if (sentRes?.data) {
         setSentList(sentRes.data);
+      }
+      if (frRecRes?.data) {
+        setFriendRequestsReceived(frRecRes.data);
+      }
+      if (frSentRes?.data) {
+        setFriendRequestsSent(frSentRes.data);
+      }
+      if (frFriendsRes?.data) {
+        setFriendsList(frFriendsRes.data);
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to load interests. Please try again.');
@@ -91,32 +110,52 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
     return unsubscribe;
   }, [navigation, fetchInterests]);
 
-  const handleAccept = async (interest: InterestItem) => {
-    setActionLoadingId(interest.id);
+  const handleAccept = async (item: InterestItem & { _kind?: 'friend_request'; conversationId?: string }) => {
+    setActionLoadingId(item.id);
     try {
       const token = getSessionToken();
-      await updateInterestStatus(token, interest.id, 'accepted');
+      if (item._kind === 'friend_request') {
+        const res = await respondToFriendRequest(token, item.id, 'accept');
+        await fetchInterests();
+        if (res?.data?.conversationId) {
+          navigation.navigate('ChatDetail', {
+            conversationId: res.data.conversationId,
+            partnerName: item.profile?.displayName || 'Connection',
+            partnerId: item.profile?.id,
+          });
+        } else {
+          Alert.alert('Friend Request Accepted 🎉', 'Two-way chat is now active!');
+        }
+        return;
+      }
+      await updateInterestStatus(token, item.id, 'accepted');
       Alert.alert(
         'Interest Accepted 🎉',
-        `You accepted ${interest.profile?.displayName || 'member'}'s interest! A mutual match has been established.`
+        `You accepted ${item.profile?.displayName || 'member'}'s interest! A mutual match has been established.`
       );
       await fetchInterests();
     } catch (err: any) {
-      Alert.alert('Action Failed', err?.message || 'Could not accept interest.');
+      Alert.alert('Action Failed', err?.message || 'Could not accept request.');
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  const handleDecline = async (interest: InterestItem) => {
-    setActionLoadingId(interest.id);
+  const handleDecline = async (item: InterestItem & { _kind?: 'friend_request' }) => {
+    setActionLoadingId(item.id);
     try {
       const token = getSessionToken();
-      await updateInterestStatus(token, interest.id, 'declined');
-      Alert.alert('Declined', `Interest from ${interest.profile?.displayName || 'member'} has been declined.`);
+      if (item._kind === 'friend_request') {
+        await respondToFriendRequest(token, item.id, 'reject');
+        Alert.alert('Declined', `Friend request from ${item.profile?.displayName || 'member'} was declined.`);
+        await fetchInterests();
+        return;
+      }
+      await updateInterestStatus(token, item.id, 'declined');
+      Alert.alert('Declined', `Interest from ${item.profile?.displayName || 'member'} has been declined.`);
       await fetchInterests();
     } catch (err: any) {
-      Alert.alert('Action Failed', err?.message || 'Could not decline interest.');
+      Alert.alert('Action Failed', err?.message || 'Could not decline request.');
     } finally {
       setActionLoadingId(null);
     }
@@ -136,9 +175,17 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const handleStartChat = async (interest: InterestItem) => {
+  const handleStartChat = async (interest: InterestItem & { conversationId?: string }) => {
     const profile = interest.profile;
     if (!profile) return;
+    if (interest.conversationId) {
+      navigation.navigate('ChatDetail', {
+        conversationId: interest.conversationId,
+        partnerName: profile.displayName,
+        partnerId: profile.id,
+      });
+      return;
+    }
     setActionLoadingId(interest.id);
     try {
       const token = getSessionToken();
@@ -170,12 +217,24 @@ export const InterestsScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const pendingReceived = receivedList.filter((i) => i.status === 'pending');
+  const mapFr = (fr: FriendRequestItem): any => ({
+    ...fr,
+    _kind: 'friend_request' as const,
+  });
+
+  const pendingReceived = [
+    ...friendRequestsReceived.filter((f) => f.status === 'pending').map(mapFr),
+    ...receivedList.filter((i) => i.status === 'pending'),
+  ];
   const acceptedList = [
+    ...friendsList.map(mapFr),
     ...receivedList.filter((i) => i.status === 'accepted'),
     ...sentList.filter((i) => i.status === 'accepted'),
   ];
-  const activeSent = sentList.filter((i) => i.status === 'pending');
+  const activeSent = [
+    ...friendRequestsSent.filter((f) => f.status === 'pending').map(mapFr),
+    ...sentList.filter((i) => i.status === 'pending'),
+  ];
 
   const currentData =
     activeTab === 'received'

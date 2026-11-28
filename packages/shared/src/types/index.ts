@@ -813,6 +813,55 @@ export interface WebRtcSignalPayload {
   isVideoOff?: boolean;
 }
 
+export interface StorySlide {
+  id: string;
+  mediaUrl: string;
+  caption?: string;
+  blurred?: boolean;
+  isLocked?: boolean;
+  createdAt?: string;
+}
+
+export interface ProfileStoryItem {
+  userId: string;
+  profileId: string;
+  displayName: string;
+  age?: number;
+  city?: string;
+  isVerified?: boolean;
+  avatarUrl?: string;
+  avatarBlurred?: boolean;
+  hasStory: boolean;
+  slides: StorySlide[];
+  helloSent?: boolean;
+  friendRequestStatus?: 'none' | 'pending' | 'accepted' | 'rejected';
+}
+
+export interface FreeHelloItem {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  message: string;
+  profile?: PublicProfile;
+  createdAt: string;
+}
+
+export type FriendRequestStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+
+export interface FriendRequestItem {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  status: FriendRequestStatus;
+  note?: string;
+  conversationId?: string;
+  profile?: PublicProfile;
+  createdAt: string;
+  updatedAt: string;
+  respondedAt?: string;
+}
+
+
 
 
 

@@ -50,7 +50,7 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
     appName: { type: String, default: 'ShaadiBanao' },
     femaleFreeChatEnabled: { type: Boolean, default: true },
     malePaidChatRequired: { type: Boolean, default: true },
-    maleFreeReplyToFemale: { type: Boolean, default: true },
+    maleFreeReplyToFemale: { type: Boolean, default: false },
     maleFreeMessageLimit: { type: Number, default: 1, min: 0 },
     panditFreeChatEnabled: { type: Boolean, default: true },
     panditFreeMessageLimit: { type: Number, default: 1, min: 0 },

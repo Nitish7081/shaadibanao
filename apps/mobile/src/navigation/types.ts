@@ -1,4 +1,5 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
+import { ProfileStoryItem } from '@bandhansetu/shared';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -7,6 +8,7 @@ export type RootStackParamList = {
   LoginOtp: undefined;
   ProfileCreation: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
+  StoryViewer: { stories: ProfileStoryItem[]; initialIndex?: number };
   ProfileDetail: { profileId: string; name: string };
   ChatDetail: {
     conversationId: string;

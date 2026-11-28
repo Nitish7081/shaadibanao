@@ -4,6 +4,7 @@ export type ContactExchangeState = 'none' | 'requested' | 'accepted' | 'declined
 
 export interface IConversation extends Document {
   matchId?: Types.ObjectId;
+  friendRequestId?: Types.ObjectId;
   category?: 'matrimonial' | 'pandit_consultation' | 'booking_consultation';
   participantPairKey?: string;
   panditId?: Types.ObjectId;
@@ -26,6 +27,12 @@ const ConversationSchema = new Schema<IConversation>(
     matchId: {
       type: Schema.Types.ObjectId,
       ref: 'Match',
+      required: false,
+      index: true,
+    },
+    friendRequestId: {
+      type: Schema.Types.ObjectId,
+      ref: 'FriendRequest',
       required: false,
       index: true,
     },

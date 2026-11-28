@@ -127,6 +127,8 @@ export class SocketService {
             return;
           }
 
+          await ChatService.assertConversationAccessForUser(conversationId, user.userId);
+
           socket.join(`conv_${conversationId}`);
           callback?.({ success: true });
         } catch (err: any) {

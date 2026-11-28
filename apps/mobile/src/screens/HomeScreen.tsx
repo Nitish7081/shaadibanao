@@ -20,10 +20,12 @@ import { CompositeNavigationProp, useFocusEffect } from '@react-navigation/nativ
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { UserProfile, SearchResultProfile, HomeBanner, bannerActionFor } from '@bandhansetu/shared';
+import { UserProfile, SearchResultProfile, HomeBanner, ProfileStoryItem, bannerActionFor } from '@bandhansetu/shared';
 import { FastAppCache } from '../utils/lruCache';
+import { buildStoriesFromMatches, getStoryTapNavigation } from '../utils/storyHelpers';
 import { getMyProfile } from '../services/profileService';
 import { searchProfiles } from '../services/searchService';
+import { getStories } from '../services/socialService';
 import { loadActivitySummary } from '../services/activityService';
 import { getActiveBanners } from '../services/bannerService';
 import { getSessionToken, getSessionUser, getCachedUserProfile, setCachedUserProfile, setCachedUserMembership } from '../services/authSession';
@@ -60,6 +62,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [dailyMatches, setDailyMatches] = useState<SearchResultProfile[]>([]);
+  const [serverStories, setServerStories] = useState<ProfileStoryItem[]>([]);
   const [banners, setBanners] = useState<HomeBanner[]>([]);
   const [loadingMatches, setLoadingMatches] = useState<boolean>(true);
   const [loadingBanners, setLoadingBanners] = useState<boolean>(true);
@@ -139,12 +142,17 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       viewerGender === 'male' ? 'female' : viewerGender === 'female' ? 'male' : undefined;
 
     // Run all home screen data requirements in a single parallel batch
-    const [freshProfileRes, searchRes, activity, bannersRes] = await Promise.allSettled([
+    const [freshProfileRes, searchRes, activity, bannersRes, storiesRes] = await Promise.allSettled([
       getMyProfile(token),
       searchProfiles(token, { limit: 8 }),
       loadActivitySummary(token),
       getActiveBanners(isRefresh),
+      getStories(token),
     ]);
+
+    if (storiesRes.status === 'fulfilled' && Array.isArray(storiesRes.value?.data)) {
+      setServerStories(storiesRes.value.data);
+    }
 
     // 1. User profile update
     if (freshProfileRes.status === 'fulfilled' && freshProfileRes.value?.data) {
@@ -261,6 +269,16 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
       name: match.displayName || t('common.member'),
     });
 
+  const openMatchStory = (match: SearchResultProfile) => {
+    const mergedStories = buildStoriesFromMatches(dailyMatches, serverStories);
+    const target = getStoryTapNavigation(match, mergedStories);
+    if (target.screen === 'StoryViewer') {
+      navigation.navigate('StoryViewer', target.params);
+    } else {
+      navigation.navigate('ProfileDetail', target.params);
+    }
+  };
+
   const handleBannerPress = (banner: HomeBanner) => {
     const action = bannerActionFor(banner.linkUrl);
     if (action.kind === 'external') {
@@ -316,7 +334,7 @@ export const HomeScreen: React.FC<Props> = ({ navigation }) => {
           matches={dailyMatches}
           loading={loadingMatches && dailyMatches.length === 0}
           onYourProfilePress={() => navigation.navigate('ProfileCreation')}
-          onMatchPress={openMatch}
+          onMatchPress={openMatchStory}
         />
 
         <HeroBanner
