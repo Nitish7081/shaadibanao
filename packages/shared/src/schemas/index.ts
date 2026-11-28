@@ -5,4 +5,5 @@ export * from './interest.schema';
 export * from './chat.schema';
 export * from './social.schema';
 export * from './membership.schema';
+export * from './billing.schema';
 export * from './public.schema';

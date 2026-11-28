@@ -14,4 +14,6 @@ export * from './storageService';
 export * from './astrologyService';
 export * from './panditService';
 export * from './socialService';
+export * from './playBillingService';
+
 

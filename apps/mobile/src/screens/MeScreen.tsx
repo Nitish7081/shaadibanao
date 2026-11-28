@@ -15,6 +15,7 @@ import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { ds, PressableScale, GradientRingAvatar, Skeleton } from '../design';
 import { UserProfile } from '@bandhansetu/shared';
@@ -364,7 +365,7 @@ export const MeScreen: React.FC<Props> = ({ navigation }) => {
         </PressableScale>
 
         <Text maxFontSizeMultiplier={1.2} style={styles.footerVersion}>
-          Shaadi Banao • Matrimony v1.0.0
+          Shaadi Banao • Matrimony v{Constants?.expoConfig?.version || Constants?.nativeAppVersion || '1.0.11'}
         </Text>
       </ScrollView>
     </SafeAreaView>

@@ -20,10 +20,20 @@ import { ds, PressableScale, Skeleton } from '../design';
 import {
   getMembershipPlans,
   getMyMembership,
-  requestCheckout,
+  getPlayBillingCatalog,
+  purchaseMembershipSubscription,
+  syncAndRestoreGooglePlayPurchases,
+  openGooglePlaySubscriptions,
+  closePlayBillingConnection,
   getSessionToken,
+  getSessionUserId,
+  setCachedUserMembership,
 } from '../services';
-import { MembershipPlan, UserMembership } from '@bandhansetu/shared';
+import {
+  MembershipPlan,
+  UserMembership,
+  PlayBillingCatalog,
+} from '@bandhansetu/shared';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Membership'>;
 
@@ -34,8 +44,10 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [myMembership, setMyMembership] = useState<UserMembership | null>(null);
+  const [playCatalog, setPlayCatalog] = useState<PlayBillingCatalog | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -50,9 +62,10 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
     setError(null);
 
     try {
-      const [plansRes, meRes] = await Promise.all([
+      const [plansRes, meRes, catalogRes] = await Promise.all([
         getMembershipPlans(),
         getMyMembership(token).catch(() => null),
+        getPlayBillingCatalog().catch(() => null),
       ]);
 
       if (plansRes?.data) {
@@ -60,6 +73,10 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
       }
       if (meRes?.data) {
         setMyMembership(meRes.data);
+        setCachedUserMembership(meRes.data);
+      }
+      if (catalogRes?.data) {
+        setPlayCatalog(catalogRes.data);
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to load membership plans. Please try again.');
@@ -71,6 +88,9 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
 
   useEffect(() => {
     loadData();
+    return () => {
+      closePlayBillingConnection();
+    };
   }, [loadData]);
 
   const handleSelectPlan = async (plan: MembershipPlan) => {
@@ -82,20 +102,104 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
+    if (!token) {
+      navigation.navigate('LoginOtp');
+      return;
+    }
+
+    const userId = getSessionUserId();
+    if (!userId) {
+      Alert.alert('Session Required', 'Please sign in again before purchasing a membership.');
+      return;
+    }
+
     setActionLoadingId(plan.id);
     try {
-      const res = await requestCheckout(token, plan.id as 'plus' | 'premium');
-      const notice = res?.data?.notice || 'Payment gateway integration is currently in testing mode.';
+      const activeCatalog =
+        playCatalog || (await getPlayBillingCatalog().then((res) => res?.data || null));
 
-      Alert.alert(
-        'Payment Notice 🔒',
-        `${notice}\n\nPlan: ${plan.name} (₹${plan.priceInr.toLocaleString('en-IN')})\nPayment Status: Unconfigured Gateway (Testing Mode).`,
-        [{ text: 'Understand & Close' }]
-      );
+      if (!activeCatalog) {
+        Alert.alert(
+          'Billing Unavailable',
+          'Unable to fetch Google Play Billing catalog. Please try again.'
+        );
+        return;
+      }
+
+      const outcome = await purchaseMembershipSubscription({
+        accessToken: token,
+        userId,
+        planId: plan.id as 'plus' | 'premium',
+        catalog: activeCatalog,
+      });
+
+      if (outcome.status === 'purchased') {
+        if (outcome.verification?.membership) {
+          setMyMembership(outcome.verification.membership);
+          setCachedUserMembership(outcome.verification.membership);
+        } else {
+          await loadData(true);
+        }
+        Alert.alert('Membership Activated', outcome.message);
+        return;
+      }
+
+      if (outcome.status === 'pending') {
+        Alert.alert('Payment Pending', outcome.message);
+        return;
+      }
+
+      if (outcome.status === 'cancelled') {
+        return;
+      }
+
+      if (outcome.status === 'blocked') {
+        Alert.alert('Play Billing Setup Pending', outcome.message);
+        return;
+      }
+
+      Alert.alert('Purchase Not Completed', outcome.message);
     } catch (err: any) {
-      Alert.alert('Checkout Notice', err?.message || 'Payment system is currently unavailable.');
+      Alert.alert('Billing Error', err?.message || 'Google Play Billing is currently unavailable.');
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    if (!token) {
+      navigation.navigate('LoginOtp');
+      return;
+    }
+    setRestoring(true);
+    try {
+      const activeCatalog =
+        playCatalog || (await getPlayBillingCatalog().then((res) => res?.data || null));
+      if (!activeCatalog) {
+        Alert.alert('Restore Unavailable', 'Unable to load Google Play Billing configuration.');
+        return;
+      }
+      const res = await syncAndRestoreGooglePlayPurchases(token, activeCatalog);
+      await loadData(true);
+      Alert.alert('Restore Purchases', res.message);
+    } catch (err: any) {
+      Alert.alert('Restore Failed', err?.message || 'Could not restore Google Play purchases.');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      const activeProduct = playCatalog?.products.find(
+        (p) => p.productType === 'subs' && p.planTier === myMembership?.planId
+      );
+      await openGooglePlaySubscriptions(activeProduct?.productId);
+    } catch (err: any) {
+      Alert.alert(
+        'Google Play Subscriptions',
+        err?.message || 'Unable to open Google Play subscription settings.'
+      );
     }
   };
 
@@ -344,6 +448,54 @@ export const MembershipScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               );
             })}
+
+            {/* Google Play Restore & Subscription Management Controls */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 14 }}>
+              <PressableScale
+                style={[styles.planActionBtn, { flex: 1, backgroundColor: '#FFFFFF' }, restoring && styles.planActionBtnDisabled]}
+                onPress={handleRestorePurchases}
+                disabled={restoring}
+              >
+                <View style={styles.currentBtnInner}>
+                  {restoring ? (
+                    <ActivityIndicator size="small" color={ds.color.maroon} />
+                  ) : (
+                    <>
+                      <Ionicons name="refresh-outline" size={16} color={ds.color.maroon} />
+                      <Text maxFontSizeMultiplier={1.2} style={styles.currentBtnText}>
+                        Restore Purchases
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </PressableScale>
+
+              <PressableScale
+                style={[styles.planActionBtn, { flex: 1, backgroundColor: '#FFFFFF' }]}
+                onPress={handleManageSubscription}
+              >
+                <View style={styles.currentBtnInner}>
+                  <Ionicons name="settings-outline" size={16} color={ds.color.maroon} />
+                  <Text maxFontSizeMultiplier={1.2} style={styles.currentBtnText}>
+                    Manage in Play
+                  </Text>
+                </View>
+              </PressableScale>
+            </View>
+
+            {playCatalog && !playCatalog.playConsoleProductsConfigured && (
+              <View style={[styles.guaranteeCard, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
+                <View style={styles.guaranteeHeader}>
+                  <Ionicons name="alert-circle-outline" size={18} color="#92400E" />
+                  <Text maxFontSizeMultiplier={1.2} style={[styles.guaranteeTitle, { color: '#92400E' }]}>
+                    Google Play Billing Setup Pending
+                  </Text>
+                </View>
+                <Text maxFontSizeMultiplier={1.2} style={[styles.guaranteeBody, { color: '#B45309' }]}>
+                  Subscription SKUs and backend verification service account credentials must be active in Google Play Console before purchases can complete.
+                </Text>
+              </View>
+            )}
 
             {/* Transparency Guarantee Card */}
             <View style={styles.guaranteeCard}>

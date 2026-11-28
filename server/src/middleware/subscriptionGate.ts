@@ -126,18 +126,7 @@ export const requireSubscriptionForFemaleProfile = async (
     // 8. Viewer is male (or non-female) viewing a female profile -> Check membership status
     const membership = await MembershipService.getUserMembership(viewerUserId);
 
-    const isPaidPlan = membership.planId === 'plus' || membership.planId === 'premium';
-    const isActiveStatus = membership.status === 'active';
-
-    let isNotExpired = true;
-    if (membership.expiresAt) {
-      const expiryTime = new Date(membership.expiresAt).getTime();
-      if (!isNaN(expiryTime) && expiryTime <= Date.now()) {
-        isNotExpired = false;
-      }
-    }
-
-    if (isPaidPlan && isActiveStatus && isNotExpired) {
+    if (MembershipService.hasActivePaidEntitlement(membership)) {
       // Active paid membership verified
       return next();
     }
@@ -152,7 +141,7 @@ export const requireSubscriptionForFemaleProfile = async (
           viewerGender: viewerProfile?.gender || 'male',
           targetGender: targetProfile.gender,
           currentPlan: membership.planId,
-          membershipStatus: isNotExpired ? membership.status : 'expired',
+          membershipStatus: membership.status,
           requiredPlanTiers: ['plus', 'premium'],
           availablePlans: ['plus', 'premium'],
         },

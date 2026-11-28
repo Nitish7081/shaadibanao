@@ -861,6 +861,38 @@ export interface FriendRequestItem {
   respondedAt?: string;
 }
 
+export interface PlayBillingCatalogProduct {
+  purpose: 'membership_plus' | 'membership_premium' | 'pandit_chat';
+  productId: string;
+  productType: 'subs' | 'in-app';
+  basePlanId?: string;
+  offerId?: string;
+  planTier?: 'plus' | 'premium';
+  durationDays?: number;
+}
+
+export interface PlayBillingCatalog {
+  packageName: string;
+  serverVerificationConfigured: boolean;
+  playConsoleProductsConfigured: boolean;
+  products: PlayBillingCatalogProduct[];
+}
+
+export interface PlayVerificationResult {
+  verified: boolean;
+  status: 'active' | 'cancelled' | 'pending' | 'expired' | 'on_hold' | 'paused' | 'revoked';
+  entitlementGranted: boolean;
+  acknowledged: boolean;
+  productId: string;
+  planId?: 'free' | 'plus' | 'premium';
+  expiresAt?: string;
+  autoRenewing?: boolean;
+  membership?: UserMembership;
+  panditEntitlement?: PanditChatEntitlementSummary;
+  message: string;
+}
+
+
 
 
 

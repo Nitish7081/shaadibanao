@@ -176,13 +176,21 @@ export class MembershipService {
     const limit = plan.entitlements.contactDisclosuresLimit;
     const remaining = Math.max(0, limit - used);
 
-    // Check expiration
-    let isExpired = false;
+    // Check expiration & Play Billing lifecycle states
+    let isExpired = record?.status === 'expired';
+    let hasFutureExpiry = false;
     if (record?.expiresAt) {
       const expTime = new Date(record.expiresAt).getTime();
-      if (!isNaN(expTime) && expTime <= Date.now()) {
-        isExpired = true;
+      if (!isNaN(expTime)) {
+        if (expTime <= Date.now()) {
+          isExpired = true;
+        } else {
+          hasFutureExpiry = true;
+        }
       }
+    }
+    if (record?.status === 'cancelled' && !hasFutureExpiry) {
+      isExpired = true;
     }
 
     const status = isExpired ? 'expired' : record?.status || 'active';
@@ -190,7 +198,11 @@ export class MembershipService {
     return {
       userId,
       planId: isExpired ? 'free' : planTier,
-      planName: isExpired ? 'ShaadiBanao Free (Plan Expired)' : plan.name,
+      planName: isExpired
+        ? 'ShaadiBanao Free (Plan Expired)'
+        : status === 'cancelled'
+        ? `${plan.name} (Cancels at period end)`
+        : plan.name,
       status,
       entitlements: {
         ...plan.entitlements,
@@ -203,6 +215,25 @@ export class MembershipService {
         : new Date().toISOString(),
       expiresAt: record?.expiresAt ? new Date(record.expiresAt).toISOString() : undefined,
     };
+  }
+
+  /**
+   * Canonical entitlement check: true for paid tiers (plus/premium) that are active,
+   * or cancelled with remaining paid billing cycle before expiresAt.
+   */
+  public static hasActivePaidEntitlement(membership: UserMembership): boolean {
+    const isPaid = membership.planId === 'plus' || membership.planId === 'premium';
+    if (!isPaid) return false;
+
+    const now = Date.now();
+    const expTime = membership.expiresAt ? new Date(membership.expiresAt).getTime() : NaN;
+    if (!isNaN(expTime) && expTime <= now) {
+      return false;
+    }
+
+    if (membership.status === 'active') return true;
+    if (membership.status === 'cancelled' && !isNaN(expTime) && expTime > now) return true;
+    return false;
   }
 
   /**
@@ -259,9 +290,19 @@ export class MembershipService {
       throw new AppError('Payment orderId and paymentId are required.', 400, 'INVALID_PAYMENT_PAYLOAD');
     }
 
-    // Razorpay signature verification if secret configured
+    // Razorpay signature verification (mandatory in production; never accept unsigned client payment IDs)
     const rzpSecret = process.env.RAZORPAY_KEY_SECRET;
-    if (rzpSecret && data.signature) {
+    if (config.isProduction && !rzpSecret) {
+      throw new AppError(
+        'Direct Razorpay verification is not configured. Use Google Play Billing on Android.',
+        503,
+        'PAYMENT_GATEWAY_UNCONFIGURED'
+      );
+    }
+    if (rzpSecret) {
+      if (!data.signature) {
+        throw new AppError('Payment verification signature is required.', 400, 'PAYMENT_VERIFICATION_FAILED');
+      }
       const generatedSignature = crypto
         .createHmac('sha256', rzpSecret)
         .update(`${data.orderId}|${data.paymentId}`)

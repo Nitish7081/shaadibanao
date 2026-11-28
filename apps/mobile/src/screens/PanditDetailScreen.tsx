@@ -23,8 +23,9 @@ import {
   getPanditDetail,
   getPanditChatEligibility,
   getAuthorizedPanditWhatsapp,
-  createPanditChatOrder,
-  verifyPanditChatPayment,
+  getPlayBillingCatalog,
+  purchasePanditConsultationProduct,
+  getSessionUserId,
   getOrCreateConversation,
 } from '../services';
 import { getInitials } from '../components/home/matchPhoto';
@@ -121,21 +122,20 @@ export const PanditDetailScreen: React.FC<any> = ({ route, navigation }) => {
 
   const handlePayConsultation = async () => {
     const token = getSessionToken();
-    if (!token) {
+    const userId = getSessionUserId();
+    if (!token || !userId) {
       navigation.navigate('LoginOtp');
       return;
     }
     setActionLoading(true);
     try {
-      const orderRes = await createPanditChatOrder(p.id || panditId);
-      const order = orderRes?.data;
-      if (!order?.orderId) {
-        throw new Error('Could not create consultation order.');
-      }
+      const catalogRes = await getPlayBillingCatalog().catch(() => null);
+      const catalog = catalogRes?.data;
+      const targetPanditId = p.id || panditId;
 
       Alert.alert(
         t('chatScreen.unlockPanditChatTitle'),
-        `Pay ₹${order.amountInr} consultation fee for ${p.name} or activate a Plus/Premium plan?`,
+        `Unlock consultation chat with ${p.name} via Google Play or activate a Plus/Premium subscription?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -143,27 +143,41 @@ export const PanditDetailScreen: React.FC<any> = ({ route, navigation }) => {
             onPress: () => navigation.navigate('Membership'),
           },
           {
-            text: `Pay ₹${order.amountInr}`,
+            text: 'Unlock via Google Play',
             onPress: async () => {
               try {
-                const verifyRes = await verifyPanditChatPayment(p.id || panditId, {
-                  orderId: order.orderId,
-                  paymentId: `pay_pchat_${Date.now()}`,
-                });
-                if (verifyRes?.data?.entitlement) {
-                  setEntitlement(verifyRes.data.entitlement);
+                if (!catalog) {
+                  Alert.alert('Billing Unavailable', 'Unable to load Google Play Billing catalog.');
+                  return;
                 }
-                Alert.alert('Unlocked ✓', 'Personal consultation access is now active!');
-                await fetchPanditDetails();
+                const outcome = await purchasePanditConsultationProduct({
+                  accessToken: token,
+                  userId,
+                  panditId: targetPanditId,
+                  catalog,
+                });
+                if (outcome.status === 'purchased') {
+                  if (outcome.verification?.panditEntitlement) {
+                    setEntitlement(outcome.verification.panditEntitlement);
+                  }
+                  Alert.alert('Unlocked ✓', 'Personal consultation access is now active!');
+                  await fetchPanditDetails();
+                } else if (outcome.status === 'pending') {
+                  Alert.alert('Payment Pending', outcome.message);
+                } else if (outcome.status === 'blocked') {
+                  Alert.alert('Play Billing Setup Pending', outcome.message);
+                } else if (outcome.status !== 'cancelled') {
+                  Alert.alert('Verification Failed', outcome.message);
+                }
               } catch (err: any) {
-                Alert.alert('Verification Failed', err?.message || 'Unable to verify payment.');
+                Alert.alert('Verification Failed', err?.message || 'Unable to verify Google Play purchase.');
               }
             },
           },
         ]
       );
     } catch (err: any) {
-      Alert.alert('Consultation Notice', err?.message || 'Unable to initiate consultation payment.');
+      Alert.alert('Consultation Notice', err?.message || 'Unable to initiate Google Play Billing.');
     } finally {
       setActionLoading(false);
     }

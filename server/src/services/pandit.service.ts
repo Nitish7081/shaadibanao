@@ -497,13 +497,7 @@ export class PanditService {
     if (!hasActiveSubscription) {
       try {
         const membership = await MembershipService.getUserMembership(userId);
-        const notExpired =
-          !membership.expiresAt || new Date(membership.expiresAt).getTime() > Date.now();
-        hasActiveSubscription = Boolean(
-          (membership.planId === 'plus' || membership.planId === 'premium') &&
-            membership.status === 'active' &&
-            notExpired
-        );
+        hasActiveSubscription = MembershipService.hasActivePaidEntitlement(membership);
       } catch {
         // Ignore non-blocking membership lookup failure
       }
@@ -754,6 +748,14 @@ export class PanditService {
     });
     if (!payment) {
       throw new AppError('Consultation payment order not found for this account.', 404, 'PAYMENT_ORDER_NOT_FOUND');
+    }
+
+    if (process.env.NODE_ENV === 'production' && !process.env.RAZORPAY_KEY_SECRET) {
+      throw new AppError(
+        'Direct Razorpay verification is unavailable. Use Google Play Billing on Android.',
+        503,
+        'PAYMENT_GATEWAY_UNCONFIGURED'
+      );
     }
 
     if (process.env.RAZORPAY_KEY_SECRET) {

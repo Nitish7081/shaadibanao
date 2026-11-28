@@ -437,17 +437,7 @@ export class ChatService {
 
       // Check membership
       const membership = await MembershipService.getUserMembership(senderId);
-      const isPaid = membership.planId === 'plus' || membership.planId === 'premium';
-      const isActive = membership.status === 'active';
-      let isNotExpired = true;
-      if (membership.expiresAt) {
-        const expTime = new Date(membership.expiresAt).getTime();
-        if (!isNaN(expTime) && expTime <= Date.now()) {
-          isNotExpired = false;
-        }
-      }
-
-      if (isPaid && isActive && isNotExpired) {
+      if (MembershipService.hasActivePaidEntitlement(membership)) {
         return {
           allowed: true,
           isFree: false,

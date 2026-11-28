@@ -36,8 +36,8 @@ import {
   setCachedUserMembership,
   getMyMembership,
   getPanditChatEligibility,
-  createPanditChatOrder,
-  verifyPanditChatPayment,
+  getPlayBillingCatalog,
+  purchasePanditConsultationProduct,
 } from '../services';
 import {
   ChatMessage,
@@ -189,13 +189,15 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
       setShowPaywallModal(true);
       return;
     }
+    const token = getSessionToken();
+    const userId = getSessionUserId();
+    if (!token || !userId) {
+      setShowPaywallModal(true);
+      return;
+    }
     try {
-      const orderRes = await createPanditChatOrder(panditId);
-      const order = orderRes?.data;
-      if (!order?.orderId) {
-        setShowPaywallModal(true);
-        return;
-      }
+      const catalogRes = await getPlayBillingCatalog().catch(() => null);
+      const catalog = catalogRes?.data;
 
       Alert.alert(
         t('chatScreen.unlockPanditChatTitle'),
@@ -207,19 +209,33 @@ export const ChatDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             onPress: () => (navigation as any).navigate('Membership'),
           },
           {
-            text: t('chatScreen.payConsultationBtn', { amount: order.amountInr }),
+            text: t('chatScreen.payConsultationBtn', { amount: 251 }),
             onPress: async () => {
               try {
-                const verifyRes = await verifyPanditChatPayment(panditId, {
-                  orderId: order.orderId,
-                  paymentId: `pay_pchat_${Date.now()}`,
-                });
-                if (verifyRes?.data?.entitlement) {
-                  setPanditEntitlement(verifyRes.data.entitlement);
+                if (!catalog) {
+                  Alert.alert('Billing Unavailable', 'Unable to load Google Play Billing catalog.');
+                  return;
                 }
-                Alert.alert('Unlocked ✓', t('chatScreen.panditPaidActive'));
+                const outcome = await purchasePanditConsultationProduct({
+                  accessToken: token,
+                  userId,
+                  panditId,
+                  catalog,
+                });
+                if (outcome.status === 'purchased') {
+                  if (outcome.verification?.panditEntitlement) {
+                    setPanditEntitlement(outcome.verification.panditEntitlement);
+                  }
+                  Alert.alert('Unlocked ✓', t('chatScreen.panditPaidActive'));
+                } else if (outcome.status === 'pending') {
+                  Alert.alert('Payment Pending', outcome.message);
+                } else if (outcome.status === 'blocked') {
+                  Alert.alert('Play Billing Setup Pending', outcome.message);
+                } else if (outcome.status !== 'cancelled') {
+                  Alert.alert('Payment Failed', outcome.message);
+                }
               } catch (payErr: any) {
-                Alert.alert('Payment Failed', payErr?.message || 'Unable to verify payment.');
+                Alert.alert('Payment Failed', payErr?.message || 'Unable to verify Google Play purchase.');
               }
             },
           },

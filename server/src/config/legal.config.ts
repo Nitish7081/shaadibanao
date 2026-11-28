@@ -10,12 +10,17 @@ const envOrPlaceholder = (envKey: string, placeholderLabel: string): string => {
   return val.length > 0 ? val : `[CONFIGURE: ${placeholderLabel}]`;
 };
 
+const envOrDefault = (envKey: string, defaultValue: string): string => {
+  const val = (process.env[envKey] || '').trim();
+  return val.length > 0 ? val : defaultValue;
+};
+
 export function getPublicDeveloperContact() {
   const legalEntityName = envOrPlaceholder('PUBLIC_LEGAL_ENTITY_NAME', 'REGISTERED_LEGAL_ENTITY_NAME');
-  const supportEmail = envOrPlaceholder('PUBLIC_SUPPORT_EMAIL', 'OFFICIAL_SUPPORT_EMAIL');
+  const supportEmail = envOrDefault('PUBLIC_SUPPORT_EMAIL', 'shaadibanao.urbanpower@gmail.com');
   const grievanceOfficerName = envOrPlaceholder('PUBLIC_GRIEVANCE_OFFICER_NAME', 'GRIEVANCE_OFFICER_NAME');
-  const grievanceEmail = envOrPlaceholder('PUBLIC_GRIEVANCE_EMAIL', 'GRIEVANCE_OFFICER_EMAIL');
-  const supportPhone = envOrPlaceholder('PUBLIC_SUPPORT_PHONE', 'OFFICIAL_SUPPORT_PHONE');
+  const grievanceEmail = envOrDefault('PUBLIC_GRIEVANCE_EMAIL', 'shaadibanao.urbanpower@gmail.com');
+  const supportPhone = envOrDefault('PUBLIC_SUPPORT_PHONE', '8076168502');
   const postalAddress = envOrPlaceholder('PUBLIC_REGISTERED_ADDRESS', 'REGISTERED_POSTAL_ADDRESS');
 
   const contactPlaceholdersConfigured = ![
